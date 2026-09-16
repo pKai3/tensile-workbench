@@ -4,10 +4,15 @@ Interactive tensile-data analysis in Jupyter, with static and Plotly views, spec
 
 This repository starts from the working **v18** application. The original OneDrive installation is a separate, unchanged copy. No research data, generated results, or Python environment is stored in Git.
 
-## Open the workbench
+## Install and open the workbench
 
-- **macOS:** double-click `Launch_Tensile_Workbench.command` in this repository, then choose **Run → Run All Cells** in the notebook. The launcher reuses the environment outside OneDrive, under `~/Library/Application Support/Tensile Workbench/venv`.
-- **Windows with the existing v17 environment:** double-click `Launch_Tensile_Workbench.bat`. The unchanged `requirements-windows.txt` identifies that existing environment; no reinstall is required.
+1. Clone this repository or download and **extract** the ZIP to a writable folder.
+2. Install standard **Python 3.13, 64-bit** if needed (Windows x86-64; Mac Apple Silicon or Intel). See [setup instructions](SETUP.md) for download links and troubleshooting.
+3. First-time users: double-click **`Setup_Tensile_Workbench.bat`** on Windows or **`Setup_Tensile_Workbench.command`** on Mac. Setup downloads dependencies and creates or reuses an environment outside the code/data folders. Close running workbench sessions before rerunning Setup.
+4. Double-click **`Launch_Tensile_Workbench.bat`** on Windows or **`Launch_Tensile_Workbench.command`** on Mac, then choose **Run → Run All Cells** in Jupyter.
+
+Existing users can go straight to Launch. The original Windows v17 environment and Mac environment are recognised and reused. If dependencies need updating, rerun Setup; compatible installed packages are kept. Ordinary Launch never downloads packages or creates an environment.
+
 - Detailed application usage: [workbench guide](WORKBENCH_GUIDE.md).
 
 On first run the notebook asks for **Data folder** and **Output folder** before loading data. Defaults are **`./data`** and **`./output`**, relative to the folder containing the workbench code, not the terminal's current directory. Either location can be an absolute path elsewhere on the computer or an accessible external/network drive.
@@ -20,13 +25,15 @@ On the original Mac, ignored `data` and `output` links point to the existing One
 
 The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The tracked project supplies the initial graph definitions. If no current project exists, `migrate_tensile_project.py` can copy an older v18/v17 project from the same folder, or seed one from the defaults; it never overwrites an existing current project.
 
-If the launcher's existing environment is unavailable, create a Python 3.13 virtual environment **outside a cloud-synced folder**, install `requirements.txt` into it, and run:
+Use the supplied Setup for a new computer. Environments, research data, outputs and machine-specific folder choices are not downloaded from GitHub. Setup validates dependencies and saved definitions but does **not** process data, regenerate plots, or rewrite graph settings.
+
+Advanced/manual installation: create a Python 3.13 virtual environment **outside a cloud-synced folder**, install `requirements.txt` into it, and run:
 
 ```text
 python /path/to/tensile-workbench/launch_workbench.py
 ```
 
-Use the new environment's Python; the command works from any working directory. On Windows, use the corresponding Windows path. `launch_workbench.py` locates its own folder and starts the notebook there. The Mac launcher can use a different environment through `TENSILE_ENV_DIR`. The supplied Windows launcher specifically targets the existing v17 environment; the portable Python entry point works with a fresh environment.
+Use the environment's Python; the command works from any working directory. On Windows, use the corresponding Windows path. `launch_workbench.py` locates its own folder and starts the notebook there. Both supplied launchers support an absolute `TENSILE_ENV_DIR` override for an environment outside the code and cloud-storage folders. See [SETUP.md](SETUP.md) for environment locations, recovery and checks.
 
 ## Version control
 

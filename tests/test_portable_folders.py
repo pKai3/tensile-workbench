@@ -53,23 +53,10 @@ class FolderTests(unittest.TestCase):
             self.assertTrue(migrate(root).is_file())
 
     def test_windows_launcher_uses_existing_environment_and_stable_entry_point(self):
-        import hashlib
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder).resolve()
-            shutil.copy2(ROOT / 'tensile_workbench_defaults.json', root / 'tensile_workbench_defaults.json')
-            requirements = b'numpy==2.5.3\n'
-            (root / 'requirements-windows.txt').write_bytes(requirements)
-            key = hashlib.sha256(requirements).hexdigest()[:12]
-            local = root / 'LocalAppData'
-            python = local / 'TensileWorkbench' / ('v17-py313-' + key) / 'venv/Scripts/python.exe'
-            python.parent.mkdir(parents=True)
-            python.touch()
-            with patch.object(windows, 'ROOT', root), patch.object(windows.sys, 'platform', 'win32'), \
-                 patch.dict(windows.os.environ, {'LOCALAPPDATA': str(local)}), \
-                 patch.object(windows.subprocess, 'run') as run, redirect_stdout(io.StringIO()):
-                windows.main()
-            self.assertEqual(run.call_count, 2)
-            self.assertEqual(run.call_args_list[1].args[0], [str(python), str(root / 'launch_workbench.py')])
+        with patch.object(windows.sys, 'platform', 'win32'), \
+             patch.object(windows, 'manage_environment', return_value=0) as launch:
+            self.assertEqual(windows.main(), 0)
+        launch.assert_called_once_with(['launch'])
 
     def test_first_run_waits_for_confirmation(self):
         with tempfile.TemporaryDirectory() as folder:

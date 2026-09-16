@@ -3,7 +3,7 @@
 ## Open or update the workbench
 
 1. Clone the repository, or save/close the notebook and pull an update into an existing checkout. Review and commit your saved graph-definition edits before pulling.
-2. Windows with the existing environment: double-click **Launch_Tensile_Workbench.bat**. Mac: double-click **Launch_Tensile_Workbench.command**. See [README](README.md) for a fresh Python environment or running from another folder.
+2. First-time users: run **Setup_Tensile_Workbench.bat** (Windows) or **Setup_Tensile_Workbench.command** (Mac). Then open **Launch_Tensile_Workbench.bat** or **Launch_Tensile_Workbench.command**. Existing users can launch directly; rerun Setup only when dependencies need installing/updating. See [setup instructions](SETUP.md).
 3. In **tensile_workbench.ipynb** choose **Run > Run All Cells**.
 4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 

@@ -1,0 +1,7 @@
+# Keep platform launchers and dependency fingerprints consistent across Git clones.
+*.py text eol=lf
+*.md text eol=lf
+*.command text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+requirements*.txt text eol=lf
