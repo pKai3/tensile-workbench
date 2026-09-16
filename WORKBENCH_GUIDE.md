@@ -1,13 +1,13 @@
-# Tensile Workbench v18
+# Tensile Workbench
 
-## Upgrade an existing working installation
+## Open or update the workbench
 
-1. Save and close the v17 notebook and stop its launcher.
-2. Extract the v18 share patch **into the existing workbench folder**, alongside `data/` and the v17 saved project. This is a patch, not a full data package.
-3. Windows: double-click **Launch_Tensile_Interactive_v18.bat**. Mac: double-click **Launch_Tensile_Interactive_v18.command**.
-4. In the v18 notebook choose **Run > Run All Cells**.
+1. Clone the repository, or save/close the notebook and pull an update into an existing checkout. Review and commit your saved graph-definition edits before pulling.
+2. Windows with the existing environment: double-click **Launch_Tensile_Workbench.bat**. Mac: double-click **Launch_Tensile_Workbench.command**. See [README](README.md) for a fresh Python environment or running from another folder.
+3. In **tensile_workbench.ipynb** choose **Run > Run All Cells**.
+4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 
-The first launch copies your latest v17 graph definitions into a separate v18 project. Existing v18 definitions are never overwritten. No reinstall or new environment is needed. Keep the existing Windows `requirements-windows.txt`, setup files and local environment. The patch contains no raw data and does not replace anyone's existing data or exports.
+The current graph definitions live in `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Git contains no raw data or generated outputs. Existing environments can be reused. Use Git commits and tags for history, not version suffixes on filenames.
 
 ## Property tables
 
@@ -30,7 +30,7 @@ Uniform elongation is engineering strain at the first maximum engineering stress
 
 ### Instron summary CSVs
 
-PDFs are not read. Place group summary CSVs in the corresponding `data/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. Summary rows are never treated as raw curve points.
+PDFs are not read. Place group summary CSVs in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. Summary rows are never treated as raw curve points.
 
 Matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. Numeric similarity is never used to identify a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Labels, row numbers, paths and match method are shown for checking. Unknown identities stay unmatched.
 
@@ -40,6 +40,6 @@ Conflicting values across summary revisions are left unavailable and flagged. An
 
 Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to all static and Plotly views and exported plots. Different graph definitions can use different colours for the same group.
 
-## Version separation
+## History and the original installation
 
-v18 uses `tensile_workbench_v18.project.json`. v17 remains recoverable from the local archive after cleanup. No research plots or existing output tables are regenerated during installation or upgrade.
+The original OneDrive installation was copied, not moved or edited. The `v18-baseline` Git tag preserves the imported software. No research plots or existing output tables are regenerated during installation or upgrade.

@@ -15,10 +15,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from tensile_startup_v18 import (DEFAULT_FOLDERS, SETTINGS_NAME, WorkbenchLauncher,
+from tensile_startup import (DEFAULT_FOLDERS, SETTINGS_NAME, WorkbenchLauncher,
                                 resolve_folder, save_folders, validate_folders)
-from tensile_workbench_v18 import PreviewSession, TensileWorkbench
+from tensile_workbench import PreviewSession, TensileWorkbench
 import launch_workbench
+from migrate_tensile_project import migrate
+import launch_workbench_windows as windows
 
 
 class DummyWorkbench:
@@ -31,6 +33,44 @@ class DummyWorkbench:
 
 
 class FolderTests(unittest.TestCase):
+    def test_stable_project_migration_preserves_saved_graphs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            project = json.loads((ROOT / 'tensile_workbench_defaults.json').read_text())
+            legacy = root / 'tensile_workbench_v18.project.json'
+            legacy.write_text(json.dumps(project))
+            before = legacy.read_bytes()
+            target = migrate(root)
+            self.assertEqual(target.name, 'tensile_workbench.project.json')
+            self.assertEqual(json.loads(target.read_text())['graphs'], project['graphs'])
+            self.assertEqual(legacy.read_bytes(), before)
+            current = target.read_bytes()
+            migrate(root)
+            self.assertEqual(target.read_bytes(), current)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            shutil.copy2(ROOT / 'tensile_workbench_defaults.json', root / 'tensile_workbench_defaults.json')
+            self.assertTrue(migrate(root).is_file())
+
+    def test_windows_launcher_uses_existing_environment_and_stable_entry_point(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            shutil.copy2(ROOT / 'tensile_workbench_defaults.json', root / 'tensile_workbench_defaults.json')
+            requirements = b'numpy==2.5.3\n'
+            (root / 'requirements-windows.txt').write_bytes(requirements)
+            key = hashlib.sha256(requirements).hexdigest()[:12]
+            local = root / 'LocalAppData'
+            python = local / 'TensileWorkbench' / ('v17-py313-' + key) / 'venv/Scripts/python.exe'
+            python.parent.mkdir(parents=True)
+            python.touch()
+            with patch.object(windows, 'ROOT', root), patch.object(windows.sys, 'platform', 'win32'), \
+                 patch.dict(windows.os.environ, {'LOCALAPPDATA': str(local)}), \
+                 patch.object(windows.subprocess, 'run') as run, redirect_stdout(io.StringIO()):
+                windows.main()
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(run.call_args_list[1].args[0], [str(python), str(root / 'launch_workbench.py')])
+
     def test_first_run_waits_for_confirmation(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder).resolve()
@@ -137,7 +177,7 @@ class FolderTests(unittest.TestCase):
                     self.assertEqual(launch_workbench.main(), 0)
                 self.assertEqual(call.call_args.kwargs['cwd'], ROOT)
                 self.assertEqual(call.call_args.kwargs['env']['TENSILE_WORKBENCH_DIR'], str(ROOT))
-                self.assertIn(str(ROOT / 'plot_tensile_interactive_v18.ipynb'), call.call_args.args[0])
+                self.assertIn(str(ROOT / 'tensile_workbench.ipynb'), call.call_args.args[0])
             finally:
                 os.chdir(previous)
 
@@ -148,13 +188,13 @@ class FolderTests(unittest.TestCase):
             root.mkdir()
             group = data / 'Arbitrary alloy name'
             group.mkdir(parents=True)
-            shutil.copy2(ROOT / 'tensile_core_v18.py', root / 'tensile_core_v18.py')
-            project = json.loads((ROOT / 'tensile_workbench_defaults_v18.json').read_text())
+            shutil.copy2(ROOT / 'tensile_core.py', root / 'tensile_core.py')
+            project = json.loads((ROOT / 'tensile_workbench_defaults.json').read_text())
             project['graphs'] = project['graphs'][:1]
             graph = project['graphs'][0]
             graph['settings'].update(groups=[group.name], families=[], live_update=False)
             project['selected_graph'] = graph['id']
-            (root / 'tensile_workbench_defaults_v18.json').write_text(json.dumps(project))
+            (root / 'tensile_workbench_defaults.json').write_text(json.dumps(project))
             x = np.linspace(0, 18, 181)
             y = np.where(x <= .6, 1000*x, np.where(x <= 6, 600+40*(x-.6), 816-20*(x-6)))
             raw = group / 'coupon.csv'

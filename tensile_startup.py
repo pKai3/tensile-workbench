@@ -142,7 +142,7 @@ class WorkbenchLauncher:
     def _open(self, paths, save_values=None):
         factory = self.factory
         if factory is None:
-            from tensile_workbench_v18 import TensileWorkbench
+            from tensile_workbench import TensileWorkbench
             factory = TensileWorkbench
         candidate = factory(self.root, data_dir=paths['data_directory'], output_dir=paths['output_directory'])
         try:

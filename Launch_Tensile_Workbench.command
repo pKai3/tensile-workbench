@@ -4,7 +4,6 @@ PROJECT_DIR="${0:A:h}"
 ENV_DIR="${TENSILE_ENV_DIR:-$HOME/Library/Application Support/Tensile Workbench/venv}"
 # Keep generated Python cache files out of the synced project too.
 export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-$HOME/Library/Caches/Tensile Workbench/pycache}"
-NOTEBOOK="$PROJECT_DIR/plot_tensile_interactive_v18.ipynb"
 fail() {
     print -r -- "$1"
     read -r "reply?Press Return to close. "
@@ -18,19 +17,19 @@ import stat
 import sys
 root = Path(sys.argv[1])
 required = (
-    'plot_tensile_interactive_v18.ipynb',
-    'tensile_workbench_v18.py',
-    'tensile_plot_view_v18.py',
-    'tensile_plotly_v18.py',
-    'tensile_core_v18.py',
-    'tensile_properties_v18.py',
-    'tensile_instron_v18.py',
-    'tensile_tables_v18.py',
-    'tensile_startup_v18.py',
+    'tensile_workbench.ipynb',
+    'tensile_workbench.py',
+    'tensile_plot_view.py',
+    'tensile_plotly.py',
+    'tensile_core.py',
+    'tensile_properties.py',
+    'tensile_instron.py',
+    'tensile_tables.py',
+    'tensile_startup.py',
     'launch_workbench.py',
-    'migrate_tensile_v18.py',
-    'workbench_project_v18.py',
-    'tensile_workbench_defaults_v18.json',
+    'migrate_tensile_project.py',
+    'workbench_project.py',
+    'tensile_workbench_defaults.json',
 )
 unavailable = []
 for name in required:
@@ -47,9 +46,9 @@ if unavailable:
     print('Your data folder also needs to be available locally for plotting.')
     sys.exit(1)
 PY
-"$ENV_DIR/bin/python" "$PROJECT_DIR/migrate_tensile_v18.py" || fail "Could not prepare v18 saved graph definitions."
-"$ENV_DIR/bin/python" -c 'import plotly, anywidget' || fail "Plotly support is missing. Install requirements_tensile_interactive_v18.txt into the local workbench environment."
+"$ENV_DIR/bin/python" "$PROJECT_DIR/migrate_tensile_project.py" || fail "Could not prepare saved graph definitions."
+"$ENV_DIR/bin/python" -c 'import plotly, anywidget' || fail "Plotly support is missing. Install requirements.txt into the local workbench environment."
 cd "$PROJECT_DIR"
-print -r -- "Opening v18. In Jupyter, choose Run > Run All Cells to restore your saved workspace."
+print -r -- "Opening Tensile Workbench. In Jupyter, choose Run > Run All Cells to restore your saved workspace."
 print -r -- "This server is local-only. Press Ctrl-C here to stop it."
 exec "$ENV_DIR/bin/python" "$PROJECT_DIR/launch_workbench.py"

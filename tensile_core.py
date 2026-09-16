@@ -29,7 +29,7 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from tensile_properties_v18 import prepared_curve, specimen_properties
+from tensile_properties import prepared_curve, specimen_properties
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 

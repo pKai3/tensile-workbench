@@ -1,4 +1,4 @@
-"""Standalone, persistent multi-plot Tensile Workbench v18.
+"""Standalone, persistent multi-plot Tensile Workbench.
 
 Importing this module does not read data or write outputs. Launch with the
 companion notebook. Export is a separate, explicit button action.
@@ -12,10 +12,10 @@ from html import escape
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from time import perf_counter
-from workbench_project_v18 import ProjectStore, ProjectConflict, validate_project
-from tensile_plot_view_v18 import DualPlotView, GroupCheckboxes
-from tensile_instron_v18 import InstronSummaries
-from tensile_tables_v18 import property_tables, PropertyTablesView
+from workbench_project import ProjectStore, ProjectConflict, validate_project
+from tensile_plot_view import DualPlotView, GroupCheckboxes
+from tensile_instron import InstronSummaries
+from tensile_tables import property_tables, PropertyTablesView
 import hashlib
 import io
 import json
@@ -43,7 +43,7 @@ class PreviewSession:
     def __init__(self, project_dir=None, project=None, data_dir=None, output_dir=None):
         self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self._output_override = output_dir
-        engine_path = self.project_dir / "tensile_core_v18.py"
+        engine_path = self.project_dir / "tensile_core.py"
         if not engine_path.is_file():
             raise FileNotFoundError(f"The standalone calculation library is missing: {engine_path}")
         spec = spec_from_file_location("_tensile_preview_" + uuid.uuid4().hex, engine_path)
@@ -51,7 +51,7 @@ class PreviewSession:
         spec.loader.exec_module(self.engine)
         self.engine_path = engine_path
         self.engine_sha256 = hashlib.sha256(engine_path.read_bytes()).hexdigest()
-        self.project = deepcopy(project) if project is not None else json.loads((self.project_dir / "tensile_workbench_defaults_v18.json").read_text())
+        self.project = deepcopy(project) if project is not None else json.loads((self.project_dir / "tensile_workbench_defaults.json").read_text())
         validate_project(self.project)
         configured = Path(data_dir or self.project.get("data_directory", "data")).expanduser()
         self.data_dir = (configured if configured.is_absolute() else self.project_dir / configured).resolve()
@@ -83,7 +83,7 @@ class PreviewSession:
 
     def output_root(self):
         """Local folder choice overrides the graph template without changing it."""
-        from tensile_startup_v18 import resolve_folder
+        from tensile_startup import resolve_folder
         configured = self._output_override if self._output_override is not None else self.project.get('output_directory', './output')
         return resolve_folder(configured, self.project_dir)
 
@@ -387,8 +387,8 @@ class TensileWorkbench:
         import ipywidgets as w
         self.w = w
         self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
-        self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench_v18.project.json",
-                                  self.project_dir / "tensile_workbench_defaults_v18.json")
+        self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
+                                  self.project_dir / "tensile_workbench_defaults.json")
         self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
@@ -509,7 +509,7 @@ class TensileWorkbench:
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.ui = w.VBox([
-            w.HTML("<h2>Tensile workbench · v18</h2><p>Standalone analysis workspace. Graph definitions autosave; plots and tables export only when requested.</p>"),
+            w.HTML("<h2>Tensile workbench</h2><p>Standalone analysis workspace. Graph definitions autosave; plots and tables export only when requested.</p>"),
             self.graph, self._row([self.new_button, self.duplicate_button, self.saved_button]), self.name,
             self.save_status, self.group_picker.ui,
             w.HTML("Tick the exact groups to include. The range helper adds all currently available matching groups."),

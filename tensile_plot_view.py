@@ -234,7 +234,7 @@ class DualPlotView:
     def _switch(self, _=None):
         if self.renderer.value == 'plotly':
             if self.plotly is None:
-                from tensile_plotly_v18 import PlotlyView
+                from tensile_plotly import PlotlyView
                 self.plotly = PlotlyView(self.w, self.columns, self.plot_width)
             if not self._plotly_current:
                 self.plotly.set_items(self._items)

@@ -13,7 +13,7 @@ def main():
     env['PYTHONDONTWRITEBYTECODE'] = '1'
     print('Opening Tensile Workbench. On first run choose the data and output folders in the notebook.', flush=True)
     return subprocess.call([
-        sys.executable, '-m', 'jupyterlab', str(ROOT / 'plot_tensile_interactive_v18.ipynb'),
+        sys.executable, '-m', 'jupyterlab', str(ROOT / 'tensile_workbench.ipynb'),
         '--ServerApp.ip=127.0.0.1', '--ServerApp.root_dir=' + str(ROOT), *sys.argv[1:],
     ], cwd=ROOT, env=env)
 

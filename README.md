@@ -6,9 +6,9 @@ This repository starts from the working **v18** application. The original OneDri
 
 ## Open the workbench
 
-- **macOS:** double-click `Launch_Tensile_Interactive_v18.command` in this repository, then choose **Run → Run All Cells** in the notebook. The launcher reuses the environment outside OneDrive, under `~/Library/Application Support/Tensile Workbench/venv`.
-- **Windows with the existing v17 environment:** double-click `Launch_Tensile_Interactive_v18.bat`. The unchanged `requirements-windows.txt` identifies that existing environment; no reinstall is required.
-- Detailed application usage: [v18 guide](README_Tensile_Interactive_v18.md).
+- **macOS:** double-click `Launch_Tensile_Workbench.command` in this repository, then choose **Run → Run All Cells** in the notebook. The launcher reuses the environment outside OneDrive, under `~/Library/Application Support/Tensile Workbench/venv`.
+- **Windows with the existing v17 environment:** double-click `Launch_Tensile_Workbench.bat`. The unchanged `requirements-windows.txt` identifies that existing environment; no reinstall is required.
+- Detailed application usage: [workbench guide](WORKBENCH_GUIDE.md).
 
 On first run the notebook asks for **Data folder** and **Output folder** before loading data. Defaults are **`./data`** and **`./output`**, relative to the folder containing the workbench code, not the terminal's current directory. Either location can be an absolute path elsewhere on the computer or an accessible external/network drive.
 
@@ -18,9 +18,9 @@ On the original Mac, ignored `data` and `output` links point to the existing One
 
 ## Another computer or a fresh clone
 
-The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The tracked v18 project supplies the initial graph definitions; no v17 project is needed when that v18 project is present.
+The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The tracked project supplies the initial graph definitions. If no current project exists, `migrate_tensile_project.py` can copy an older v18/v17 project from the same folder, or seed one from the defaults; it never overwrites an existing current project.
 
-If the launcher's existing environment is unavailable, create a Python 3.13 virtual environment **outside a cloud-synced folder**, install `requirements_tensile_interactive_v18.txt` into it, and run:
+If the launcher's existing environment is unavailable, create a Python 3.13 virtual environment **outside a cloud-synced folder**, install `requirements.txt` into it, and run:
 
 ```text
 python /path/to/tensile-workbench/launch_workbench.py
@@ -30,10 +30,10 @@ Use the new environment's Python; the command works from any working directory. 
 
 ## Version control
 
-- Source code, documentation, the clean notebook, defaults, and `tensile_workbench_v18.project.json` are tracked. Saved graph settings can therefore be reviewed and committed too.
+- Source code, documentation, the clean notebook, defaults, and `tensile_workbench.project.json` are tracked. Saved graph settings can therefore be reviewed and committed too.
 - Research files, output folders, environments, previous-save backups, archives and share ZIPs are ignored.
 - Before committing a notebook, clear its outputs and save it. Do not commit exported tables or embedded research plots. Review changes in GitHub Desktop before committing and pushing.
-- Use ordinary Git commits for ongoing edits. Retain the existing versioned filenames for now; this repository setup does not change the calculation methods.
+- Use stable filenames and ordinary Git commits for ongoing edits. The `v18-baseline` tag preserves the pre-migration application; do not create `_vX` source copies. The naming and folder setup changes do not change calculation methods.
 - Close the notebook before switching branches or pulling changes that modify its saved project. Restart its kernel after code updates.
 
 ## Checks without research plots
