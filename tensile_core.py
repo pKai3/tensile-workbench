@@ -30,6 +30,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
+from tensile_selection import csv_files
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
@@ -700,9 +701,9 @@ def find_sample_groups(root: Path):
     groups = {}
     for p in sorted([
         d for d in root.iterdir()
-        if d.is_dir() and not d.name.startswith("!")
+        if d.is_dir() and '!' not in d.name
     ]):
-        csvs = [f for f in sorted(p.rglob("*.csv")) if not f.name.startswith("!")]
+        csvs = csv_files(p)
         if csvs:
             groups[p.name] = csvs
     return groups

@@ -2,6 +2,9 @@
 from html import escape
 import numpy as np
 import pandas as pd
+import uuid
+from tensile_selection import specimen_id, is_included
+from tensile_specimens import SpecimenTable
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
 
@@ -56,9 +59,13 @@ def property_tables(records, spec, engine, instron):
         for row in rows:
             p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING)
             reference = instron.match(group, row)
-            properties.append(p)
-            references.append(reference)
-            identity = {'Group': group, 'Sample': row['sample']}
+            included = is_included(row, spec)
+            if included:
+                properties.append(p)
+                references.append(reference)
+            identity = {'Included': included, 'Group': group, 'Sample': row['sample'],
+                        'Specimen ID': specimen_id(row),
+                        'Exclusion Reason': spec.get('specimen_exclusions', {}).get(specimen_id(row), '')}
             samples.append({**identity, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
                             'UTS (MPa)': p['UTS (MPa)'], 'Uniform Elongation (%)': p['Uniform elongation (%)'],
                             'Failure Elongation (%)': p['Failure elongation (%)'],
@@ -94,10 +101,8 @@ def property_tables(records, spec, engine, instron):
         for label, unit, field, ref_key in METRICS:
             for source, values in [('Calculated', [p[field] for p in properties]),
                                    ('Instron', [r['values'].get(ref_key, np.nan) for r in references])]:
-                if source == 'Instron' and ref_key is None:
-                    continue
                 summaries.append({'Group': group, 'Property': label, 'Unit': unit, 'Source': source,
-                                  'Selected Specimens': len(rows), **_stats(values)})
+                                  'Selected Specimens': len(properties), 'Available Specimens': len(rows), **_stats(values)})
         stats = _stats([p['Uniform elongation (%)'] for p in properties])
         uniform.append({'Group': group, 'n': stats['n'], 'Uniform Elongation Mean (%)': stats['Mean'],
                         'Uniform Elongation SD (%)': stats['SD']})
@@ -105,21 +110,79 @@ def property_tables(records, spec, engine, instron):
     paired_stats = []
     if len(comparisons):
         for (group, metric, unit), frame in comparisons.groupby(['Group', 'Property', 'Difference Unit'], sort=False):
-            pairs = frame[frame['Paired']]
+            pairs = frame[frame['Paired'] & frame['Included']]
             difference = pairs['Difference (calc - Instron)'].to_numpy(dtype=float)
             stats = _stats(difference)
             paired_stats.append({'Group': group, 'Property': metric, 'Unit': unit, 'n paired': stats['n'],
                                  'Mean Difference': stats['Mean'], 'SD Difference': stats['SD'],
                                  'Mean Absolute Difference': float(np.mean(np.abs(difference))) if len(difference) else np.nan,
                                  'Max Absolute Difference': float(np.max(np.abs(difference))) if len(difference) else np.nan})
-    return {'tensile_samples': pd.DataFrame(samples), 'tensile_summary': pd.DataFrame(summaries),
+    details = pd.DataFrame(summaries)
+    return {'tensile_samples': pd.DataFrame(samples), 'tensile_summary': summary_wide(details),
+            'tensile_summary_details': details,
             'instron_comparison': comparisons, 'instron_comparison_summary': pd.DataFrame(paired_stats),
             'specimen_diagnostics': pd.DataFrame(diagnostics), 'uniform_elongation_summary': pd.DataFrame(uniform)}
 
 
+def summary_wide(details):
+    """One group per row; keep numeric means/SD/n for Excel, not formatted strings."""
+    rows = []
+    if details.empty:
+        return pd.DataFrame()
+    for group, data in details.groupby('Group', sort=False):
+        row = {'Group': group, 'Included n': int(data.iloc[0]['Selected Specimens']),
+               'Available n': int(data.iloc[0]['Available Specimens'])}
+        for label, unit, _, _ in METRICS:
+            for source, short in [('Calculated', 'Calc'), ('Instron', 'Instron')]:
+                item = data[(data.Property == label) & (data.Source == source)].iloc[0]
+                for statistic in ('Mean', 'SD', 'n'):
+                    row[f'{label} ({unit}) · {short} {statistic}'] = item[statistic]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def summary_html(details):
+    if details.empty:
+        return '<p>No matching groups.</p>'
+    result = ['''<style>
+      .tw-summary {overflow:auto;max-height:510px;border:1px solid #cbd5e1;}
+      .tw-summary table {border-collapse:separate;border-spacing:0;font:12px/1.4 Arial,sans-serif;width:100%;}
+      .tw-summary th,.tw-summary td {padding:8px 10px;border-bottom:1px solid #dce3e9;white-space:nowrap;text-align:right;}
+      .tw-summary th {background:#e8eef4;color:#152c3f;text-align:center;position:sticky;top:0;z-index:2;}
+      .tw-summary thead tr:nth-child(2) th {top:33px;}
+      .tw-summary td {background:#fff;}
+      .tw-summary tbody tr:nth-child(even) td {background:#f6f8fa;}
+      .tw-summary td:first-child {position:sticky;left:0;text-align:left;z-index:1;}
+      .tw-summary th:first-child[rowspan] {left:0;z-index:3;}
+      .tw-summary small {display:block;color:#526170;}
+      .tw-summary .property-start {border-left:1px solid #cbd5e1;}
+      </style><div class="tw-summary"><table><thead><tr>
+      <th rowspan="2" scope="col">Group</th><th rowspan="2" scope="col">Included n</th>''']
+    for label, unit, _, _ in METRICS:
+        result.append(f'<th colspan="2" scope="colgroup" class="property-start">{escape(label)} ({escape(unit)})</th>')
+    result.append('</tr><tr>' + '<th class="property-start" scope="col">Calc</th><th scope="col">Instron</th>' * len(METRICS) + '</tr></thead><tbody>')
+    for group, data in details.groupby('Group', sort=False):
+        included = int(data.iloc[0]['Selected Specimens'])
+        available = int(data.iloc[0]['Available Specimens'])
+        result.append(f'<tr><td>{escape(str(group))}</td><td>{included}<small>of {available}</small></td>')
+        for label, unit, _, _ in METRICS:
+            for source in ('Calculated', 'Instron'):
+                item = data[(data.Property == label) & (data.Source == source)].iloc[0]
+                n = int(item['n'])
+                value = _display_cell(item['Mean'])
+                if n > 1:
+                    value += ' ± ' + _display_cell(item['SD'])
+                if n != included:
+                    value += f'<small>n = {n}</small>'
+                css = ' class="property-start"' if source == 'Calculated' else ''
+                result.append(f'<td{css}>{value}</td>')
+        result.append('</tr>')
+    return ''.join(result) + '</tbody></table></div>'
+
+
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets):
+    def __init__(self, widgets, on_selection=None):
         w = widgets
         self.frames = {}
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
@@ -128,17 +191,20 @@ class PropertyTablesView:
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
                               'UTS (MPa)', 'Difference (calc - Instron)', 'Difference (%)'], layout=w.Layout(width='300px'))
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
-        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden')) for _ in range(4)]
+        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(4)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
-        self.tabs = w.Tab(children=self.panels, layout=w.Layout(width='100%', min_width='0'))
+        self.specimens = SpecimenTable(on_selection=on_selection, layout=w.Layout(width='100%', min_width='0', margin='0'))
+        specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
+        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, *self.panels[2:]],
+                          layout=w.Layout(width='100%', min_width='0', margin='0'))
         for i, name in enumerate(['Summary', 'Specimens', 'Instron', 'Checks']):
             self.tabs.set_title(i, name)
         self.status = w.HTML('Select sample groups to load property tables.')
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
                           w.HBox([self.filter, self.sort, self.descending], layout=w.Layout(flex_flow='row wrap')),
-                          self.metric, self.status, self.tabs], layout=w.Layout(width='100%'))
+                          self.metric, self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
         for control in (self.filter, self.sort, self.descending, self.metric):
             control.observe(lambda _: self.render(), names='value')
 
@@ -151,6 +217,8 @@ class PropertyTablesView:
         self.status.value = message
         for panel in self.panels:
             panel.value = ''
+        self.specimens.rows = []
+        self.specimens.context = uuid.uuid4().hex
 
     def _filtered(self, frame):
         if frame.empty:
@@ -201,18 +269,38 @@ class PropertyTablesView:
         if not self.frames:
             return
         samples = self._filtered(self.frames['tensile_samples'])
-        summary = self._filtered(self.frames['tensile_summary'])
+        summary = self._filtered(self.frames['tensile_summary_details'])
         comparison = self._filtered(self.frames['instron_comparison'])
         diagnostic = self._filtered(self.frames['specimen_diagnostics'])
         comparison = comparison[comparison['Property'] == self.metric.value] if not comparison.empty else comparison
-        self.panels[0].value = '<p>Means of individual specimen properties, not properties of an average curve. Instron means use only matched selected specimens.</p>' + self._html(summary)
-        self.panels[1].value = self._html(samples.drop(columns=['Source File'], errors='ignore'))
+        self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
+                               'Instron uses available matched values; differing valid counts are shown in each cell. '
+                               'SD requires at least two values. “—” means unavailable.</p>' + summary_html(summary))
+        self.panels[1].value = ('<p><b>Include</b> applies to this graph only: statistics, averages, work hardening and all plots. '
+                               'Unchecked specimens stay here for review and in the specimen export. '
+                               'Files/folders marked with ! are ignored entirely.</p>')
+        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File'}
+        columns = [column for column in samples.columns if column not in hidden]
+        def text_value(value):
+            if pd.isna(value):
+                return '—'
+            return f'{value:.3f}' if isinstance(value, (float, np.floating)) else str(value)
+        rows = [{'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
+                 'sample': str(row['Sample']), 'reason': row['Exclusion Reason'],
+                 'values': [text_value(row[column]) for column in columns]} for _, row in samples.iterrows()]
+        with self.specimens.hold_sync():
+            self.specimens.columns = ['0.2% YS (MPa)' if column == '0.2% Offset Yield Strength (MPa)' else column
+                                      for column in columns]
+            self.specimens.rows = rows
+            self.specimens.context = uuid.uuid4().hex
         unit = next(('pp' if m[1] == '%' else m[1]) for m in METRICS if m[0] == self.metric.value)
-        shown = comparison.drop(columns=['Source File', 'Instron Summary CSV', 'Paired', 'Property', 'Unit',
+        shown = comparison.drop(columns=['Source File', 'Instron Summary CSV', 'Specimen ID', 'Paired', 'Property', 'Unit',
                                           'Difference Unit', 'Instron Specimen Label', 'Instron Row'], errors='ignore')
         shown = shown.rename(columns={'Difference (calc - Instron)': f'Δ ({unit})', 'Difference (%)': 'Δ (%)', 'Instron Match': 'Match'})
         self.panels[2].value = ('<p>Δ = calculated − Instron; Δ (%) is relative to Instron. This is not a pass/fail test. '
                                'See Checks for identity, elastic-fit details and source files.</p>' + self._html(shown))
-        self.panels[3].value = self._html(diagnostic.drop(columns=['Source SHA256', 'Instron Summary SHA256'], errors='ignore'))
-        matched = int(comparison['Paired'].sum()) if not comparison.empty else 0
-        self.status.value = f'{len(samples)} displayed specimens · {matched} paired comparisons for {self.metric.value}. Filtering is for display only; exports retain all selected specimens.'
+        self.panels[3].value = self._html(diagnostic.drop(columns=['Specimen ID', 'Source SHA256', 'Instron Summary SHA256'], errors='ignore'))
+        matched = int((comparison['Paired'] & comparison['Included']).sum()) if not comparison.empty else 0
+        included = int(samples['Included'].sum()) if not samples.empty else 0
+        self.status.value = (f'{len(samples)} displayed specimens · {included} included · {matched} included paired comparisons '
+                             f'for {self.metric.value}. Search/sort only change the view; Include changes the analysis.')

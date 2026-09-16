@@ -80,8 +80,9 @@ class WebAppTests(unittest.TestCase):
 
     def test_properties_fold_contains_tables_and_buttons_without_recalculation(self):
         app = self.make_app()
-        self.assertEqual(app.range_from.description, 'From:')
-        self.assertEqual(app.range_to.description, 'To:')
+        self.assertFalse(hasattr(app, 'range_button'))
+        self.assertFalse(hasattr(app, 'range_from'))
+        self.assertEqual(app.controls['renderer'].options[0], ('Static plots', 'static'))
         self.assertIsNone(app.properties_panel.selected_index)
         content = app.properties_panel.children[0]
         self.assertIn(app.tables.ui, content.children)

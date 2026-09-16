@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 import uuid
+from tensile_selection import valid_specimen_id
 
 
 class ProjectConflict(RuntimeError):
@@ -36,11 +37,25 @@ def validate_project(project):
             raise ValueError('Sample groups cannot be repeated.')
         if not isinstance(graph['settings'].get('families'), list):
             raise ValueError('Visible plot types must be a list.')
+        exclusions = graph['definition'].get('specimen_exclusions', {})
+        if not isinstance(exclusions, dict) or any(
+                not valid_specimen_id(key) or not isinstance(reason, str)
+                for key, reason in exclusions.items()):
+            raise ValueError('Specimen exclusions must map relative specimen paths to reason text.')
         for group, color in graph['definition'].get('color_overrides', {}).items():
             if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
                 raise ValueError(f'Colour override for {group} must be a six-digit hex colour, e.g. #1f77b4.')
     if project.get('selected_graph') not in ids:
         raise ValueError('The selected graph does not exist.')
+    deleted = project.get('deleted_graphs', [])
+    if not isinstance(deleted, list):
+        raise ValueError('Deleted graphs must be a list.')
+    for entry in deleted:
+        if (not isinstance(entry, dict) or not isinstance(entry.get('graph'), dict)
+                or not isinstance(entry.get('index'), int) or entry['index'] < 0):
+            raise ValueError('Invalid deleted-graph recovery entry.')
+        graph = entry['graph']
+        validate_project({'schema_version': 1, 'graphs': [graph], 'selected_graph': graph.get('id')})
 
 
 def _atomic_bytes(path, content):
@@ -115,6 +130,8 @@ class ProjectStore:
     def add_graph(self, template=None):
         project = deepcopy(self.data)
         base = deepcopy(template or project['new_graph_defaults'])
+        if template is None:
+            base['definition'].pop('specimen_exclusions', None)
         existing = {g['name'].casefold() for g in project['graphs']}
         stem = base['name'] + ' copy' if template else 'New graph'
         name, number = stem, 2
@@ -125,4 +142,43 @@ class ProjectStore:
         base['definition']['name'] = name
         project['graphs'].append(base)
         project['selected_graph'] = base['id']
+        return self.save(project)
+
+    def delete_graph(self, ident):
+        """Recycle a definition only. No data or output paths are touched."""
+        project = deepcopy(self.data)
+        index = next(i for i, graph in enumerate(project['graphs']) if graph['id'] == ident)
+        entry = {'graph': project['graphs'].pop(index), 'index': index}
+        if not project['graphs']:
+            draft = deepcopy(project['new_graph_defaults'])
+            draft.update(id=uuid.uuid4().hex, name='New graph')
+            draft['definition']['name'] = draft['name']
+            draft['definition'].pop('specimen_exclusions', None)
+            draft['settings'].update(groups=[], live_update=False)
+            project['graphs'].append(draft)
+            entry['replacement'] = deepcopy(draft)
+        if project['selected_graph'] == ident:
+            project['selected_graph'] = project['graphs'][min(index, len(project['graphs']) - 1)]['id']
+        project.setdefault('deleted_graphs', []).append(entry)
+        return self.save(project)
+
+    def undo_delete(self):
+        """Restore the latest recycled graph, even after restarting the app."""
+        project = deepcopy(self.data)
+        if not project.get('deleted_graphs'):
+            return deepcopy(self.data)
+        entry = project['deleted_graphs'].pop()
+        replacement = entry.get('replacement')
+        # Remove only the untouched automatic draft. Preserve any user edits.
+        if replacement in project['graphs']:
+            project['graphs'].remove(replacement)
+        graph = entry['graph']
+        names = {g['name'].casefold() for g in project['graphs']}
+        original, number = graph['name'], 2
+        while graph['name'].casefold() in names:
+            graph['name'] = f'{original} (restored {number})'
+            number += 1
+        graph['definition']['name'] = graph['name']
+        project['graphs'].insert(min(entry['index'], len(project['graphs'])), graph)
+        project['selected_graph'] = graph['id']
         return self.save(project)

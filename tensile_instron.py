@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 import re
 import numpy as np
+from tensile_selection import csv_files
 
 
 def _normal(text):
@@ -121,8 +122,8 @@ class InstronSummaries:
             method = 'Embedded CSV summary'
         else:
             if group not in self._groups:
-                self._groups[group] = [(path, self.read(path)) for path in sorted((self.root / group).rglob('*.csv'))
-                                       if not path.name.startswith('!') and not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
+                self._groups[group] = [(path, self.read(path)) for path in csv_files(self.root / group)
+                                       if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
             candidates = []
             if dataset is not None and index is not None:
                 for path, rows in self._groups[group]:

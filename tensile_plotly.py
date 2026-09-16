@@ -93,7 +93,7 @@ def figure_to_plotly(figure, *, width=640):
     error_by_line, caps = {}, set()
     for container in ax.containers:
         if not isinstance(container, ErrorbarContainer):
-            raise ValueError('Unsupported artist container; use Current static plots.')
+            raise ValueError('Unsupported artist container; use Static plots.')
         data_line, caplines, collections = container.lines
         caps.update(id(line) for line in caplines)
         errors, index = {}, 0
@@ -238,7 +238,7 @@ class PlotlyView:
                     body = [heading, button, frame]
                     self._owned += [button, chart, probe, title, caption, frame]
                 except Exception as error:
-                    message = self.w.HTML('<b>Plotly unavailable:</b> ' + escape(str(error)) + '. Switch to Current static plots.')
+                    message = self.w.HTML('<b>Plotly unavailable:</b> ' + escape(str(error)) + '. Switch to Static plots.')
                     self._owned.append(message)
                     body = [heading, message]
             else:

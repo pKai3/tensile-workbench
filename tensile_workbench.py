@@ -16,6 +16,7 @@ from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView
+from tensile_selection import is_included
 import hashlib
 import io
 import json
@@ -121,6 +122,7 @@ class PreviewSession:
                 strain, stress = result
                 records.append({
                     "sample": source.stem, "source_file": str(source),
+                    "specimen_id": source.relative_to(self.data_dir).as_posix(),
                     "strain_pct": strain, "stress_mpa": stress,
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
                     "failure_elongation_pct": self.engine.failure_elongation_percent(strain),
@@ -131,12 +133,20 @@ class PreviewSession:
             self._records[group] = records
         return self._records[group]
 
+    def included_records(self, groups, spec):
+        """The single selection gate for every plot family and average export."""
+        return {group: selected for group in groups
+                if (selected := [row for row in self._load(group) if is_included(row, spec)])}
+
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
-        key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS)])
+        key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
+                          spec.get('specimen_exclusions', {})], sort_keys=True)
         if key not in self._property_frames:
             records = {group: self._load(group) for group in state['groups']}
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron)
+            if len(self._property_frames) > 16:
+                self._property_frames.pop(next(iter(self._property_frames)))
         return self._property_frames[key]
 
     def export_properties(self, state, spec):
@@ -238,10 +248,12 @@ class PreviewSession:
         before = set(e.plt.get_fignums())
         with redirect_stdout(stream), redirect_stderr(stream):
             try:
-                records = {g: self._load(g) for g in state["groups"]}
-                empty = [g for g, rows in records.items() if not rows]
+                records = self.included_records(state['groups'], spec)
+                if not records:
+                    raise ValueError('No included usable specimens. Tick Include on the Specimens tab.')
+                empty = [g for g in state['groups'] if g not in records]
                 if empty:
-                    raise ValueError("No usable specimens in: " + ", ".join(empty))
+                    print('[SELECTION] No included usable specimens; omitted groups: ' + ', '.join(empty))
                 curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in records.items()}
                 auto_x, auto_y = e.compute_axes(curves)
                 is_wh = state["family"].startswith("work_hardening")
@@ -375,7 +387,7 @@ class PreviewSession:
     def _export_tables(self, destination, result):
         """Build all graph-level tables from cached original curves on demand."""
         e, state, spec = self.engine, result["state"], result["graph_spec"]
-        records = {g: self._load(g) for g in state["groups"]}
+        records = self.included_records(state['groups'], spec)
         with redirect_stdout(io.StringIO()):
             models, audit, summary = e.prepare_average_curves(spec, records,
                 landmark_points_per_stage=state["landmark_points"], pointwise_points=state["pointwise_points"])
@@ -407,19 +419,24 @@ class TensileWorkbench:
         self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
+        self._pending_delete = None
         self.controls, self.axes, self.title_inputs = {}, {}, {}
         self.graph = w.Dropdown(description="Graph:", layout=w.Layout(width="98%"))
         self.name = w.Text(description="Name:", continuous_update=False, layout=w.Layout(width="98%"))
         self.new_button = w.Button(description="New graph")
         self.duplicate_button = w.Button(description="Duplicate graph")
+        self.delete_button = w.Button(description='Delete graph', button_style='danger')
+        self.undo_delete_button = w.Button(description='Undo delete', disabled=True)
+        self.delete_message = w.HTML()
+        self.confirm_delete_button = w.Button(description='Confirm delete', button_style='danger')
+        self.cancel_delete_button = w.Button(description='Cancel')
+        self.delete_confirmation = w.VBox([self.delete_message,
+            self._row([self.confirm_delete_button, self.cancel_delete_button])], layout=w.Layout(display='none'))
         self.saved_button = w.Button(description="Reload saved graphs", layout=w.Layout(width='auto'))
         self.save_status = w.HTML()
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
-        self.range_from = w.BoundedIntText(value=2, min=0, max=9999, description="From:")
-        self.range_to = w.BoundedIntText(value=7, min=0, max=9999, description="To:")
-        self.range_button = w.Button(description="Add this range")
         self.family_boxes = {family: w.Checkbox(description=label, indent=False, layout=w.Layout(width="auto")) for label, family in FAMILIES}
         self._check("show_individuals", "Show individual specimens")
         self._check("show_both_versions", "Display both with/without-individuals versions")
@@ -430,7 +447,7 @@ class TensileWorkbench:
                                               description="Layout:", layout=w.Layout(width="270px"))
         self.controls["plot_width"] = w.IntSlider(value=640, min=320, max=1600, step=40,
             description="Plot width (px)", continuous_update=False, style={"description_width": "initial"}, layout=w.Layout(width="360px"))
-        self.controls["renderer"] = w.Dropdown(options=[("Current static plots", "static"), ("Interactive Plotly", "plotly")],
+        self.controls["renderer"] = w.Dropdown(options=[("Static plots", "static"), ("Interactive Plotly", "plotly")],
             value="static", description="Plot display:", style={"description_width": "initial"}, layout=w.Layout(width="350px"))
         sliders = (
             ("landmark_points", "Landmark points/stage", 50, 2000, 50, True),
@@ -479,7 +496,7 @@ class TensileWorkbench:
         self.viewer = DualPlotView(w, self.controls["columns"], self.controls["plot_width"], self.controls["renderer"])
         self.board = self.viewer.board
         self.details = w.Textarea(disabled=True, layout=w.Layout(width="98%", height="180px"))
-        self.tables = PropertyTablesView(w)
+        self.tables = PropertyTablesView(w, on_selection=self._specimen_changed)
         self.tables_update_button = w.Button(description='Update tables')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
@@ -529,10 +546,10 @@ class TensileWorkbench:
         log.set_title(0, "Calculation details and warnings")
         self.ui = w.VBox([
             w.HTML("<h2>Analysis workspace</h2><p>Choose a graph and its sample groups. Changes save automatically; export when you are ready.</p>"),
-            self.graph, self._row([self.duplicate_button, self.saved_button]), self.name,
+            self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
+            self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
-            w.HTML("Tick the exact groups to include. The range helper adds all currently available matching groups."),
-            self._row([self.range_from, self.range_to, self.range_button]), general,
+            w.HTML("Tick the exact sample groups to include, regardless of their naming format."), general,
             self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
             self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
@@ -555,8 +572,11 @@ class TensileWorkbench:
                 widget.observe(self._changed, names="value")
         self.new_button.on_click(lambda _: self.new_graph())
         self.duplicate_button.on_click(lambda _: self.new_graph(duplicate=True))
+        self.delete_button.on_click(self._ask_delete_graph)
+        self.confirm_delete_button.on_click(self._confirm_delete_graph)
+        self.cancel_delete_button.on_click(self._cancel_delete_graph)
+        self.undo_delete_button.on_click(self._undo_delete_graph)
         self.saved_button.on_click(self.reload_definitions)
-        self.range_button.on_click(self._add_range)
         self.override_group.observe(self._load_overrides, names="value")
         self.override_button.on_click(self._apply_overrides)
         self.update_button.on_click(lambda _: self.update())
@@ -603,6 +623,9 @@ class TensileWorkbench:
     def _show_saved(self):
         detail = 'Revision ' + str(self.store.data['revision']) + ' · ' + self.store.path.name
         self.save_status.value = '<span title="' + escape(detail, quote=True) + '">✓ Changes saved automatically</span>'
+        deleted = self.store.data.get('deleted_graphs', [])
+        self.undo_delete_button.disabled = not deleted
+        self.undo_delete_button.tooltip = ('Restore ' + deleted[-1]['graph']['name']) if deleted else 'No deleted graphs to restore'
 
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
@@ -613,6 +636,7 @@ class TensileWorkbench:
         return state
 
     def _apply_graph(self, ident):
+        self._cancel_delete_graph()
         old, self._paused = self._paused, True
         try:
             self.graph.value = ident
@@ -698,6 +722,7 @@ class TensileWorkbench:
     def _changed(self, _=None):
         if self._paused:
             return
+        self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True
         if not self.save_current():
@@ -789,13 +814,89 @@ class TensileWorkbench:
             self._paused = False
             self.save_status.value = "<b>Reload failed:</b> " + escape(str(error))
 
-    def _add_range(self, _=None):
-        if self.range_from.value > self.range_to.value:
-            self.status.value = "Range start must not exceed its end."
+    def _ask_delete_graph(self, _=None):
+        if not self.save_current():
             return
-        selected = self.session.engine.select_plot_groups(self.session.files, [(self.range_from.value, self.range_to.value)], [])
-        combined = sorted(set(self.controls["groups"].value) | set(selected))
-        self.controls["groups"].value = tuple(combined)
+        self._pending_delete = self.graph.value
+        self.delete_message.value = ('Delete graph <b>' + escape(self._current()['name'])
+            + '</b>? Only its saved definition is removed. Data and exported files are untouched. '
+              'You can restore it with Undo delete.')
+        self.delete_confirmation.layout.display = ''
+
+    def _cancel_delete_graph(self, _=None):
+        self._pending_delete = None
+        self.delete_confirmation.layout.display = 'none'
+
+    def _after_graph_action(self, message):
+        self.session.set_project(self.store.data)
+        self._refresh_graph_options()
+        self._apply_graph(self.store.data['selected_graph'])
+        self._show_saved()
+        self._refresh_properties()
+        if self.controls['live_update'].value:
+            self.update(save=False)
+        self.status.value = escape(message)
+
+    def _confirm_delete_graph(self, _=None):
+        ident = self._pending_delete
+        if ident is None or ident != self.graph.value or not self.save_current():
+            return
+        try:
+            name = self._current()['name']
+            self.store.delete_graph(ident)
+            self._after_graph_action(f'Deleted graph “{name}”. Undo delete can restore it; data and exports are unchanged.')
+        except Exception as error:
+            self.save_status.value = '<b>Could not delete graph:</b> ' + escape(str(error))
+
+    def _undo_delete_graph(self, _=None):
+        deleted = self.store.data.get('deleted_graphs', [])
+        if not deleted:
+            return
+        # Widget hydration adds default fields on save. That is not a user edit
+        # to the automatic empty draft and must not prevent its removal on Undo.
+        untouched_draft = deleted[-1].get('replacement') == self._current()
+        if not untouched_draft and not self.save_current():
+            return
+        try:
+            self.store.undo_delete()
+            self._after_graph_action('Deleted graph restored, including its specimen selections.')
+        except Exception as error:
+            self.save_status.value = '<b>Could not restore graph:</b> ' + escape(str(error))
+
+    def _specimen_changed(self, ident, included, reason):
+        if self._paused:
+            return
+        if not self.save_current():
+            self._refresh_properties()
+            return
+        try:
+            # Never apply a stale browser row to a different selected group/graph.
+            known = {r['specimen_id'] for group in self.state()['groups'] for r in self.session._load(group)}
+            if ident not in known:
+                raise ValueError('Specimen is no longer in this graph. Reload its tables.')
+            project = deepcopy(self.store.data)
+            spec = project['graphs'][self._index()]['definition']
+            exclusions = spec.setdefault('specimen_exclusions', {})
+            if included:
+                exclusions.pop(ident, None)
+            else:
+                exclusions[ident] = reason.strip()
+            if project != self.store.data:
+                self.store.save(project)
+                self.session.set_project(self.store.data)
+            self._show_saved()
+            self._results, self._signature = [], None
+            self.export_button.disabled = True
+            self.viewer.clear('Specimen selection changed. Update plots to use the saved selection.')
+            self._load_overrides()
+            self._refresh_properties()
+            if self.controls['live_update'].value:
+                self.update(save=False)
+            else:
+                self.status.value = 'Specimen selection saved for this graph. Tables updated; click Update plots when ready.'
+        except Exception as error:
+            self.save_status.value = '<b>Specimen selection not saved:</b> ' + escape(str(error))
+            self._refresh_properties()
 
     def _load_overrides(self, _=None):
         group = self.override_group.value
@@ -811,11 +912,11 @@ class TensileWorkbench:
         self.override_e_enabled.value = modulus is not None
         self.override_e.value = modulus/1000 if modulus is not None else self.controls["modulus_gpa"].value
         with redirect_stdout(io.StringIO()):
-            rows = self.session._load(group) if group in self.session.files else []
+            rows = [r for r in self.session._load(group) if is_included(r, spec)] if group in self.session.files else []
         choices = [("Automatic: closest failure elongation", "")] + [(r["sample"], r["sample"]) for r in rows]
         saved = spec.get("representative_overrides", {}).get(group, "")
         if saved and saved not in [value for _, value in choices]:
-            choices.append((saved + " (saved override)", saved))
+            choices.append((saved + " (excluded/unavailable; automatic fallback)", saved))
         self.override_rep.options = choices
         self.override_rep.value = saved
 
