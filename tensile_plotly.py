@@ -136,7 +136,7 @@ def figure_to_plotly(figure, *, width=640):
         marker = str(line.get_marker())
         if faint:
             individual_count[group] = individual_count.get(group, 0) + 1
-            name += f' · individual curve {individual_count[group]}'
+            name = getattr(line, '_tensile_hover_label', None) or name + f' · individual curve {individual_count[group]}'
         elif not visible_label:
             if marker in ('o', '^', 'x'):
                 name += ' · ' + {'o': 'yield landmark', '^': 'UTS landmark', 'x': 'endpoint'}[marker]

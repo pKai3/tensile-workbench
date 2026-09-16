@@ -47,7 +47,18 @@ FAMILIES = [
     ("Pointwise tensile average", "pointwise"),
     ("Compare both tensile averages", "comparison"),
     ("Representative tensile curves", "representative"),
+    ("0.2% YS vs elongation", "ys_vs_el"),
+    ("UTS vs elongation", "uts_vs_el"),
 ]
+
+PROPERTY_FAMILIES = ('ys_vs_el', 'uts_vs_el')
+PROPERTY_DEFAULTS = {'property_error_bars': True,
+                     **{family + suffix: None for family in PROPERTY_FAMILIES
+                        for suffix in ('_xlim', '_ylim')}}
+AXIS_DEFAULTS = {'tensile_xlim': [0, 30], 'tensile_ylim': [0, 1000],
+                 'wh_xlim': [0, 7], 'wh_ylim': [0, 4500],
+                 **{family + suffix: limits for family in PROPERTY_FAMILIES
+                    for suffix, limits in (('_xlim', [0, 30]), ('_ylim', [0, 1000]))}}
 
 # These settings change the viewer, not the calculations or figure contents.
 VIEW_ONLY_SETTINGS = ('columns', 'plot_width', 'renderer', 'live_update', 'export_tables')
@@ -105,6 +116,8 @@ class PreviewSession:
 
     def defaults(self, graph_index=0):
         result = deepcopy(self.project["graphs"][graph_index]["settings"])
+        for key, value in PROPERTY_DEFAULTS.items():
+            result.setdefault(key, deepcopy(value))
         result["graph_index"] = graph_index
         result["family"] = result["families"][0] if result["families"] else "landmark"
         return result
@@ -202,8 +215,8 @@ class PreviewSession:
                 raise ValueError(f"{key} must be finite and nonnegative.")
         if state["poly_order"] not in (1, 2, 3, 4, 5):
             raise ValueError("Polynomial order must be 1–5.")
-        for key in ("tensile_xlim", "tensile_ylim", "wh_xlim", "wh_ylim"):
-            pair = state[key]
+        for key in AXIS_DEFAULTS:
+            pair = state.get(key)
             if pair is not None and (len(pair) != 2 or not all(math.isfinite(v) for v in pair) or pair[0] >= pair[1]):
                 raise ValueError(f"{key}: lower limit must be smaller than upper limit.")
 
@@ -214,6 +227,13 @@ class PreviewSession:
         for key in ("families", "show_both_versions", "graph_index", *VIEW_ONLY_SETTINGS):
             key_state.pop(key, None)
         family = state["family"]
+        for key in PROPERTY_DEFAULTS:
+            if family not in PROPERTY_FAMILIES or (key != 'property_error_bars' and not key.startswith(family + '_')):
+                key_state.pop(key, None)
+        if family in PROPERTY_FAMILIES:
+            for key in ('landmark_points', 'pointwise_points', 'landmark_error_bars',
+                        'tail_enabled', 'tail_window', 'tail_setback', 'tensile_xlim', 'tensile_ylim'):
+                key_state.pop(key, None)
         if not family.startswith("work_hardening"):
             for key in ("wh_points", "modulus_gpa", "respect_modulus_overrides", "min_plastic_strain", "despike", "despike_window", "despike_sigma", "median", "median_window", "smooth", "smooth_window", "poly_order", "wh_xlim", "wh_ylim"):
                 key_state.pop(key, None)
@@ -255,13 +275,16 @@ class PreviewSession:
                 if empty:
                     print('[SELECTION] No included usable specimens; omitted groups: ' + ', '.join(empty))
                 curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in records.items()}
-                auto_x, auto_y = e.compute_axes(curves)
-                is_wh = state["family"].startswith("work_hardening")
-                xlim = state["wh_xlim"] if is_wh else state["tensile_xlim"] or auto_x
-                ylim = state["wh_ylim"] if is_wh else state["tensile_ylim"] or auto_y
                 family = state["family"]
+                if family in PROPERTY_FAMILIES:
+                    xlim, ylim = state.get(family + '_xlim'), state.get(family + '_ylim')
+                else:
+                    auto_x, auto_y = e.compute_axes(curves)
+                    is_wh = family.startswith('work_hardening')
+                    xlim = state['wh_xlim'] if is_wh else state['tensile_xlim'] or auto_x
+                    ylim = state['wh_ylim'] if is_wh else state['tensile_ylim'] or auto_y
                 models = None
-                if family not in ("work_hardening", "representative"):
+                if family not in ("work_hardening", "representative", *PROPERTY_FAMILIES):
                     key = json.dumps([spec, sorted(records), state["landmark_points"], state["pointwise_points"]], sort_keys=True)
                     if key not in self._models:
                         model_log = io.StringIO()
@@ -284,6 +307,7 @@ class PreviewSession:
                     "representative": (f"tensile_representative_{variant}", "tensile_representative"),
                     "work_hardening": (f"work_hardening_{variant}", "work_hardening_with_individuals" if state["show_individuals"] else "work_hardening_averages_only"),
                     "work_hardening_landmark": (f"work_hardening_landmark_{variant}", "work_hardening_landmark"),
+                    **{kind: (f'{kind}_{variant}', kind) for kind in PROPERTY_FAMILIES},
                 }
                 titles = spec.get("titles", {})
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
@@ -293,7 +317,12 @@ class PreviewSession:
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
                               title=title, name_overrides=spec.get("name_overrides", {}), preview=True)
                 wh = self._wh_settings(state, spec)
-                if family in ("landmark", "pointwise", "comparison"):
+                if family in PROPERTY_FAMILIES:
+                    fig = e.render_strength_elongation_plot(records, family=family,
+                        error_bars=state.get('property_error_bars', True),
+                        fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
+                        **common)
+                elif family in ("landmark", "pointwise", "comparison"):
                     fig = e.render_average_plot(models, records, family=family,
                         landmark_error_bars=state["landmark_error_bars"], **common)
                 elif family == "representative":
@@ -373,7 +402,7 @@ class PreviewSession:
             for view in results:
                 view_state = view["state"]
                 variant = "with_individuals" if view_state["show_individuals"] else "without_individuals"
-                family_number = {"pointwise": "01", "landmark": "02", "comparison": "03", "representative": "04", "work_hardening": "05", "work_hardening_landmark": "06", "work_hardening_comparison": "07"}[view_state["family"]]
+                family_number = {"pointwise": "01", "landmark": "02", "comparison": "03", "representative": "04", "work_hardening": "05", "work_hardening_landmark": "06", "work_hardening_comparison": "07", "ys_vs_el": "08", "uts_vs_el": "09"}[view_state["family"]]
                 plot = destination / f"{graph}_{family_number}_{view_state['family']}_{variant}.png"
                 view["figure"].savefig(plot, dpi=self.engine.PLOT_DPI)
             (destination / "settings.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -441,6 +470,7 @@ class TensileWorkbench:
         self._check("show_individuals", "Show individual specimens")
         self._check("show_both_versions", "Display both with/without-individuals versions")
         self._check("landmark_error_bars", "Landmark ±1 SD bars")
+        self._check("property_error_bars", "Group mean ±1 SD bars · strength–EL plots")
         self._check("live_update", "Live preview (on slider release)")
         self._check("export_tables", "Include Excel tables when exporting")
         self.controls["columns"] = w.Dropdown(options=[("Stacked", 1), ("Up to 2 columns", 2), ("Up to 3 columns", 3), ("Automatic grid", 0)],
@@ -473,7 +503,9 @@ class TensileWorkbench:
             self._check(key, label)
         self.controls["poly_order"] = w.Dropdown(options=[1,2,3,4,5], description="Order:")
         for key, title in (("tensile_xlim", "Tensile strain (%)"), ("tensile_ylim", "Tensile stress (MPa)"),
-                           ("wh_xlim", "WH plastic strain (%)"), ("wh_ylim", "WH rate (MPa)")):
+                           ("wh_xlim", "WH plastic strain (%)"), ("wh_ylim", "WH rate (MPa)"),
+                           ("ys_vs_el_xlim", "Elongation at failure (%)"), ("ys_vs_el_ylim", "0.2% YS (MPa)"),
+                           ("uts_vs_el_xlim", "Elongation at failure (%)"), ("uts_vs_el_ylim", "UTS (MPa)")):
             auto = w.Checkbox(description="Automatic", indent=False)
             lo, hi = w.FloatText(description="Min:", continuous_update=False), w.FloatText(description="Max:", continuous_update=False)
             row = w.VBox([w.HTML("<b>" + title + "</b>"), auto, self._row([lo, hi])])
@@ -512,10 +544,16 @@ class TensileWorkbench:
             self.title_inputs[family].description = "Title:"
             local = [self.title_inputs[family]]
             wh = family.startswith("work_hardening")
-            axes_prefix = "wh" if wh else "tensile"
+            property_plot = family in PROPERTY_FAMILIES
+            axes_prefix = family if property_plot else ("wh" if wh else "tensile")
             axes = w.Accordion(children=[w.VBox([self.axes[axes_prefix + suffix][3] for suffix in ("_xlim", "_ylim")])], selected_index=None)
-            axes.set_title(0, "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
+            axes.set_title(0, 'Axes · this plot' if property_plot else "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
             local.append(axes)
+            if property_plot:
+                local += [self.controls['property_error_bars'],
+                          w.HTML('EL is elongation at failure (terminal recorded strain). '
+                                 'Group means use calculated specimen properties, not an average curve. '
+                                 'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.')]
             if family in ("landmark", "comparison", "work_hardening_landmark", "work_hardening_comparison"):
                 local.append(self.controls["landmark_points"])
             if family in ("landmark", "comparison"):
@@ -647,7 +685,7 @@ class TensileWorkbench:
             choices = sorted(set(self.session.files) | set(state["groups"]))
             self.controls["groups"].options = [(g if g in self.session.files else g + " (unavailable)", g) for g in choices]
             for key, control in self.controls.items():
-                value = state.get(key, {"export_tables": False, "plot_width": 640, "renderer": "static"}.get(key, control.value))
+                value = state.get(key, {"export_tables": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS}.get(key, control.value))
                 if key == "groups":
                     value = tuple(value)
                 if isinstance(control, (self.w.IntSlider, self.w.FloatSlider)):
@@ -656,11 +694,10 @@ class TensileWorkbench:
                 control.value = value
             for family, box in self.family_boxes.items():
                 box.value = family in state["families"]
-            fallbacks = {"tensile_xlim": [0,30], "tensile_ylim": [0,1000], "wh_xlim": [0,7], "wh_ylim": [0,4500]}
             for key, (auto, lo, hi, _) in self.axes.items():
                 pair = state.get(key)
                 auto.value = pair is None
-                lo.value, hi.value = pair or fallbacks[key]
+                lo.value, hi.value = pair or AXIS_DEFAULTS[key]
             legacy = graph["definition"].get("titles", {})
             title_keys = {"landmark": "tensile_landmark_aligned", "pointwise": "tensile_averages_only", "comparison": "tensile_comparison", "representative": "tensile_representative", "work_hardening": "work_hardening_averages_only", "work_hardening_landmark": "work_hardening_landmark"}
             for family, control in self.title_inputs.items():

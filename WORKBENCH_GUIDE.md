@@ -52,6 +52,16 @@ Matching uses an embedded specimen summary, the Instron export dataset and row n
 
 Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summary CSVs. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
 
+## Strength versus elongation plots
+
+Select **0.2% YS vs elongation** and/or **UTS vs elongation** under Plot views for any graph definition. Both use elongation at failure on the x-axis and strength in MPa on the y-axis. EL is the terminal recorded engineering strain used in the Specimens table, not uniform elongation or a post-fracture gauge-length measurement.
+
+Diamonds show group means of calculated per-specimen properties. **Show individual specimens** adds faint circles for the individual specimens; the paired with/without-individuals option works too. Optional horizontal and vertical **±1 sample SD** bars show scatter in EL and strength, not confidence intervals. A single specimen has a mean point but no SD bars. Groups are not joined by lines or fitted to a trend.
+
+Each point requires both properties to be available. If a yield fit is unresolved, that specimen is omitted from the YS–EL plot and its mean/SD, with a warning in the calculation log; it can still appear in UTS–EL. The legend's n is the number of valid paired specimens. These views use the same specimen-property calculations and Include selections as the tables, independently of landmark fitting, WH filters and the WH elastic modulus. They show **Calc**, not Instron summary values. Where a metric is unavailable, paired plot means may differ from table means that count each property separately.
+
+Each view has its own title and independent x/y limits under Settings. Colours and labels follow the graph's group overrides. Static and Plotly views show the same values; Plotly hover identifies individual specimens. Exports are numbered `08_ys_vs_el` and `09_uts_vs_el`, with adjacent `with_individuals` / `without_individuals` filenames. Existing saved graphs gain these options without changing their current selected plots.
+
 ## Per-graph colours
 
 Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to all static and Plotly views and exported plots. Different graph definitions can use different colours for the same group.

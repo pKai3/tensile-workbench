@@ -1206,6 +1206,86 @@ def render_work_hardening_plot(
     plt.tight_layout()
     return finish_plot(plt.gcf(), out_path, preview)
 
+def render_strength_elongation_plot(
+    records, out_path, color_map, family, show_individual=False,
+    xlim=None, ylim=None, name_overrides=None, title=None,
+    error_bars=True, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS, preview=False,
+):
+    """Measured specimen properties and paired group means; no mean-curve fits.
+
+    EL is terminal recorded engineering strain, as in the specimen tables.
+    A point requires both EL and strength. Means and sample SDs use exactly
+    those paired specimens; unresolved yield must never be replaced by zero.
+    """
+    metrics = {'ys_vs_el': ('Yield (MPa)', '0.2% YS (MPa)'),
+               'uts_vs_el': ('UTS (MPa)', 'UTS (MPa)')}
+    if family not in metrics:
+        raise ValueError(f'Unknown strength–elongation plot: {family}')
+    metric, ylabel = metrics[family]
+    figure, ax = plt.subplots(figsize=PLOT_FIGSIZE)
+    plotted = False
+    for group, rows in sorted(records.items()):
+        paired = []
+        for record in rows:
+            p = specimen_properties(record, fit_fractions, LANDMARK_YIELD_R2_WARNING)
+            x, y = p['Failure elongation (%)'], p[metric]
+            if np.isfinite(x) and np.isfinite(y):
+                paired.append((record, x, y))
+            else:
+                print(f'[STRENGTH–EL] {group}/{record["sample"]}: omitted from {family}; '
+                      f'EL or {metric} unavailable. {p.get("Notes", "")}')
+        if not paired:
+            continue
+        color = color_map[group]
+        display = get_display_name(group, name_overrides)
+        xs, ys = np.array([(x, y) for _, x, y in paired], dtype=float).T
+        if show_individual:
+            for record, x, y in paired:
+                line, = ax.plot([x], [y], linestyle='None', marker='o', markersize=4,
+                                color=color, alpha=.3)
+                # Preserve specimen identity in Plotly hover without a legend row
+                # per specimen or publishing absolute source-file paths.
+                line._tensile_hover_label = f'{display} · {record.get("specimen_id", record["sample"])}'
+        n = len(paired)
+        x_sd = float(np.std(xs, ddof=1)) if n > 1 else None
+        y_sd = float(np.std(ys, ddof=1)) if n > 1 else None
+        label = f'{display} (n={n})'
+        if error_bars and n > 1:
+            bars = ax.errorbar([np.mean(xs)], [np.mean(ys)], xerr=[x_sd], yerr=[y_sd],
+                              fmt='D', linestyle='None', markersize=7, color=color,
+                              capsize=4, elinewidth=1.2, label='_nolegend_')
+            # The shared Plotly converter groups artists by labelled data lines.
+            bars.lines[0].set_label(label)
+        else:
+            ax.plot([np.mean(xs)], [np.mean(ys)], linestyle='None', marker='D',
+                    markersize=7, color=color, label=label)
+        plotted = True
+        print(f'[STRENGTH–EL] {group}: {family}; n={n}; mean EL={np.mean(xs):.3f}%; '
+              f'mean strength={np.mean(ys):.3f} MPa. Statistics from paired specimen properties.')
+    if not plotted:
+        plt.close(figure)
+        print(f'[WARN] No valid paired strength/elongation values for {family}.')
+        return
+    ax.set(title=title or ylabel.replace(' (MPa)', '') + ' vs elongation at failure',
+           xlabel='Elongation at failure (%)', ylabel=ylabel)
+    ax.margins(x=.12, y=.12)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=.6)
+    note = 'Diamonds: group means.'
+    if error_bars:
+        note += ' Bars: ±1 sample SD (n ≥ 2).'
+    if show_individual:
+        note += ' Faint circles: individual specimens.'
+    note += '\nEL = terminal recorded engineering strain; properties calculated per specimen.'
+    figure.text(.5, .015, note, ha='center', fontsize=9)
+    figure.tight_layout(rect=(0, .08, 1, 1))
+    return finish_plot(figure, out_path, preview)
+
+
 def compute_landmark_work_hardening_curve(landmark, **settings):
     """Differentiate the aligned mean only through its UTS landmark.
 
