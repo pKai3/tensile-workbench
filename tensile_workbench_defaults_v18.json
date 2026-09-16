@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "revision": 110,
-  "data_directory": "data",
-  "output_directory": "output/interactive_v18",
+  "data_directory": "./data",
+  "output_directory": "./output",
   "display_names": {
     "B14": "B14: 15.0 % CO2 in Ar / Air Atm. / G9",
     "B13": "B13: 12.5 % CO2 in Ar / Air Atm. / G9",

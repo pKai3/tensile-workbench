@@ -7,4 +7,4 @@
 - Preserve saved graph definitions and user edits. The main v18 project JSON is intentionally tracked; its previous-save backups and locks are not.
 - Keep notebook outputs clear before committing. Do not publish research data, generated results, credentials, or personal machine paths.
 - Keep current v18 filenames unless a requested change calls for a new major version or the user approves a naming cleanup.
-
+- Data/output paths belong in ignored `.tensile-paths.json`, not in shared graph definitions. First-run defaults are `./data` and `./output`, resolved relative to the workbench folder, never the terminal's current directory.

@@ -26,6 +26,8 @@ required = (
     'tensile_properties_v18.py',
     'tensile_instron_v18.py',
     'tensile_tables_v18.py',
+    'tensile_startup_v18.py',
+    'launch_workbench.py',
     'migrate_tensile_v18.py',
     'workbench_project_v18.py',
     'tensile_workbench_defaults_v18.json',
@@ -50,4 +52,4 @@ PY
 cd "$PROJECT_DIR"
 print -r -- "Opening v18. In Jupyter, choose Run > Run All Cells to restore your saved workspace."
 print -r -- "This server is local-only. Press Ctrl-C here to stop it."
-exec "$ENV_DIR/bin/python" -m jupyterlab "$NOTEBOOK" --ServerApp.ip=127.0.0.1 --ServerApp.root_dir="$PROJECT_DIR"
+exec "$ENV_DIR/bin/python" "$PROJECT_DIR/launch_workbench.py"

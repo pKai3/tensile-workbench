@@ -37,4 +37,5 @@ Thumbs.db
 !.env.example
 *.pem
 *.key
-
+# First-run machine-specific folder choices.
+.tensile-paths.json

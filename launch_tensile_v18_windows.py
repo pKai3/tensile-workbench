@@ -32,8 +32,7 @@ def main():
     check = "import tensile_core_v18, tensile_instron_v18, tensile_tables_v18, tensile_workbench_v18; print('v18 imports OK. No data processed.')"
     subprocess.run([str(python), '-c', check], cwd=ROOT, env=env, check=True)
     print('Opening v18. Choose Run > Run All Cells. Press Ctrl-C here to stop.', flush=True)
-    subprocess.run([str(python), '-m', 'jupyterlab', str(ROOT / 'plot_tensile_interactive_v18.ipynb'),
-                    '--ServerApp.ip=127.0.0.1', '--ServerApp.root_dir=' + str(ROOT)], cwd=ROOT, env=env, check=True)
+    subprocess.run([str(python), str(ROOT / 'launch_workbench.py')], cwd=ROOT, env=env, check=True)
 
 
 if __name__ == '__main__':

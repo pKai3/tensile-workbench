@@ -40,8 +40,9 @@ VIEW_ONLY_SETTINGS = ('columns', 'plot_width', 'renderer', 'live_update', 'expor
 class PreviewSession:
     """Headless calculation layer, also usable without Jupyter widgets."""
 
-    def __init__(self, project_dir, project=None, data_dir=None):
-        self.project_dir = Path(project_dir).expanduser().resolve()
+    def __init__(self, project_dir=None, project=None, data_dir=None, output_dir=None):
+        self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
+        self._output_override = output_dir
         engine_path = self.project_dir / "tensile_core_v18.py"
         if not engine_path.is_file():
             raise FileNotFoundError(f"The standalone calculation library is missing: {engine_path}")
@@ -79,6 +80,12 @@ class PreviewSession:
         self.project = deepcopy(project)
         self.graphs = [{**g["definition"], "name": g["name"]} for g in project["graphs"]]
         self.engine.NAME_LOOKUP = deepcopy(project.get("display_names", {}))
+
+    def output_root(self):
+        """Local folder choice overrides the graph template without changing it."""
+        from tensile_startup_v18 import resolve_folder
+        configured = self._output_override if self._output_override is not None else self.project.get('output_directory', './output')
+        return resolve_folder(configured, self.project_dir)
 
     def defaults(self, graph_index=0):
         result = deepcopy(self.project["graphs"][graph_index]["settings"])
@@ -122,8 +129,7 @@ class PreviewSession:
         frames = self.property_tables(state, spec)
         if frames['tensile_samples'].empty:
             raise ValueError('No specimen data to export.')
-        output = Path(self.project.get('output_directory', 'output/interactive_v18'))
-        base = output if output.is_absolute() else self.project_dir / output
+        base = self.output_root()
         destination = base / self.engine.safe_filename(spec['name']) / (datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_tables')
         destination.mkdir(parents=True, exist_ok=False)
         for name, frame in frames.items():
@@ -322,8 +328,7 @@ class PreviewSession:
         result = results[0]
         graph = self.engine.safe_filename(result["graph_spec"]["name"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:6]
-        output = Path(self.project.get("output_directory", "output/interactive_v18"))
-        destination = (output if output.is_absolute() else self.project_dir / output) / graph / stamp
+        destination = self.output_root() / graph / stamp
         destination.mkdir(parents=True, exist_ok=False)
         state = result["state"]
         metadata = {
@@ -378,13 +383,13 @@ class PreviewSession:
 class TensileWorkbench:
     """Graph editor and multi-plot board. Definitions autosave independently of previews."""
 
-    def __init__(self, project_dir, project_path=None, data_dir=None):
+    def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None):
         import ipywidgets as w
         self.w = w
-        self.project_dir = Path(project_dir).expanduser().resolve()
+        self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench_v18.project.json",
                                   self.project_dir / "tensile_workbench_defaults_v18.json")
-        self.session = PreviewSession(self.project_dir, self.store.data, data_dir)
+        self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
         self.controls, self.axes, self.title_inputs = {}, {}, {}
@@ -542,6 +547,10 @@ class TensileWorkbench:
         self.table_export_button.on_click(self._export_properties)
         self._paused = False
         self._show_saved()
+        if not self.session.files:
+            self.tables.clear('No tensile sample groups found in the selected data folder.')
+            self.status.value = 'Add tensile CSV files in sample-group subfolders, then click Reload data, or choose another location under Folders.'
+            return
         self._refresh_properties()
         if self.controls["live_update"].value:
             self.update()
