@@ -11,6 +11,7 @@ import numpy as np
 
 from selection_fixture import make_fixture
 from tensile_plotly import figure_to_plotly
+from tensile_core import scatter_specimen_labels
 from tensile_workbench import TensileWorkbench, PROPERTY_FAMILIES
 
 
@@ -105,10 +106,45 @@ class StrengthElongationTests(unittest.TestCase):
         self.assertGreater(means[0].error_x.array[0], 0)
         self.assertGreater(means[0].error_y.array[0], 0)
         self.assertEqual(len({trace.legendgroup for trace in chart.data}), 1)
-        self.assertIn('Alloy A/coupon_1.csv', chart.data[0].hovertemplate)
+        self.assertIn('Alloy A · specimen 1', chart.data[0].hovertemplate)
+        self.assertNotIn('.csv', chart.data[0].hovertemplate)
         without = self.session.render(self.state(show_individuals=False, property_error_bars=False))
         self.assertEqual(len(figure_to_plotly(without['figure']).data), 1)
         self.assertFalse(without['figure'].axes[0].containers)
+
+    def test_shared_axes_with_and_without_individuals_in_both_renderers(self):
+        for family in PROPERTY_FAMILIES:
+            for error_bars in (False, True):
+                with self.subTest(family=family, error_bars=error_bars):
+                    results = [self.session.render(self.state(family, show_individuals=show,
+                                property_error_bars=error_bars)) for show in (False, True)]
+                    axes = [result['figure'].axes[0] for result in results]
+                    np.testing.assert_allclose(axes[0].get_xlim(), axes[1].get_xlim())
+                    np.testing.assert_allclose(axes[0].get_ylim(), axes[1].get_ylim())
+                    for line in self.individual_lines(results[1]):
+                        self.assertLess(axes[0].get_xlim()[0], line.get_xdata()[0])
+                        self.assertGreater(axes[0].get_xlim()[1], line.get_xdata()[0])
+                        self.assertLess(axes[0].get_ylim()[0], line.get_ydata()[0])
+                        self.assertGreater(axes[0].get_ylim()[1], line.get_ydata()[0])
+                    plots = [figure_to_plotly(result['figure']) for result in results]
+                    self.assertEqual(plots[0].layout.xaxis.range, plots[1].layout.xaxis.range)
+                    self.assertEqual(plots[0].layout.yaxis.range, plots[1].layout.yaxis.range)
+            for show in (False, True):
+                result = self.session.render(self.state(family, show_individuals=show,
+                    **{family+'_xlim': [10, 25], family+'_ylim': [500, 850]}))
+                np.testing.assert_allclose(result['figure'].axes[0].get_xlim(), [10, 25])
+                np.testing.assert_allclose(result['figure'].axes[0].get_ylim(), [500, 850])
+
+    def test_short_hover_labels_preserve_arbitrary_and_duplicate_names(self):
+        rows = [{'sample': f'706_Solution Treatment_1_{n}'} for n in (2, 8, 10)]
+        self.assertEqual(scatter_specimen_labels(rows), ['specimen 2', 'specimen 8', 'specimen 10'])
+        self.assertEqual(scatter_specimen_labels([{'sample': 'dogbone-east'}, {'sample': 'round-west'}]),
+                         ['dogbone-east', 'round-west'])
+        rows = [{'sample': 'coupon_1', 'specimen_id': f'Alloy/{sub}/coupon_1.csv'} for sub in ('A', 'B')]
+        labels = scatter_specimen_labels(rows)
+        self.assertEqual(len(set(labels)), 2)
+        self.assertTrue(all('/' not in label for label in labels))
+        self.assertEqual(scatter_specimen_labels(rows[::-1]), labels[::-1])
 
     def test_independent_axes_titles_labels_and_colours(self):
         project = deepcopy(self.session.project)

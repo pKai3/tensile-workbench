@@ -5,6 +5,10 @@
 /archive
 /share
 *.csv
+# Only these explicitly synthetic deployment fixtures belong in Git.
+!/examples/data/Demo_Ductile/specimen_[123].csv
+!/examples/data/Demo_Balanced/specimen_[123].csv
+!/examples/data/Demo_Strong/specimen_[123].csv
 *.xlsx
 *.xls
 *.tens
@@ -27,6 +31,9 @@ build/
 dist/
 *.project.previous.json
 *.project.lock
+# Each installation owns its personal graph definitions; defaults are shared.
+/tensile_workbench.project.json
+/tensile_workbench_v*.project.json
 .*.tmp
 
 # Machine-specific files and credentials.

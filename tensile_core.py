@@ -9,6 +9,8 @@ import sys
 
 import csv
 
+import hashlib
+
 import re
 
 import itertools
@@ -1206,6 +1208,24 @@ def render_work_hardening_plot(
     plt.tight_layout()
     return finish_plot(plt.gcf(), out_path, preview)
 
+def scatter_specimen_labels(rows):
+    """Short display labels only; source identities and table paths are unchanged."""
+    stems = [str(record['sample']) for record in rows]
+    numbered = [re.fullmatch(r'(.*)[ _-](\d+)', stem) for stem in stems]
+    common_prefix = (all(numbered) and len({match[1] for match in numbered}) == 1
+                     and len({match[2] for match in numbered}) == len(rows))
+    labels = [f'specimen {match[2]}' for match in numbered] if common_prefix else stems
+    labels = [label if len(label) <= 48 else label[:18] + '…' + label[-29:] for label in labels]
+    # Repeated basenames in nested exports must not become indistinguishable.
+    duplicates = {label for label in labels if labels.count(label) > 1}
+    for index, (record, label) in enumerate(zip(rows, labels)):
+        if label in duplicates:
+            identity = str(record.get('specimen_id', record.get('source_file', record['sample'])))
+            suffix = hashlib.sha256(identity.encode('utf-8')).hexdigest()[:6]
+            labels[index] = f'{label} [{suffix}]'
+    return labels
+
+
 def render_strength_elongation_plot(
     records, out_path, color_map, family, show_individual=False,
     xlim=None, ylim=None, name_overrides=None, title=None,
@@ -1239,13 +1259,17 @@ def render_strength_elongation_plot(
         color = color_map[group]
         display = get_display_name(group, name_overrides)
         xs, ys = np.array([(x, y) for _, x, y in paired], dtype=float).T
+        # Both variants use the same data extent, even when points are hidden.
+        # Error-bar extents are added by Matplotlib; manual limits still win.
+        ax.update_datalim(np.column_stack((xs, ys)))
         if show_individual:
-            for record, x, y in paired:
+            labels = scatter_specimen_labels([record for record, _, _ in paired])
+            for (record, x, y), short_label in zip(paired, labels):
                 line, = ax.plot([x], [y], linestyle='None', marker='o', markersize=4,
                                 color=color, alpha=.3)
                 # Preserve specimen identity in Plotly hover without a legend row
                 # per specimen or publishing absolute source-file paths.
-                line._tensile_hover_label = f'{display} · {record.get("specimen_id", record["sample"])}'
+                line._tensile_hover_label = f'{group} · {short_label}'
         n = len(paired)
         x_sd = float(np.std(xs, ddof=1)) if n > 1 else None
         y_sd = float(np.std(ys, ddof=1)) if n > 1 else None

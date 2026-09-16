@@ -2,12 +2,14 @@
 
 ## Open or update the workbench
 
-1. Clone the repository, or close the app and stop its launcher before pulling an update into an existing checkout. Review and commit your saved graph-definition edits before pulling.
+1. Clone the repository, or close the app and stop its launcher before pulling an update into an existing checkout. Back up your personal graph-definition file before the one-time transition from tracked to ignored definitions (see README).
 2. First-time users: run **Setup_Tensile_Workbench.bat** (Windows) or **Setup_Tensile_Workbench.command** (Mac). Then open **Launch_Tensile_Workbench.bat** or **Launch_Tensile_Workbench.command**. Existing users can launch directly; rerun Setup only when dependencies need installing/updating. See [setup instructions](SETUP.md).
 3. The web app opens in your browser and starts automatically. No notebook or kernel commands are needed. Existing users upgrading from notebook-only mode should run Setup once to add Voilà.
 4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 
-The current graph definitions live in `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Git contains no raw data or generated outputs. Existing environments can be reused. Use Git commits and tags for history, not version suffixes on filenames.
+The current graph definitions live in ignored `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Generic defaults and three synthetic example groups are bundled, but no research data or generated outputs. Personal definitions are not uploaded: back them up or share them separately if desired. Existing environments can be reused. Use Git commits and tags for code history, not version suffixes on filenames.
+
+For a first look, click **Try demo data** in the folder form. The starter **Demo comparison** graph uses three completely invented sample groups with three specimens each. Defaults for your own folders remain `./data` and `./output`; the demo button selects `./examples/data` explicitly. Existing saved graphs are preserved, so existing users should create a new graph and tick the `Demo_*` groups to explore them. See [examples](examples/README.md) for provenance and scope.
 
 ## Choosing graphs
 
@@ -60,7 +62,7 @@ Diamonds show group means of calculated per-specimen properties. **Show individu
 
 Each point requires both properties to be available. If a yield fit is unresolved, that specimen is omitted from the YS–EL plot and its mean/SD, with a warning in the calculation log; it can still appear in UTS–EL. The legend's n is the number of valid paired specimens. These views use the same specimen-property calculations and Include selections as the tables, independently of landmark fitting, WH filters and the WH elastic modulus. They show **Calc**, not Instron summary values. Where a metric is unavailable, paired plot means may differ from table means that count each property separately.
 
-Each view has its own title and independent x/y limits under Settings. Colours and labels follow the graph's group overrides. Static and Plotly views show the same values; Plotly hover identifies individual specimens. Exports are numbered `08_ys_vs_el` and `09_uts_vs_el`, with adjacent `with_individuals` / `without_individuals` filenames. Existing saved graphs gain these options without changing their current selected plots.
+Each view has its own title and independent x/y limits under Settings. The with/without-individuals versions of a given scatter plot always share automatic limits based on all included paired specimen values and any displayed SD bars; manual limits override these for both versions. Colours and group legend labels follow the graph's overrides. Static and Plotly views show the same values. Individual hover labels use compact group/specimen names (for example `Alloy A · specimen 3`), not long folder paths; full source identity remains in the tables. Exports are numbered `08_ys_vs_el` and `09_uts_vs_el`, with adjacent `with_individuals` / `without_individuals` filenames. Existing saved graphs gain these options without changing their current selected plots.
 
 ## Per-graph colours
 

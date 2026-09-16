@@ -2,7 +2,7 @@
 
 Browser-based tensile-data analysis, with static and Plotly views, specimen-property tables, Instron CSV comparisons, and saved graph definitions. Launch opens the ready-to-use web app: no notebook commands, cells or kernel selection are needed.
 
-This repository starts from the working **v18** application. The original OneDrive installation is a separate, unchanged copy. No research data, generated results, or Python environment is stored in Git.
+This repository starts from the working **v18** application. The original OneDrive installation is a separate, unchanged copy. Current deployments contain no research data, personal graph definitions, generated results, or Python environment. Only the small, explicitly synthetic examples are bundled.
 
 ## Install and open the workbench
 
@@ -21,11 +21,15 @@ On first run the app asks for **Data folder** and **Output folder** before loadi
 
 Click **Save folders and open** to confirm. Missing folders are created; existing files are not moved or copied. Expand **Folders · data and output locations** at the top of the workbench to change them later. Paths are saved in the ignored, installation-local `.tensile-paths.json`, separate from the shared graph definitions. An unavailable folder or invalid settings file brings the setup form back instead of silently choosing another location.
 
+To try the app without your own data, click **Try demo data**. Three lightweight synthetic groups (three specimens each) and one simple **Demo comparison** graph are included. This explicitly selects `./examples/data`; ordinary folder defaults remain `./data` and `./output`. Demo files stay separate from research folders. See [the example description](examples/README.md) for the invented inputs and curve construction. They are not experimental material properties.
+
 On the original Mac, ignored `data` and `output` links point to the existing OneDrive folders. They do not duplicate those folders. Accepting the defaults uses these links; another location can be chosen instead. The copied graph settings are independent: changing them here does not update the OneDrive installation.
 
 ## Another computer or a fresh clone
 
-The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The tracked project supplies the initial graph definitions. If no current project exists, `migrate_tensile_project.py` can copy an older v18/v17 project from the same folder, or seed one from the defaults; it never overwrites an existing current project.
+The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The shared `tensile_workbench_defaults.json` supplies only the generic demo graph and a blank-new-graph template. Personal graphs are saved in ignored `tensile_workbench.project.json`. If no current project exists, `migrate_tensile_project.py` can copy an older v18/v17 project from the same folder, or seed one from the defaults; it never overwrites an existing current project.
+
+**One-time update for existing clones:** before pulling the change that stops tracking personal definitions, copy your `tensile_workbench.project.json` outside the checkout. Git may remove a formerly tracked file during that update. Restore your copy afterwards if needed. Future edits are local-only; keep your own backups or share that file separately by choice. Older Git commits may still contain historical definitions; this update does not rewrite history.
 
 Use the supplied Setup for a new computer. Environments, research data, outputs and machine-specific folder choices are not downloaded from GitHub. Setup validates dependencies and saved definitions but does **not** process data, regenerate plots, or rewrite graph settings.
 
@@ -49,11 +53,11 @@ Only this optional mode uses JupyterLab and **Run → Run All Cells**. The norma
 
 ## Version control
 
-- Source code, documentation, the clean notebook, defaults, and `tensile_workbench.project.json` are tracked. Saved graph settings can therefore be reviewed and committed too.
-- Research files, output folders, environments, previous-save backups, archives and share ZIPs are ignored.
+- Source code, documentation, the clean notebook, generic defaults, and the nine synthetic demo CSVs are tracked.
+- Personal graph definitions (`tensile_workbench.project.json`), chosen folder paths, research files, output folders, environments, previous-save backups, archives and share ZIPs are ignored. Back up personal definitions independently of Git.
 - Before committing a notebook, clear its outputs and save it. Do not commit exported tables or embedded research plots. Review changes in GitHub Desktop before committing and pushing.
 - Use stable filenames and ordinary Git commits for ongoing edits. The `v18-baseline` tag preserves the pre-migration application; do not create `_vX` source copies. The naming and folder setup changes do not change calculation methods.
-- Close the app/notebook and stop its launcher before switching branches or pulling changes that modify its saved project. Restart the launcher after code updates (or the kernel in notebook mode).
+- Close the app/notebook and stop its launcher before switching branches or pulling updates. Restart the launcher after code updates (or the kernel in notebook mode).
 
 ## Checks without research plots
 

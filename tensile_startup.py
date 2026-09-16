@@ -91,6 +91,9 @@ class WorkbenchLauncher:
         self.save_button = w.Button(description='Save folders and open', button_style='primary',
                                     layout=w.Layout(width='190px'))
         self.defaults_button = w.Button(description='Use ./data and ./output', layout=w.Layout(width='210px'))
+        self.demo_button = w.Button(description='Try demo data', layout=w.Layout(width='150px'),
+                                    tooltip='Open three small, completely synthetic sample groups')
+        self.demo_button.disabled = not (self.root / 'examples' / 'data').is_dir()
         self.message = w.HTML()
         self.locations = w.HTML()
         self.body = w.VBox()
@@ -100,7 +103,9 @@ class WorkbenchLauncher:
                    '<code>' + escape(str(self.root)) + '</code>, not the terminal\'s current folder. '
                    'Saving creates missing folders; it never moves or copies data files.</p>'),
             *self.fields.values(),
-            w.HBox([self.save_button, self.defaults_button], layout=w.Layout(flex_flow='row wrap')),
+            w.HBox([self.save_button, self.defaults_button, self.demo_button], layout=w.Layout(flex_flow='row wrap')),
+            w.HTML('<small>Try demo data uses the bundled synthetic examples. '
+                   'It preserves your output-folder choice and any saved graphs.</small>'),
             self.locations, self.message,
         ])
         self.folders = w.Accordion(children=[content], selected_index=0)
@@ -108,6 +113,7 @@ class WorkbenchLauncher:
         self.ui = w.VBox([self.folders, self.body], layout=w.Layout(width='100%'))
         self.save_button.on_click(self._save)
         self.defaults_button.on_click(self._defaults)
+        self.demo_button.on_click(self._demo)
         for field in self.fields.values():
             field.observe(self._preview, names='value')
         self._preview()
@@ -138,6 +144,13 @@ class WorkbenchLauncher:
         for key, value in DEFAULT_FOLDERS.items():
             self.fields[key].value = value
         self.message.value = 'Defaults selected. Save folders to apply them.'
+
+    def _demo(self, _=None):
+        if not (self.root / 'examples' / 'data').is_dir():
+            self.message.value = 'Demo data is unavailable. Download the complete repository to include examples.'
+            return
+        self.fields['data_directory'].value = './examples/data'
+        self._save()
 
     def _open(self, paths, save_values=None):
         factory = self.factory
