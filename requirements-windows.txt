@@ -1,0 +1,11 @@
+# Direct application dependencies pinned to the working v17 environment.
+# pip selects their Windows-specific transitive dependencies at setup time.
+numpy==2.5.3
+pandas==3.0.5
+matplotlib==3.11.2
+openpyxl==3.1.5
+ipywidgets==8.1.9
+jupyterlab==4.6.3
+ipykernel==7.3.0
+plotly==6.9.0
+anywidget==0.11.0

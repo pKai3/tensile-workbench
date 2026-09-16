@@ -1,0 +1,40 @@
+# Research data and generated results (including local directory symlinks).
+/data
+/output
+/outputs
+/archive
+/share
+*.csv
+*.xlsx
+*.xls
+*.tens
+*.is_tens
+*.id_tens
+*.pdf
+*.zip
+
+# Python/Jupyter environments and generated state.
+.venv*
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+*.project.previous.json
+*.project.lock
+.*.tmp
+
+# Machine-specific files and credentials.
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+

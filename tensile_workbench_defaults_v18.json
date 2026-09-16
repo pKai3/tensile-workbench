@@ -1,0 +1,561 @@
+{
+  "schema_version": 1,
+  "revision": 110,
+  "data_directory": "data",
+  "output_directory": "output/interactive_v18",
+  "display_names": {
+    "B14": "B14: 15.0 % CO2 in Ar / Air Atm. / G9",
+    "B13": "B13: 12.5 % CO2 in Ar / Air Atm. / G9",
+    "B12": "B12: 10.0 % CO2 in Ar / Air Atm. / G9",
+    "B11": "B11: 7.5 % CO2 in Ar / Air Atm. / G9",
+    "B10": "B10: 5.0 % CO2 in Ar / Air Atm. / G9",
+    "B09-STA": "B09-STA: G9 Solution Treated + Aged (ST + 500 \u00b0C, 2 h, AC)",
+    "B09-ST": "B09-ST:  G9 Solution Treated (870 \u00b0C, 30 min, WQ)",
+    "B09-SR": "B09-SR:  G9 Stress Relieved (500 \u00b0C, 2 h, AC)",
+    "B09-AB": "B09-AB:  G9 As Built",
+    "B007": "B07: 12.5 % CO2 in Ar / Air Atm.",
+    "B006": "B06: 10.0 % CO2 in Ar / Air Atm.",
+    "B005-2": "B05: 7.5  % CO2 in Ar / Air Atm.",
+    "B005": "B05: 7.5  % CO2 in Ar / Air Atm.",
+    "B004": "B04: 5.0  % CO2 in Ar / Air Atm.",
+    "B003": "B03: 0.0  % CO2 in Ar / Air Atm.",
+    "B002": "B02: 0.0  % CO2 in Ar / Ar  Atm."
+  },
+  "selected_graph": "be67f81b34fd56b4a7d42f7d3e2bef42",
+  "graphs": [
+    {
+      "id": "852ba75322e553c8a8f867573454293a",
+      "name": "graph_1_B02_to_B07",
+      "settings": {
+        "groups": [
+          "B002",
+          "B003",
+          "B004",
+          "B005-2",
+          "B006",
+          "B007"
+        ],
+        "show_individuals": false,
+        "show_both_versions": false,
+        "landmark_error_bars": true,
+        "live_update": true,
+        "export_tables": true,
+        "columns": 0,
+        "plot_width": 680,
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115.0,
+        "min_plastic_strain": 0.2,
+        "despike_window": 0.3,
+        "despike_sigma": 4.0,
+        "median_window": 0.3,
+        "smooth_window": 0.75,
+        "tail_window": 3.0,
+        "tail_setback": 0.3,
+        "respect_modulus_overrides": true,
+        "despike": false,
+        "median": false,
+        "smooth": true,
+        "tail_enabled": true,
+        "poly_order": 2,
+        "families": [
+          "work_hardening_landmark",
+          "work_hardening",
+          "landmark",
+          "representative"
+        ],
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          1.0,
+          10.0
+        ],
+        "wh_ylim": [
+          0.0,
+          4500.0
+        ],
+        "renderer": "static"
+      },
+      "definition": {
+        "name": "graph_1_B02_to_B07",
+        "tensile_mean_tail": {
+          "adaptive_fit": true,
+          "fracture_slope_fraction": 0.1,
+          "setback_percent": 0.3
+        },
+        "youngs_modulus_mpa": 115000,
+        "titles": {
+          "tensile_comparison": "Mean-curve comparison: CP-Ti across shielding and CO\u2082 conditions",
+          "work_hardening_landmark": "Landmark-derived CP-Ti work hardening across shielding and CO\u2082 conditions",
+          "tensile_landmark_aligned": "Landmark-aligned CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "tensile_with_individuals": "CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "tensile_averages_only": "Mean CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "tensile_representative": "Representative CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "work_hardening_with_individuals": "CP-Ti work-hardening response across shielding and CO\u2082 conditions",
+          "work_hardening_averages_only": "Mean CP-Ti work-hardening response across shielding and CO\u2082 conditions"
+        },
+        "imported_from": {
+          "source": "archive/legacy_pre_v16_20260914_162154_0b8ad3/plot_tensile_v15.py",
+          "was_commented_out": true,
+          "ranges": [
+            [
+              2,
+              7
+            ]
+          ],
+          "groups": [],
+          "source_sha256": "af4381cac51d94e5a9db9edc0b0c65504fd31db4462464ce04a6c319f346adfb"
+        },
+        "workbench_titles": {
+          "work_hardening_landmark": "Landmark-derived CP-Ti work hardening across shielding and CO\u2082 conditions",
+          "work_hardening": "Mean CP-Ti work-hardening response across shielding and CO\u2082 conditions",
+          "work_hardening_comparison": "",
+          "landmark": "Landmark-aligned CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "pointwise": "Mean CP-Ti tensile response across shielding and CO\u2082 conditions",
+          "comparison": "Mean-curve comparison: CP-Ti across shielding and CO\u2082 conditions",
+          "representative": "Representative CP-Ti tensile response across shielding and CO\u2082 conditions"
+        }
+      }
+    },
+    {
+      "id": "fcceb3f628d75b06ac4d4a17947b6c06",
+      "name": "graph_2_B03_to_B07",
+      "settings": {
+        "groups": [
+          "B003",
+          "B004",
+          "B005-2",
+          "B006",
+          "B007"
+        ],
+        "show_individuals": false,
+        "landmark_error_bars": true,
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115,
+        "respect_modulus_overrides": true,
+        "min_plastic_strain": 0.2,
+        "despike": true,
+        "despike_window": 0.3,
+        "despike_sigma": 4,
+        "median": true,
+        "median_window": 0.3,
+        "smooth": true,
+        "smooth_window": 0.75,
+        "poly_order": 2,
+        "tail_enabled": true,
+        "tail_window": 3,
+        "tail_setback": 0.3,
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          1,
+          10
+        ],
+        "wh_ylim": [
+          0,
+          4500
+        ],
+        "families": [
+          "landmark",
+          "representative",
+          "work_hardening",
+          "work_hardening_landmark"
+        ],
+        "show_both_versions": false,
+        "columns": 1,
+        "live_update": true,
+        "renderer": "static"
+      },
+      "definition": {
+        "name": "graph_2_B03_to_B07",
+        "tensile_mean_tail": {
+          "adaptive_fit": true,
+          "fracture_slope_fraction": 0.1,
+          "setback_percent": 0.3
+        },
+        "youngs_modulus_mpa": 115000,
+        "titles": {
+          "tensile_comparison": "Mean-curve comparison: CP-Ti with CO\u2082 additions in air",
+          "work_hardening_landmark": "Landmark-derived CP-Ti work hardening with CO\u2082 additions in air",
+          "tensile_landmark_aligned": "Landmark-aligned CP-Ti tensile response with CO\u2082 additions in air",
+          "tensile_with_individuals": "CP-Ti tensile response with CO\u2082 additions in air",
+          "tensile_averages_only": "Mean CP-Ti tensile response with CO\u2082 additions in air",
+          "tensile_representative": "Representative CP-Ti tensile response with CO\u2082 additions in air",
+          "work_hardening_with_individuals": "CP-Ti work-hardening response with CO\u2082 additions in air",
+          "work_hardening_averages_only": "Mean CP-Ti work-hardening response with CO\u2082 additions in air"
+        },
+        "imported_from": {
+          "source": "archive/legacy_pre_v16_20260914_162154_0b8ad3/plot_tensile_v15.py",
+          "was_commented_out": true,
+          "ranges": [
+            [
+              3,
+              7
+            ]
+          ],
+          "groups": [],
+          "source_sha256": "af4381cac51d94e5a9db9edc0b0c65504fd31db4462464ce04a6c319f346adfb"
+        }
+      }
+    },
+    {
+      "id": "be67f81b34fd56b4a7d42f7d3e2bef42",
+      "name": "graph_3_B09",
+      "settings": {
+        "groups": [
+          "B09-AB",
+          "B09-SR",
+          "B09-ST",
+          "B09-STA"
+        ],
+        "show_individuals": true,
+        "show_both_versions": true,
+        "landmark_error_bars": true,
+        "live_update": true,
+        "export_tables": true,
+        "columns": 2,
+        "plot_width": 600,
+        "renderer": "plotly",
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115.0,
+        "min_plastic_strain": 0.2,
+        "despike_window": 0.3,
+        "despike_sigma": 4.0,
+        "median_window": 0.3,
+        "smooth_window": 0.75,
+        "tail_window": 3.0,
+        "tail_setback": 0.2,
+        "respect_modulus_overrides": true,
+        "despike": false,
+        "median": false,
+        "smooth": true,
+        "tail_enabled": true,
+        "poly_order": 2,
+        "families": [
+          "work_hardening_landmark",
+          "landmark",
+          "representative"
+        ],
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          0.0,
+          7.0
+        ],
+        "wh_ylim": [
+          0.0,
+          8000.0
+        ]
+      },
+      "definition": {
+        "name": "graph_3_B09",
+        "youngs_modulus_mpa": 115000,
+        "titles": {
+          "tensile_comparison": "Mean-curve comparison: heat-treated WAAM Ti-3Al-2.5V",
+          "work_hardening_landmark": "Landmark-derived work hardening of heat-treated WAAM Ti-3Al-2.5V",
+          "tensile_landmark_aligned": "Landmark-aligned tensile response of heat-treated WAAM Ti-3Al-2.5V",
+          "tensile_with_individuals": "Effect of heat treatment on WAAM Ti-3Al-2.5V tensile response",
+          "tensile_averages_only": "Mean tensile response of heat-treated WAAM Ti-3Al-2.5V",
+          "tensile_representative": "Representative tensile response of heat-treated WAAM Ti-3Al-2.5V",
+          "work_hardening_with_individuals": "Effect of heat treatment on WAAM Ti-3Al-2.5V work hardening",
+          "work_hardening_averages_only": "Mean work-hardening response of heat-treated WAAM Ti-3Al-2.5V"
+        },
+        "work_hardening_xlim": [
+          0,
+          7
+        ],
+        "work_hardening_ylim": [
+          0,
+          8000
+        ],
+        "imported_from": {
+          "source": "archive/legacy_pre_v16_20260914_162154_0b8ad3/plot_tensile_v15.py",
+          "was_commented_out": true,
+          "ranges": [
+            [
+              9,
+              9
+            ]
+          ],
+          "groups": [],
+          "source_sha256": "af4381cac51d94e5a9db9edc0b0c65504fd31db4462464ce04a6c319f346adfb"
+        },
+        "workbench_titles": {
+          "work_hardening_landmark": "Landmark-derived work hardening of heat-treated WAAM Ti-3Al-2.5V",
+          "work_hardening": "Mean work-hardening response of heat-treated WAAM Ti-3Al-2.5V",
+          "work_hardening_comparison": "",
+          "landmark": "Landmark-aligned tensile response of heat-treated WAAM Ti-3Al-2.5V",
+          "pointwise": "Mean tensile response of heat-treated WAAM Ti-3Al-2.5V",
+          "comparison": "Mean-curve comparison: heat-treated WAAM Ti-3Al-2.5V",
+          "representative": "Representative tensile response of heat-treated WAAM Ti-3Al-2.5V"
+        }
+      }
+    },
+    {
+      "id": "a13b04f08fb64bd7a0b266e6570854c0",
+      "name": "graph_4_B09-B14",
+      "settings": {
+        "groups": [
+          "B09-SR",
+          "B10",
+          "B11",
+          "B13",
+          "B14"
+        ],
+        "show_individuals": false,
+        "show_both_versions": false,
+        "landmark_error_bars": true,
+        "live_update": true,
+        "export_tables": true,
+        "columns": 2,
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115.0,
+        "min_plastic_strain": 0.2,
+        "despike_window": 0.3,
+        "despike_sigma": 4.0,
+        "median_window": 0.3,
+        "smooth_window": 0.75,
+        "tail_window": 3.0,
+        "tail_setback": 0.2,
+        "respect_modulus_overrides": true,
+        "despike": false,
+        "median": false,
+        "smooth": true,
+        "tail_enabled": true,
+        "poly_order": 2,
+        "families": [
+          "work_hardening_landmark",
+          "work_hardening",
+          "landmark",
+          "representative"
+        ],
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          0.0,
+          7.0
+        ],
+        "wh_ylim": [
+          0.0,
+          4500.0
+        ],
+        "renderer": "static"
+      },
+      "definition": {
+        "name": "graph_4_B09-B14",
+        "titles": {
+          "tensile_comparison": "Mean-curve comparison: WAAM Ti-3Al-2.5V across CO\u2082 concentrations",
+          "work_hardening_landmark": "Landmark-derived WAAM Ti-3Al-2.5V work hardening across CO\u2082 concentrations",
+          "tensile_landmark_aligned": "Landmark-aligned WAAM Ti-3Al-2.5V tensile response across CO\u2082 concentrations",
+          "tensile_with_individuals": "WAAM Ti-3Al-2.5V tensile response across CO\u2082 feed-gas concentrations",
+          "tensile_averages_only": "Mean WAAM Ti-3Al-2.5V tensile response across CO\u2082 feed-gas concentrations",
+          "tensile_representative": "Representative WAAM Ti-3Al-2.5V tensile response across CO\u2082 feed-gas concentrations",
+          "work_hardening_with_individuals": "WAAM Ti-3Al-2.5V work hardening across CO\u2082 feed-gas concentrations",
+          "work_hardening_averages_only": "Mean WAAM Ti-3Al-2.5V work hardening across CO\u2082 feed-gas concentrations"
+        },
+        "name_overrides": {
+          "B09-SR": "B09: 0.0 % CO2 in Ar / Air Atm. / G9"
+        },
+        "work_hardening_xlim": [
+          0,
+          7
+        ],
+        "work_hardening_ylim": [
+          0,
+          4500
+        ],
+        "workbench_titles": {
+          "work_hardening_landmark": "Landmark-derived WAAM Ti-3Al-2.5V work hardening across CO\u2082 concentrations",
+          "work_hardening": "Mean WAAM Ti-3Al-2.5V work hardening across CO\u2082 feed-gas concentrations",
+          "work_hardening_comparison": "",
+          "landmark": "Landmark-aligned WAAM Ti-3Al-2.5V tensile response across CO\u2082 concentrations",
+          "pointwise": "Mean WAAM Ti-3Al-2.5V tensile response across CO\u2082 feed-gas concentrations",
+          "comparison": "Mean-curve comparison: WAAM Ti-3Al-2.5V across CO\u2082 concentrations",
+          "representative": "Representative WAAM Ti-3Al-2.5V tensile response across CO\u2082 feed-gas concentrations"
+        }
+      }
+    },
+    {
+      "id": "da13e4b6fca447c78f6b04e1c8c96c9b",
+      "name": "New graph",
+      "settings": {
+        "groups": [],
+        "show_individuals": false,
+        "show_both_versions": false,
+        "landmark_error_bars": true,
+        "live_update": true,
+        "export_tables": false,
+        "columns": 1,
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115.0,
+        "min_plastic_strain": 0.2,
+        "despike_window": 0.3,
+        "despike_sigma": 4.0,
+        "median_window": 0.3,
+        "smooth_window": 0.75,
+        "tail_window": 3.0,
+        "tail_setback": 0.2,
+        "respect_modulus_overrides": true,
+        "despike": true,
+        "median": true,
+        "smooth": true,
+        "tail_enabled": true,
+        "poly_order": 2,
+        "families": [
+          "work_hardening_landmark",
+          "landmark"
+        ],
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          0.0,
+          7.0
+        ],
+        "wh_ylim": null,
+        "renderer": "static"
+      },
+      "definition": {
+        "name": "New graph",
+        "name_overrides": {},
+        "youngs_modulus_overrides": {},
+        "representative_overrides": {},
+        "titles": {},
+        "workbench_titles": {
+          "work_hardening_landmark": "",
+          "work_hardening": "",
+          "work_hardening_comparison": "",
+          "landmark": "",
+          "pointwise": "",
+          "comparison": "",
+          "representative": ""
+        }
+      }
+    },
+    {
+      "id": "d49422fb2cac4484a3f453678edd38c1",
+      "name": "andy",
+      "settings": {
+        "groups": [
+          "AndyNi2"
+        ],
+        "show_individuals": true,
+        "show_both_versions": true,
+        "landmark_error_bars": true,
+        "live_update": true,
+        "export_tables": true,
+        "columns": 2,
+        "plot_width": 640,
+        "renderer": "plotly",
+        "landmark_points": 400,
+        "pointwise_points": 600,
+        "wh_points": 800,
+        "modulus_gpa": 115.0,
+        "min_plastic_strain": 0.2,
+        "despike_window": 0.3,
+        "despike_sigma": 4.0,
+        "median_window": 0.3,
+        "smooth_window": 0.75,
+        "tail_window": 3.0,
+        "tail_setback": 0.2,
+        "respect_modulus_overrides": true,
+        "despike": true,
+        "median": true,
+        "smooth": true,
+        "tail_enabled": true,
+        "poly_order": 2,
+        "families": [
+          "work_hardening_landmark",
+          "landmark"
+        ],
+        "tensile_xlim": null,
+        "tensile_ylim": null,
+        "wh_xlim": [
+          0.0,
+          7.0
+        ],
+        "wh_ylim": null
+      },
+      "definition": {
+        "name": "andy",
+        "name_overrides": {},
+        "youngs_modulus_overrides": {},
+        "representative_overrides": {},
+        "titles": {},
+        "workbench_titles": {
+          "work_hardening_landmark": "",
+          "work_hardening": "",
+          "work_hardening_comparison": "",
+          "landmark": "",
+          "pointwise": "",
+          "comparison": "",
+          "representative": ""
+        }
+      }
+    }
+  ],
+  "new_graph_defaults": {
+    "id": "",
+    "name": "New graph",
+    "settings": {
+      "groups": [],
+      "show_individuals": false,
+      "landmark_error_bars": true,
+      "landmark_points": 400,
+      "pointwise_points": 600,
+      "wh_points": 800,
+      "modulus_gpa": 115,
+      "respect_modulus_overrides": true,
+      "min_plastic_strain": 0.2,
+      "despike": true,
+      "despike_window": 0.3,
+      "despike_sigma": 4,
+      "median": true,
+      "median_window": 0.3,
+      "smooth": true,
+      "smooth_window": 0.75,
+      "poly_order": 2,
+      "tail_enabled": true,
+      "tail_window": 3,
+      "tail_setback": 0.2,
+      "tensile_xlim": null,
+      "tensile_ylim": null,
+      "wh_xlim": [
+        0,
+        7
+      ],
+      "wh_ylim": null,
+      "families": [
+        "landmark",
+        "work_hardening_landmark"
+      ],
+      "show_both_versions": false,
+      "columns": 1,
+      "live_update": true,
+      "renderer": "static"
+    },
+    "definition": {
+      "name": "New graph",
+      "name_overrides": {},
+      "youngs_modulus_overrides": {},
+      "representative_overrides": {},
+      "titles": {}
+    }
+  },
+  "migration_note": "All prior named graph definitions, including commented-out definitions, recovered. Existing v16 graph edits and drafts preserved. Original numeric ranges were expanded to available exact groups.",
+  "saved_at": "2026-09-16T12:24:18.653062+10:00",
+  "migration": {
+    "source": "tensile_workbench_v16.project.json",
+    "source_revision": 84,
+    "source_sha256": "7818652e03adbb7d7ccc5464a0a654279b937e8f3bc6eddb7beda0e3cc277796",
+    "created": "2026-09-16T09:11:44.858729+10:00"
+  }
+}
