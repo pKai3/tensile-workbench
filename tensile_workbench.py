@@ -16,7 +16,8 @@ from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView
-from tensile_selection import is_included
+from tensile_selection import is_included, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX
+from tensile_startup import sample_data_settings, save_sample_data_visibility, resolve_folder
 import hashlib
 import io
 import json
@@ -25,6 +26,31 @@ import re
 import uuid
 
 NEW_GRAPH_ACTION = '__create_new_graph__'
+
+
+def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
+    """Upgrade only the shipped demo graph; never reinterpret personal groups."""
+    project = deepcopy(project)
+    demo_names = {'Demo_Ductile', 'Demo_Balanced', 'Demo_Strong'}
+    for graph in project['graphs']:
+        groups = graph['settings']['groups']
+        if graph['id'] != 'demo-comparison' or not groups or not set(groups) <= demo_names:
+            continue
+        if any((data_dir / group).is_dir() for group in groups) and data_dir != sample_data_dir:
+            continue  # An actual research group always keeps its own identity.
+        rename = {group: SAMPLE_GROUP_PREFIX + group for group in groups}
+        graph['settings']['groups'] = [rename[group] for group in groups]
+        for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides'):
+            if key in graph['definition']:
+                graph['definition'][key] = {rename.get(k, k): v for k, v in graph['definition'][key].items()}
+        exclusions = graph['definition'].get('specimen_exclusions')
+        if exclusions is not None:
+            graph['definition']['specimen_exclusions'] = {
+                SAMPLE_ID_PREFIX + k if k.split('/')[0] in rename else k: v for k, v in exclusions.items()}
+        for group, replacement in rename.items():
+            if group in project.get('display_names', {}):
+                project['display_names'][replacement] = project['display_names'][group]
+    return project
 
 
 def graph_menu_options(graphs):
@@ -82,6 +108,9 @@ class PreviewSession:
         validate_project(self.project)
         configured = Path(data_dir or self.project.get("data_directory", "data")).expanduser()
         self.data_dir = (configured if configured.is_absolute() else self.project_dir / configured).resolve()
+        sample_settings = sample_data_settings(self.project_dir)
+        self.sample_data_dir = resolve_folder(sample_settings['sample_data_directory'], self.project_dir)
+        self.show_sample_data = sample_settings['show_sample_data']
         self.set_project(self.project)
         self._records = {}
         self._models = OrderedDict()
@@ -93,15 +122,32 @@ class PreviewSession:
             raise FileNotFoundError(f"Tensile data directory not found: {self.data_dir}")
         # This is the existing script's scoped data-folder discovery, not a
         # search of the user's home or thesis directories.
-        self.files = self.engine.find_sample_groups(self.data_dir)
+        # Separate namespaces prevent samples ever merging with a research group
+        # of the same name. A real directory name cannot contain the '/' prefix.
+        research = self.engine.find_sample_groups(self.data_dir) if self.data_dir != self.sample_data_dir else {}
+        samples = (self.engine.find_sample_groups(self.sample_data_dir)
+                   if self.show_sample_data and self.sample_data_dir.is_dir() else {})
+        files = {**research, **{SAMPLE_GROUP_PREFIX + group: paths for group, paths in samples.items()}}
+        roots = {group: self.data_dir for group in research}
+        roots.update({SAMPLE_GROUP_PREFIX + group: self.sample_data_dir for group in samples})
+        directories = {group: self.data_dir / group for group in research}
+        directories.update({SAMPLE_GROUP_PREFIX + group: self.sample_data_dir / group for group in samples})
+        self.files, self.source_roots = files, roots
         self._records.clear()
         self._models.clear()
         self._previews.clear()
         self._property_frames = {}
-        self.instron = InstronSummaries(self.data_dir)
+        self.instron = InstronSummaries(self.data_dir, directories)
         import itertools
         palette = itertools.cycle(self.engine.plt.rcParams["axes.prop_cycle"].by_key()["color"])
-        self.colors = {g: next(palette) for g in sorted(self.files)}
+        # Adding sample groups must not change the colours of research groups.
+        self.colors = {g: next(palette) for g in [*sorted(research), *sorted(set(files) - set(research))]}
+
+    def hidden_sample_group(self, group):
+        return group.startswith(SAMPLE_GROUP_PREFIX) and not self.show_sample_data
+
+    def visible_groups(self, groups):
+        return [group for group in groups if not self.hidden_sample_group(group)]
 
     def set_project(self, project):
         self.project = deepcopy(project)
@@ -135,7 +181,8 @@ class PreviewSession:
                 strain, stress = result
                 records.append({
                     "sample": source.stem, "source_file": str(source),
-                    "specimen_id": source.relative_to(self.data_dir).as_posix(),
+                    "specimen_id": ((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
+                                    + source.relative_to(self.source_roots[group]).as_posix()),
                     "strain_pct": strain, "stress_mpa": stress,
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
                     "failure_elongation_pct": self.engine.failure_elongation_percent(strain),
@@ -148,7 +195,7 @@ class PreviewSession:
 
     def included_records(self, groups, spec):
         """The single selection gate for every plot family and average export."""
-        return {group: selected for group in groups
+        return {group: selected for group in self.visible_groups(groups)
                 if (selected := [row for row in self._load(group) if is_included(row, spec)])}
 
     def property_tables(self, state, spec):
@@ -156,7 +203,7 @@ class PreviewSession:
         key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
                           spec.get('specimen_exclusions', {})], sort_keys=True)
         if key not in self._property_frames:
-            records = {group: self._load(group) for group in state['groups']}
+            records = {group: self._load(group) for group in self.visible_groups(state['groups'])}
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron)
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
@@ -446,6 +493,10 @@ class TensileWorkbench:
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
                                   self.project_dir / "tensile_workbench_defaults.json")
         self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
+        upgraded = upgrade_legacy_demo_graph(self.store.data, self.session.data_dir, self.session.sample_data_dir)
+        if upgraded != self.store.data:
+            self.store.save(upgraded)
+            self.session.set_project(self.store.data)
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
         self._pending_delete = None
@@ -466,6 +517,12 @@ class TensileWorkbench:
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
+        self.sample_data_toggle = w.Checkbox(value=self.session.show_sample_data, description='Show sample data',
+            indent=False, tooltip='Show or hide bundled synthetic groups alongside your own data',
+            layout=w.Layout(width='auto'))
+        self.sample_data_note = w.HTML()
+        self.group_picker.ui.children = (self.group_picker.ui.children[0],
+            self._row([self.sample_data_toggle, self.sample_data_note]), *self.group_picker.ui.children[1:])
         self.family_boxes = {family: w.Checkbox(description=label, indent=False, layout=w.Layout(width="auto")) for label, family in FAMILIES}
         self._check("show_individuals", "Show individual specimens")
         self._check("show_both_versions", "Display both with/without-individuals versions")
@@ -599,6 +656,7 @@ class TensileWorkbench:
         ], layout=w.Layout(width="100%"))
         self._refresh_graph_options()
         self._apply_graph(self.store.data["selected_graph"])
+        self.sample_data_toggle.observe(self._sample_data_changed, names='value')
         self.graph.observe(self._graph_changed, names="value")
         self.name.observe(self._changed, names="value")
         for key, widget in self.controls.items():
@@ -682,12 +740,16 @@ class TensileWorkbench:
             state = graph["settings"]
             self.name.value = graph["name"]
             # Preserve missing groups rather than silently dropping them on save.
-            choices = sorted(set(self.session.files) | set(state["groups"]))
-            self.controls["groups"].options = [(g if g in self.session.files else g + " (unavailable)", g) for g in choices]
+            choices = sorted(set(self.session.files) | set(self.session.visible_groups(state["groups"])))
+            def group_label(group):
+                label = (group[len(SAMPLE_GROUP_PREFIX):].removeprefix('Demo_') + ' (sample)'
+                         if group.startswith(SAMPLE_GROUP_PREFIX) else group)
+                return label if group in self.session.files else label + ' (unavailable)'
+            self.controls["groups"].options = [(group_label(g), g) for g in choices]
             for key, control in self.controls.items():
                 value = state.get(key, {"export_tables": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS}.get(key, control.value))
                 if key == "groups":
-                    value = tuple(value)
+                    value = tuple(self.session.visible_groups(value))
                 if isinstance(control, (self.w.IntSlider, self.w.FloatSlider)):
                     control.min = min(control.min, value)
                     control.max = max(control.max, value)
@@ -702,7 +764,8 @@ class TensileWorkbench:
             title_keys = {"landmark": "tensile_landmark_aligned", "pointwise": "tensile_averages_only", "comparison": "tensile_comparison", "representative": "tensile_representative", "work_hardening": "work_hardening_averages_only", "work_hardening_landmark": "work_hardening_landmark"}
             for family, control in self.title_inputs.items():
                 control.value = graph["definition"].get("workbench_titles", {}).get(family, legacy.get(title_keys.get(family), ""))
-            self.override_group.options = state["groups"]
+            self.override_group.options = self.session.visible_groups(state["groups"])
+            self._sample_data_note()
             self._load_overrides()
             self._sync_disabled()
             self._results, self._signature = [], None
@@ -735,7 +798,17 @@ class TensileWorkbench:
             project = deepcopy(self.store.data)
             graph = project["graphs"][self._index()]
             graph["name"] = self.name.value.strip()
-            graph["settings"] = state
+            # Hiding samples is not a graph edit. Keep their previous selections
+            # while saving changes to the visible research groups/settings.
+            hidden = [g for g in graph['settings']['groups'] if self.session.hidden_sample_group(g)]
+            if hidden:
+                previous_order = graph['settings']['groups']
+                selected = set(state['groups']) | set(hidden)
+                groups = [g for g in previous_order if g in selected]
+                groups += [g for g in state['groups'] if g not in groups]
+                graph["settings"] = {**state, 'groups': groups}
+            else:
+                graph["settings"] = state
             graph["definition"]["name"] = graph["name"]
             graph["definition"]["workbench_titles"] = {family: field.value.strip() for family, field in self.title_inputs.items()}
             project["selected_graph"] = graph["id"]
@@ -1002,6 +1075,51 @@ class TensileWorkbench:
             self.update(save=False)
         except Exception as error:
             self.status.value = "<b>Data reload failed:</b> " + escape(str(error))
+
+    def _sample_data_note(self):
+        if not self.session.sample_data_dir.is_dir():
+            message = 'Bundled samples unavailable; your own data is unaffected.'
+        elif not self.session.show_sample_data:
+            message = 'Synthetic samples hidden; saved selections are retained.'
+        else:
+            message = 'Synthetic examples only—not experimental measurements.'
+        self.sample_data_note.value = '<small>' + escape(message) + '</small>'
+
+    def _sample_data_changed(self, change):
+        if self._paused:
+            return
+        previous = self.session.show_sample_data
+        self.sample_data_toggle.disabled = True
+        try:
+            if not self.save_current():
+                raise RuntimeError('Resolve the graph-save warning before changing sample visibility.')
+            self.session.show_sample_data = change['new']
+            self.session.reload_data()
+            save_sample_data_visibility(self.project_dir, change['new'])
+        except Exception as error:
+            self.session.show_sample_data = previous
+            try:
+                self.session.reload_data()
+            except Exception:
+                # The primary folder may have gone offline. Keep the preference
+                # and report the original failure instead of a second UI error.
+                self._results, self._signature = [], None
+                self.export_button.disabled = True
+            old, self._paused = self._paused, True
+            try:
+                self.sample_data_toggle.value = previous
+            finally:
+                self._paused = old
+            self.status.value = '<b>Sample visibility not changed:</b> ' + escape(str(error))
+        else:
+            self._apply_graph(self.graph.value)
+            self._refresh_properties()
+            if self.controls['live_update'].value:
+                self.update(save=False)
+            else:
+                self.status.value = 'Sample visibility saved. Click Update plots when ready.'
+        finally:
+            self.sample_data_toggle.disabled = False
 
     def _current_signature(self):
         graph = deepcopy(self._current())

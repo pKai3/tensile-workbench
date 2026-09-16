@@ -9,7 +9,7 @@
 
 The current graph definitions live in ignored `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Generic defaults and three synthetic example groups are bundled, but no research data or generated outputs. Personal definitions are not uploaded: back them up or share them separately if desired. Existing environments can be reused. Use Git commits and tags for code history, not version suffixes on filenames.
 
-For a first look, click **Try demo data** in the folder form. The starter **Demo comparison** graph uses three completely invented sample groups with three specimens each. Defaults for your own folders remain `./data` and `./output`; the demo button selects `./examples/data` explicitly. Existing saved graphs are preserved, so existing users should create a new graph and tick the `Demo_*` groups to explore them. See [examples](examples/README.md) for provenance and scope.
+Use **Show sample data** beside the sample-group selector. It adds **Ductile (sample)**, **Balanced (sample)** and **Strong (sample)** alongside your own groups, without changing either folder path. The toggle is remembered for this installation. Unticking it hides samples from the selector and excludes them from tables and plots; their saved graph selections and specimen exclusions remain intact and return when re-enabled. Fresh installations show samples by default and include a **Demo comparison** graph. Existing users can create a graph and tick the three sample groups. See [examples](examples/README.md) for provenance and scope.
 
 ## Choosing graphs
 
@@ -36,7 +36,7 @@ The **Include** checkbox is saved **per graph**. It controls group statistics, I
 
 Unchecked specimens remain in the per-specimen/diagnostic exports, with `Included`, `Specimen ID` and `Exclusion Reason` columns; they never contribute to averages. Searching/sorting is display-only and does not change these choices. With live preview off, changing Include clears the old plots and requires **Update plots**, so an old population cannot be mistaken for the new one. With live preview on, plots update automatically. Tables update independently of plot selection.
 
-Exclusions use file paths relative to the data folder, not absolute machine paths or B-number names. They survive moving the entire data folder to another computer. Renaming/moving individual CSVs within it changes their identity; review selections after reorganising source files. Missing-file exclusions remain saved in case those files return. Unticking Include does not rename or modify any source file.
+Research exclusions use file paths relative to the data folder, not absolute machine paths or B-number names. Bundled samples use a separate `sample-data://` identity so they cannot collide with real specimens having the same names. Both survive moving their source folder to another computer. Renaming/moving individual CSVs within it changes their identity; review selections after reorganising source files. Missing-file exclusions remain saved in case those files return. Unticking Include does not rename or modify any source file.
 
 ### Calculations
 

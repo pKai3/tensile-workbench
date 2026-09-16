@@ -102,8 +102,9 @@ def _export_identity(source):
 
 
 class InstronSummaries:
-    def __init__(self, data_directory):
+    def __init__(self, data_directory, group_directories=None):
         self.root = Path(data_directory)
+        self.group_directories = group_directories or {}
         self._csv = {}
         self._groups = {}
 
@@ -122,7 +123,8 @@ class InstronSummaries:
             method = 'Embedded CSV summary'
         else:
             if group not in self._groups:
-                self._groups[group] = [(path, self.read(path)) for path in csv_files(self.root / group)
+                directory = self.group_directories.get(group, self.root / group)
+                self._groups[group] = [(path, self.read(path)) for path in csv_files(directory)
                                        if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
             candidates = []
             if dataset is not None and index is not None:

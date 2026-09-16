@@ -7,6 +7,30 @@ import tempfile
 
 SETTINGS_NAME = '.tensile-paths.json'
 DEFAULT_FOLDERS = {'data_directory': './data', 'output_directory': './output'}
+DEFAULT_SAMPLE_DATA = {'sample_data_directory': './examples/data', 'show_sample_data': True}
+
+
+def local_settings(root):
+    path = Path(root) / SETTINGS_NAME
+    if not path.exists():
+        return {}
+    document = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(document, dict) or document.get('schema_version') != 1:
+        raise ValueError('Unrecognised folder-settings version.')
+    return document
+
+
+def sample_data_settings(root):
+    try:
+        settings = {**DEFAULT_SAMPLE_DATA, **local_settings(root)}
+    except (ValueError, TypeError):
+        # Explicit folder confirmation must still be able to repair this file.
+        settings = dict(DEFAULT_SAMPLE_DATA)
+    if not isinstance(settings['show_sample_data'], bool):
+        settings['show_sample_data'] = DEFAULT_SAMPLE_DATA['show_sample_data']
+    if not isinstance(settings['sample_data_directory'], str) or not settings['sample_data_directory'].strip():
+        settings['sample_data_directory'] = DEFAULT_SAMPLE_DATA['sample_data_directory']
+    return {key: settings[key] for key in DEFAULT_SAMPLE_DATA}
 
 
 def resolve_folder(value, root):
@@ -44,8 +68,25 @@ def validate_folders(values, root, create=False):
 
 
 def save_folders(root, values):
+    # Preserve the hidden sample source and its visibility when changing folders.
+    try:
+        existing = local_settings(root)
+    except (ValueError, TypeError):
+        existing = {}  # Explicit folder confirmation can repair invalid settings.
+    content = {**DEFAULT_SAMPLE_DATA, **existing, 'schema_version': 1,
+               **{key: str(values[key]).strip() for key in DEFAULT_FOLDERS}}
+    _save_local_settings(root, content)
+
+
+def save_sample_data_visibility(root, visible):
+    """Update only the sample preference; never replace chosen folder paths."""
+    content = {**DEFAULT_FOLDERS, **DEFAULT_SAMPLE_DATA, **local_settings(root),
+               'schema_version': 1, 'show_sample_data': bool(visible)}
+    _save_local_settings(root, content)
+
+
+def _save_local_settings(root, content):
     root = Path(root)
-    content = {'schema_version': 1, **{key: str(values[key]).strip() for key in DEFAULT_FOLDERS}}
     handle, temporary = tempfile.mkstemp(prefix='.tensile-paths-', suffix='.tmp', dir=root)
     try:
         with os.fdopen(handle, 'w', encoding='utf-8') as stream:
@@ -91,9 +132,6 @@ class WorkbenchLauncher:
         self.save_button = w.Button(description='Save folders and open', button_style='primary',
                                     layout=w.Layout(width='190px'))
         self.defaults_button = w.Button(description='Use ./data and ./output', layout=w.Layout(width='210px'))
-        self.demo_button = w.Button(description='Try demo data', layout=w.Layout(width='150px'),
-                                    tooltip='Open three small, completely synthetic sample groups')
-        self.demo_button.disabled = not (self.root / 'examples' / 'data').is_dir()
         self.message = w.HTML()
         self.locations = w.HTML()
         self.body = w.VBox()
@@ -103,9 +141,9 @@ class WorkbenchLauncher:
                    '<code>' + escape(str(self.root)) + '</code>, not the terminal\'s current folder. '
                    'Saving creates missing folders; it never moves or copies data files.</p>'),
             *self.fields.values(),
-            w.HBox([self.save_button, self.defaults_button, self.demo_button], layout=w.Layout(flex_flow='row wrap')),
-            w.HTML('<small>Try demo data uses the bundled synthetic examples. '
-                   'It preserves your output-folder choice and any saved graphs.</small>'),
+            w.HBox([self.save_button, self.defaults_button], layout=w.Layout(flex_flow='row wrap')),
+            w.HTML('<small>Bundled sample data is available separately. Use Show sample data '
+                   'beside the sample-group selector; your data-folder path stays unchanged.</small>'),
             self.locations, self.message,
         ])
         self.folders = w.Accordion(children=[content], selected_index=0)
@@ -113,7 +151,6 @@ class WorkbenchLauncher:
         self.ui = w.VBox([self.folders, self.body], layout=w.Layout(width='100%'))
         self.save_button.on_click(self._save)
         self.defaults_button.on_click(self._defaults)
-        self.demo_button.on_click(self._demo)
         for field in self.fields.values():
             field.observe(self._preview, names='value')
         self._preview()
@@ -144,13 +181,6 @@ class WorkbenchLauncher:
         for key, value in DEFAULT_FOLDERS.items():
             self.fields[key].value = value
         self.message.value = 'Defaults selected. Save folders to apply them.'
-
-    def _demo(self, _=None):
-        if not (self.root / 'examples' / 'data').is_dir():
-            self.message.value = 'Demo data is unavailable. Download the complete repository to include examples.'
-            return
-        self.fields['data_directory'].value = './examples/data'
-        self._save()
 
     def _open(self, paths, save_values=None):
         factory = self.factory

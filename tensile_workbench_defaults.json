@@ -4,9 +4,9 @@
   "data_directory": "./data",
   "output_directory": "./output",
   "display_names": {
-    "Demo_Ductile": "Demo · ductile",
-    "Demo_Balanced": "Demo · balanced",
-    "Demo_Strong": "Demo · strong"
+    "Sample data / Demo_Ductile": "Demo · ductile",
+    "Sample data / Demo_Balanced": "Demo · balanced",
+    "Sample data / Demo_Strong": "Demo · strong"
   },
   "selected_graph": "demo-comparison",
   "graphs": [
@@ -15,9 +15,9 @@
       "name": "Demo comparison",
       "settings": {
         "groups": [
-          "Demo_Ductile",
-          "Demo_Balanced",
-          "Demo_Strong"
+          "Sample data / Demo_Ductile",
+          "Sample data / Demo_Balanced",
+          "Sample data / Demo_Strong"
         ],
         "show_individuals": true,
         "landmark_error_bars": true,
@@ -61,16 +61,16 @@
         "name": "Demo comparison",
         "name_overrides": {},
         "youngs_modulus_overrides": {
-          "Demo_Ductile": 70000,
-          "Demo_Balanced": 100000,
-          "Demo_Strong": 120000
+          "Sample data / Demo_Ductile": 70000,
+          "Sample data / Demo_Balanced": 100000,
+          "Sample data / Demo_Strong": 120000
         },
         "representative_overrides": {},
         "titles": {},
         "color_overrides": {
-          "Demo_Ductile": "#1f77b4",
-          "Demo_Balanced": "#2ca02c",
-          "Demo_Strong": "#d95f02"
+          "Sample data / Demo_Ductile": "#1f77b4",
+          "Sample data / Demo_Balanced": "#2ca02c",
+          "Sample data / Demo_Strong": "#d95f02"
         },
         "workbench_titles": {
           "representative": "Synthetic demo · representative tensile curves"

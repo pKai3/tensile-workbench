@@ -2,6 +2,9 @@
 import os
 from pathlib import Path, PurePosixPath
 
+SAMPLE_GROUP_PREFIX = 'Sample data / '
+SAMPLE_ID_PREFIX = 'sample-data://'
+
 
 def csv_files(root):
     """Do not enter marked folders or read CSVs containing ! anywhere in a name."""
@@ -17,7 +20,9 @@ def csv_files(root):
 
 
 def valid_specimen_id(value):
-    """IDs are data-root-relative POSIX paths, identical on Windows and Mac."""
+    """Research IDs remain relative paths; bundled IDs have a separate namespace."""
+    if isinstance(value, str) and value.startswith(SAMPLE_ID_PREFIX):
+        value = value[len(SAMPLE_ID_PREFIX):]
     return (isinstance(value, str) and bool(value) and '\\' not in value
             and not PurePosixPath(value).is_absolute()
             and all(part not in ('', '.', '..') for part in value.split('/')))
