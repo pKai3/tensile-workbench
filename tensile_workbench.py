@@ -20,7 +20,22 @@ import hashlib
 import io
 import json
 import platform
+import re
 import uuid
+
+NEW_GRAPH_ACTION = '__create_new_graph__'
+
+
+def graph_menu_options(graphs):
+    """Keep saved order, distinguish unnamed drafts, and put creation last."""
+    named, drafts = [], []
+    for graph in graphs:
+        match = re.fullmatch(r'New graph( \d+)?', graph['name'], re.IGNORECASE)
+        if match and not graph['settings'].get('groups'):
+            drafts.append(('Untitled graph' + (match.group(1) or '') + ' (draft)', graph['id']))
+        else:
+            named.append((graph['name'], graph['id']))
+    return named + drafts + [('＋ Create new graph…', NEW_GRAPH_ACTION)]
 
 
 FAMILIES = [
@@ -393,17 +408,17 @@ class TensileWorkbench:
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
         self.controls, self.axes, self.title_inputs = {}, {}, {}
-        self.graph = w.Dropdown(description="Edit graph:", layout=w.Layout(width="98%"))
+        self.graph = w.Dropdown(description="Graph:", layout=w.Layout(width="98%"))
         self.name = w.Text(description="Name:", continuous_update=False, layout=w.Layout(width="98%"))
         self.new_button = w.Button(description="New graph")
         self.duplicate_button = w.Button(description="Duplicate graph")
-        self.saved_button = w.Button(description="Reload saved definitions")
+        self.saved_button = w.Button(description="Reload saved graphs", layout=w.Layout(width='auto'))
         self.save_status = w.HTML()
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
-        self.range_from = w.BoundedIntText(value=2, min=0, max=9999, description="From B:")
-        self.range_to = w.BoundedIntText(value=7, min=0, max=9999, description="To B:")
+        self.range_from = w.BoundedIntText(value=2, min=0, max=9999, description="From:")
+        self.range_to = w.BoundedIntText(value=7, min=0, max=9999, description="To:")
         self.range_button = w.Button(description="Add this range")
         self.family_boxes = {family: w.Checkbox(description=label, indent=False, layout=w.Layout(width="auto")) for label, family in FAMILIES}
         self._check("show_individuals", "Show individual specimens")
@@ -467,6 +482,10 @@ class TensileWorkbench:
         self.tables = PropertyTablesView(w)
         self.tables_update_button = w.Button(description='Update tables')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
+        self.properties_panel = w.Accordion(children=[w.VBox([
+            self.tables.ui, self._row([self.tables_update_button, self.table_export_button])
+        ])], selected_index=None, layout=w.Layout(width='100%'))
+        self.properties_panel.set_title(0, 'Specimen properties · tables and Instron comparison')
         general = w.Accordion(children=[w.VBox([self.override_group, self.override_name,
                              self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
         general.set_title(0, "Labels and colours · this graph, all plot types")
@@ -509,12 +528,12 @@ class TensileWorkbench:
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.ui = w.VBox([
-            w.HTML("<h2>Tensile workbench</h2><p>Standalone analysis workspace. Graph definitions autosave; plots and tables export only when requested.</p>"),
-            self.graph, self._row([self.new_button, self.duplicate_button, self.saved_button]), self.name,
+            w.HTML("<h2>Analysis workspace</h2><p>Choose a graph and its sample groups. Changes save automatically; export when you are ready.</p>"),
+            self.graph, self._row([self.duplicate_button, self.saved_button]), self.name,
             self.save_status, self.group_picker.ui,
             w.HTML("Tick the exact groups to include. The range helper adds all currently available matching groups."),
             self._row([self.range_from, self.range_to, self.range_button]), general,
-            self.tables.ui, self._row([self.tables_update_button, self.table_export_button]),
+            self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
             self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
             w.HTML("Choose plots below. Each selector has its own settings. Shared averaging parameters and axis ranges stay linked between related plots."),
@@ -574,11 +593,16 @@ class TensileWorkbench:
         return self.store.data["graphs"][self._index()]
 
     def _refresh_graph_options(self):
-        self.graph.options = [(g["name"], g["id"]) for g in self.store.data["graphs"]]
-        self.graph.value = self.store.data["selected_graph"]
+        old, self._paused = self._paused, True
+        try:
+            self.graph.options = graph_menu_options(self.store.data['graphs'])
+            self.graph.value = self.store.data['selected_graph']
+        finally:
+            self._paused = old
 
     def _show_saved(self):
-        self.save_status.value = "Autosaved definitions · revision " + str(self.store.data["revision"]) + " · <code>" + escape(self.store.path.name) + "</code>"
+        detail = 'Revision ' + str(self.store.data['revision']) + ' · ' + self.store.path.name
+        self.save_status.value = '<span title="' + escape(detail, quote=True) + '">✓ Changes saved automatically</span>'
 
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
@@ -701,6 +725,15 @@ class TensileWorkbench:
 
     def _graph_changed(self, change):
         if self._paused:
+            return
+        if change['new'] == NEW_GRAPH_ACTION:
+            # Restore a real graph before save_current/_index reads the selector.
+            old, self._paused = self._paused, True
+            try:
+                self.graph.value = change['old']
+            finally:
+                self._paused = old
+            self.new_graph()
             return
         try:
             project = deepcopy(self.store.data)

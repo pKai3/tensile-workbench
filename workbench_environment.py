@@ -22,7 +22,7 @@ def check_project_files(root):
                 'tensile_plot_view.py', 'tensile_plotly.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_tables.py', 'tensile_startup.py',
                 'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
-                'workbench_environment.py', 'tensile_workbench_defaults.json', 'requirements.txt')
+                'workbench_environment.py', 'workbench_app.py', 'tensile_workbench_defaults.json', 'requirements.txt')
     unavailable = []
     for name in required:
         try:
@@ -128,7 +128,7 @@ if sys.prefix == sys.base_prefix or Path(sys.prefix).resolve() != Path(sys.argv[
 CHECK = RUNTIME_CHECK + r'''
 import importlib, importlib.metadata, json
 for module in ('numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets',
-               'jupyterlab', 'ipykernel', 'plotly', 'anywidget'):
+               'jupyterlab', 'voila', 'ipykernel', 'plotly', 'anywidget'):
     importlib.import_module(module)
 from packaging.requirements import Requirement
 for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines():
@@ -215,7 +215,7 @@ def main(argv=None, root=None):
     env = child_environment(folder)
     verify(python, root, env)
     if action == 'launch':
-        print('Choose Run > Run All Cells. Leave this window open; Ctrl-C stops the server.', flush=True)
+        print('The web app opens automatically. Leave this window open; Ctrl-C stops the server.', flush=True)
         run([python, root / 'launch_workbench.py'], root, env)
     return 0
 

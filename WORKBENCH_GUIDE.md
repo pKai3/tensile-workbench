@@ -2,16 +2,20 @@
 
 ## Open or update the workbench
 
-1. Clone the repository, or save/close the notebook and pull an update into an existing checkout. Review and commit your saved graph-definition edits before pulling.
+1. Clone the repository, or close the app and stop its launcher before pulling an update into an existing checkout. Review and commit your saved graph-definition edits before pulling.
 2. First-time users: run **Setup_Tensile_Workbench.bat** (Windows) or **Setup_Tensile_Workbench.command** (Mac). Then open **Launch_Tensile_Workbench.bat** or **Launch_Tensile_Workbench.command**. Existing users can launch directly; rerun Setup only when dependencies need installing/updating. See [setup instructions](SETUP.md).
-3. In **tensile_workbench.ipynb** choose **Run > Run All Cells**.
+3. The web app opens in your browser and starts automatically. No notebook or kernel commands are needed. Existing users upgrading from notebook-only mode should run Setup once to add Voilà.
 4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 
 The current graph definitions live in `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Git contains no raw data or generated outputs. Existing environments can be reused. Use Git commits and tags for history, not version suffixes on filenames.
 
+## Choosing graphs
+
+The Graph selector lists named graphs first, then unnamed drafts. **＋ Create new graph…** is always the last option; choose it, give the graph a name, then select sample groups and plot views. Existing unnamed `New graph` entries are displayed as **Untitled graph (draft)**, without deleting or renaming their saved definitions. **Duplicate graph** starts from the current graph's settings. Changes save automatically; hover over the saved-status message for revision/file details.
+
 ## Property tables
 
-The tables appear above the plot controls and work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
+Expand **Specimen properties · tables and Instron comparison** above the plot controls to see the tables and their update/export buttons. This section starts collapsed and can be folded away without clearing or recalculating its data. The tables work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
 
 - **Summary:** mean, sample standard deviation, valid n, minimum and maximum for each property. These are statistics of individual specimens, not properties measured from the average curve. Instron statistics use the same selected specimens where summary values are available; valid counts can differ.
 - **Specimens:** 0.2% offset YS, UTS, uniform elongation, terminal failure elongation, tensile toughness, fitted elastic modulus, elastic-fit R² and calculation notes.
@@ -39,6 +43,10 @@ Conflicting values across summary revisions are left unavailable and flagged. An
 ## Per-graph colours
 
 Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to all static and Plotly views and exported plots. Different graph definitions can use different colours for the same group.
+
+## Advanced notebook mode
+
+The normal Launch files open the web app. For the original JupyterLab editor, run `launch_workbench.py --notebook` with the workbench environment's Python, then use **Run > Run All Cells**. This remains optional; both interfaces share calculations and saved definitions. Avoid simultaneous editing sessions for the same project.
 
 ## History and the original installation
 

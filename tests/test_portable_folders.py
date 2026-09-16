@@ -164,7 +164,10 @@ class FolderTests(unittest.TestCase):
                     self.assertEqual(launch_workbench.main(), 0)
                 self.assertEqual(call.call_args.kwargs['cwd'], ROOT)
                 self.assertEqual(call.call_args.kwargs['env']['TENSILE_WORKBENCH_DIR'], str(ROOT))
-                self.assertIn(str(ROOT / 'tensile_workbench.ipynb'), call.call_args.args[0])
+                self.assertIn(str(ROOT / 'workbench_app.py'), call.call_args.args[0])
+                self.assertIn('voila', call.call_args.args[0])
+                self.assertIn('--token', call.call_args.args[0])
+                self.assertIn('--Voila.ip=127.0.0.1', call.call_args.args[0])
             finally:
                 os.chdir(previous)
 

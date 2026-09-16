@@ -135,7 +135,7 @@ class PropertyTablesView:
         for i, name in enumerate(['Summary', 'Specimens', 'Instron', 'Checks']):
             self.tabs.set_title(i, name)
         self.status = w.HTML('Select sample groups to load property tables.')
-        self.ui = w.VBox([w.HTML('<h3>Specimen properties</h3><p>Independent of plot selection. Group statistics use sample SD and valid n. '
+        self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
                           w.HBox([self.filter, self.sort, self.descending], layout=w.Layout(flex_flow='row wrap')),
                           self.metric, self.status, self.tabs], layout=w.Layout(width='100%'))
