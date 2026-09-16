@@ -16,7 +16,7 @@ The tables appear above the plot controls and work with **all plots switched off
 - **Summary:** mean, sample standard deviation, valid n, minimum and maximum for each property. These are statistics of individual specimens, not properties measured from the average curve. Instron statistics use the same selected specimens where summary values are available; valid counts can differ.
 - **Specimens:** 0.2% offset YS, UTS, uniform elongation, terminal failure elongation, tensile toughness, fitted elastic modulus, elastic-fit R² and calculation notes.
 - **Instron:** select YS, UTS, elongation or modulus. Absolute and relative differences are calculated minus Instron. Elongation differences are percentage points. Comparison is not an automatic pass/fail assessment.
-- **Checks:** raw CSV and summary provenance, specimen identity, fit range/intercept, Instron dimensions, flags and missing/conflicting values. Source hashes are included in Excel exports.
+- **Checks:** raw CSV and summary provenance, specimen identity, fit range/intercept, Instron dimensions, flags and missing/conflicting values. Source-path cells show the end of each path within a compact column. Click a path (or focus it and press Enter) to reveal a selectable full path; click again to collapse. Excel exports retain complete paths and source hashes.
 
 Filtering and sorting affect only the displayed tables, not graph selection or exported populations. Excel numeric values retain full precision and display three decimals. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
 

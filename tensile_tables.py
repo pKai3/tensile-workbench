@@ -1,6 +1,33 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
+from html import escape
 import numpy as np
 import pandas as pd
+
+PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
+
+
+def _display_cell(value):
+    """Escape ordinary cells before inserting our own path controls as HTML."""
+    if pd.isna(value):
+        return '—'
+    if isinstance(value, (float, np.floating)):
+        return f'{value:.3f}'
+    return escape(str(value))
+
+
+def _path_cell(value, column):
+    """A width-limited path tail, expandable to the exact selectable full path."""
+    if pd.isna(value) or not str(value).strip():
+        return '—'
+    path = escape(str(value))
+    label = escape(f'Full {column} path')
+    return ('<details class="tw-path">'
+            '<summary title="Click to reveal the full path">'
+            '<span class="tw-path-tail" dir="rtl"><bdi dir="ltr">' + path + '</bdi></span>'
+            '</summary><div class="tw-path-expanded">'
+            '<span class="tw-path-hint">Full path · select to copy</span>'
+            '<textarea class="tw-path-full" readonly rows="4" wrap="soft" spellcheck="false" '
+            'aria-label="' + label + '">' + path + '</textarea></div></details>')
 
 METRICS = [
     ('0.2% yield strength', 'MPa', 'Yield (MPa)', 'ys'),
@@ -148,8 +175,27 @@ class PropertyTablesView:
                  '.tw18-table table{border-collapse:collapse;width:100%;font-size:12px}'
                  '.tw18-table th{position:sticky;top:0;background:#e8eef4;color:#152c3f;z-index:1;text-align:left}'
                  '.tw18-table th,.tw18-table td{padding:6px 9px;border-bottom:1px solid #dce3e9;min-width:70px;max-width:450px;overflow-wrap:anywhere}'
-                 '.tw18-table tbody tr:nth-child(even){background:#f6f8fa}.tw18-table td{text-align:right}</style>')
-        return style + '<div class="tw18-table">' + frame.to_html(index=False, escape=True, border=0, na_rep='—', float_format=lambda x: f'{x:.3f}') + '</div>'
+                 '.tw18-table tbody tr:nth-child(even){background:#f6f8fa}.tw18-table td{text-align:right}'
+                 '.tw18-table .tw-path{width:clamp(160px,24vw,280px);text-align:left;font-weight:normal}'
+                 '.tw18-table .tw-path summary{display:block;list-style:none;cursor:pointer;color:#1767a5;border-radius:3px}'
+                 '.tw18-table .tw-path summary::-webkit-details-marker{display:none}'
+                 '.tw18-table .tw-path summary:hover{text-decoration:underline}'
+                 '.tw18-table .tw-path summary:focus-visible{outline:2px solid #1767a5;outline-offset:2px}'
+                 '.tw18-table .tw-path-tail{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+                 'text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}'
+                 '.tw18-table .tw-path-expanded{margin-top:6px}'
+                 '.tw18-table .tw-path-hint{display:block;font-size:11px;color:#526170;margin-bottom:4px}'
+                 '.tw18-table .tw-path-full{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;'
+                 'padding:6px;border:1px solid #aebdcb;border-radius:3px;background:#fff;color:#152c3f;'
+                 'font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical;'
+                 'white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left}</style>')
+        # Keep the shared numeric frames untouched: only the viewer gets HTML.
+        safe = frame.rename(columns=lambda column: escape(str(column)))
+        formatters = {escape(str(column)): ((lambda value, name=column: _path_cell(value, name))
+                                            if column in PATH_COLUMNS else _display_cell)
+                      for column in frame.columns}
+        table = safe.to_html(index=False, escape=False, border=0, na_rep='—', formatters=formatters)
+        return style + '<div class="tw18-table">' + table + '</div>'
 
     def render(self):
         if not self.frames:
