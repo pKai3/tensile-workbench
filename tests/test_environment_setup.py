@@ -120,6 +120,7 @@ class EnvironmentTests(unittest.TestCase):
             self.assertNotIn('--upgrade', installs[0])
             self.assertEqual(installs[0][-1], str(self.root / 'requirements.txt'))
             self.assertEqual(commands[0][2], environment.RUNTIME_CHECK)
+            self.assertTrue(any(environment.CHECK in command for command in commands))
             self.assertTrue(any('--sys-prefix' in command and 'python3' in command for command in commands))
             self.assertFalse(any('jupyterlab' in command for command in commands))
             self.assertTrue((folder.parent / 'setup-complete.json').is_file())
@@ -165,6 +166,7 @@ class EnvironmentTests(unittest.TestCase):
                 self.assertEqual(environment.main(['launch'], self.root), 0)
             builder.assert_not_called()
             self.assertEqual(run.call_count, 2)
+            self.assertIn(environment.QUICK_CHECK, run.call_args_list[0].args[0])
             self.assertEqual(run.call_args_list[-1].args[0], [str(python), str(self.root / 'launch_workbench.py')])
             self.assertEqual(run.call_args.kwargs['cwd'], self.root)
             self.assertFalse(any('pip' in call.args[0] for call in run.call_args_list))
@@ -185,6 +187,36 @@ class EnvironmentTests(unittest.TestCase):
             self.assertEqual(environment.main(['check'], self.root), 0)
         self.assertEqual(run.call_count, 1)
         self.assertIn(environment.CHECK, run.call_args.args[0])
+
+    def test_quick_check_does_not_import_numerical_ui_or_application_stack(self):
+        guard = r'''
+import sys
+blocked = {'numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets', 'jupyterlab',
+           'voila', 'ipykernel', 'plotly', 'anywidget', 'tensile_core', 'tensile_workbench'}
+def reject_heavy_import(event, args):
+    if event == 'import' and args[0].split('.')[0] in blocked:
+        raise RuntimeError('Preflight imported ' + args[0])
+sys.addaudithook(reject_heavy_import)
+'''
+        result = subprocess.run([sys.executable, '-c', guard + environment.QUICK_CHECK,
+                                 str(self.root), sys.prefix], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Dependencies and saved definitions OK', result.stdout)
+        self.assertFalse((self.root / 'data').exists())
+        self.assertFalse((self.root / 'output').exists())
+
+    def test_quick_check_still_rejects_invalid_definitions_and_dependencies(self):
+        project = self.root / 'tensile_workbench.project.json'
+        project.write_text('{"schema_version": -1}')
+        command = [sys.executable, '-c', environment.QUICK_CHECK, str(self.root), sys.prefix]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Unsupported workbench project schema', result.stderr)
+        self.assertEqual(project.read_text(), '{"schema_version": -1}')
+        (self.root / 'requirements.txt').write_text('numpy>=999\n')
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('run Setup again', result.stderr)
 
     def test_preflight_reports_missing_and_cloud_only_files(self):
         environment.check_project_files(self.root)

@@ -24,6 +24,8 @@ Python itself is installed separately, not silently downloaded by these scripts.
 
 Before running Setup or pulling code updates, close workbench browser tabs/notebooks and stop their launchers. Setup installs from `requirements.txt`, retains already-compatible packages (no blanket upgrade), checks dependency consistency, and registers the **Tensile Workbench** kernel inside that environment. Rerun Setup if Launch reports a missing/incompatible dependency, or an update changes requirements. Launch itself never installs packages.
 
+Normal Launch checks installed package versions and saved definitions without importing the entire numerical/UI stack twice. Setup and the explicit `check` command below retain the full import checks. Opening the app still starts a Python kernel, loads the selected groups' property tables and, if Live preview is enabled, calculates the saved plot views. Wait for that first load; refreshing starts a new session and repeats this work.
+
 `requirements-windows.txt` is retained unchanged solely to recognise the legacy Windows environment's directory fingerprint. Both LF and CRLF copies are recognised so ZIP versus Git line endings do not create duplicate environments. New installations use the shared `requirements.txt` on both systems. Exact installed versions are recorded locally in `installed-packages.txt` beside the environment; dependency ranges are not a fully locked reproducible environment.
 
 ## Where files go
@@ -53,6 +55,8 @@ Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment i
 ## Web-app operation
 
 Launch serves the existing widgets using [Voilà](https://voila.readthedocs.io/en/latest/using.html). It binds to `127.0.0.1` and enables a generated login token, which is included in the automatically opened browser URL. If a browser asks for a token, use the URL printed by the launcher. Do not turn authentication off or expose the service directly to the internet.
+
+The small `workbench_server.py` wrapper corrects Voilà 0.5's tokenless browser redirect. It opens the authenticated URL using the actual available port, without changing the installed package or disabling authentication. No setup rerun is needed for this code-only fix. A cleared/expired login-cookie warning can occur after restarting the server; the new token link establishes a fresh login.
 
 Close unused tabs; each page load starts a session. Disconnected idle kernels are cleaned up after 30 minutes. Keep one editing session per project to avoid conflicting saves. Refreshing/reopening restores saved graph definitions, not temporary plot zoom. Stop and restart Launch after updates. Docker/remote deployment is not included in these local launchers.
 

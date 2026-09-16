@@ -22,7 +22,8 @@ def check_project_files(root):
                 'tensile_plot_view.py', 'tensile_plotly.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_tables.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_startup.py',
                 'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
-                'workbench_environment.py', 'workbench_app.py', 'tensile_workbench_defaults.json', 'requirements.txt')
+                'workbench_environment.py', 'workbench_app.py', 'workbench_server.py',
+                'tensile_workbench_defaults.json', 'requirements.txt')
     unavailable = []
     for name in required:
         try:
@@ -124,12 +125,10 @@ if sys.prefix == sys.base_prefix or Path(sys.prefix).resolve() != Path(sys.argv[
     raise RuntimeError('Expected an isolated virtual environment, not system Python.')
 '''
 
-# Imports and validation only: never construct the UI or calculate curves.
-CHECK = RUNTIME_CHECK + r'''
-import importlib, importlib.metadata, json
-for module in ('numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets',
-               'jupyterlab', 'voila', 'ipykernel', 'plotly', 'anywidget'):
-    importlib.import_module(module)
+# Ordinary launch validates installed versions and definitions without importing the
+# numerical/UI stack in a throwaway process before the server imports it again.
+PREFLIGHT_CHECK = RUNTIME_CHECK + r'''
+import importlib.metadata, json
 from packaging.requirements import Requirement
 for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines():
     line = line.strip()
@@ -141,14 +140,27 @@ for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines()
     actual = importlib.metadata.version(requirement.name)
     if actual not in requirement.specifier:
         raise RuntimeError(f'{requirement.name} {actual} does not satisfy {requirement}; run Setup again.')
-for module in ('tensile_core', 'tensile_properties', 'tensile_instron', 'tensile_tables',
-               'tensile_plotly', 'tensile_plot_view', 'tensile_workbench', 'tensile_startup'):
-    importlib.import_module(module)
 from workbench_project import validate_project
 for name in ('tensile_workbench_defaults.json', 'tensile_workbench.project.json'):
     path = root / name
     if path.is_file():
         validate_project(json.loads(path.read_text(encoding='utf-8')))
+'''
+
+QUICK_CHECK = PREFLIGHT_CHECK + r'''
+print('Dependencies and saved definitions OK. No data processed.', flush=True)
+'''
+
+# Setup and explicit check still exercise imports to catch broken installations.
+# Neither path constructs the UI, reads research data or calculates curves.
+CHECK = PREFLIGHT_CHECK + r'''
+import importlib
+for module in ('numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets',
+               'jupyterlab', 'voila', 'ipykernel', 'plotly', 'anywidget',
+               'tensile_core', 'tensile_properties', 'tensile_instron', 'tensile_tables',
+               'tensile_plotly', 'tensile_plot_view', 'tensile_workbench', 'tensile_startup',
+               'workbench_server'):
+    importlib.import_module(module)
 print('Dependencies, imports and saved definitions OK. No data processed.', flush=True)
 '''
 
@@ -157,8 +169,8 @@ def run(command, root, env):
     return subprocess.run([str(part) for part in command], cwd=root, env=env, check=True)
 
 
-def verify(python, root, env):
-    run([python, '-c', CHECK, root, python.parent.parent], root, env)
+def verify(python, root, env, full=True):
+    run([python, '-c', CHECK if full else QUICK_CHECK, root, python.parent.parent], root, env)
 
 
 def setup(folder, root=ROOT, system=None):
@@ -213,7 +225,7 @@ def main(argv=None, root=None):
                            + ('bat' if sys.platform == 'win32' else 'command') + ' first. See SETUP.md.')
     print('Using environment:', folder, flush=True)
     env = child_environment(folder)
-    verify(python, root, env)
+    verify(python, root, env, full=action == 'check')
     if action == 'launch':
         print('The web app opens automatically. Leave this window open; Ctrl-C stops the server.', flush=True)
         run([python, root / 'launch_workbench.py'], root, env)

@@ -20,7 +20,7 @@ def main(argv=None):
                    '--ServerApp.ip=127.0.0.1', '--ServerApp.root_dir=' + str(ROOT)]
         print('Opening advanced notebook mode. Choose Run > Run All Cells.', flush=True)
     else:
-        command = [sys.executable, '-m', 'voila', str(ROOT / 'workbench_app.py'),
+        command = [sys.executable, str(ROOT / 'workbench_server.py'), str(ROOT / 'workbench_app.py'),
                    '--Voila.ip=127.0.0.1', '--token',
                    '--VoilaConfiguration.extension_language_mapping=.py=python',
                    '--VoilaConfiguration.language_kernel_mapping=python=python3',
