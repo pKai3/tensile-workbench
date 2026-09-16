@@ -182,7 +182,8 @@ def summary_html(details):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None):
+        from tensile_inspector import SpecimenInspector
         w = widgets
         self.frames = {}
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
@@ -194,11 +195,13 @@ class PropertyTablesView:
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(4)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
-        self.specimens = SpecimenTable(on_selection=on_selection, layout=w.Layout(width='100%', min_width='0', margin='0'))
+        self.inspector = SpecimenInspector(w, loader=inspect_loader)
+        self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
+                                      layout=w.Layout(width='100%', min_width='0', margin='0'))
         specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
-        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, *self.panels[2:]],
+        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, *self.panels[2:], self.inspector.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
-        for i, name in enumerate(['Summary', 'Specimens', 'Instron', 'Checks']):
+        for i, name in enumerate(['Summary', 'Specimens', 'Instron', 'Checks', 'Calculation inspector']):
             self.tabs.set_title(i, name)
         self.status = w.HTML('Select sample groups to load property tables.')
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
@@ -212,6 +215,10 @@ class PropertyTablesView:
         self.frames = frames
         self.render()
 
+    def open_inspector(self, ident):
+        self.tabs.selected_index = 4
+        self.inspector.select(ident)
+
     def clear(self, message='Select sample groups to load property tables.'):
         self.frames = {}
         self.status.value = message
@@ -219,6 +226,7 @@ class PropertyTablesView:
             panel.value = ''
         self.specimens.rows = []
         self.specimens.context = uuid.uuid4().hex
+        self.inspector.clear()
 
     def _filtered(self, frame):
         if frame.empty:
@@ -278,7 +286,8 @@ class PropertyTablesView:
                                'SD requires at least two values. “—” means unavailable.</p>' + summary_html(summary))
         self.panels[1].value = ('<p><b>Include</b> applies to this graph only: statistics, averages, work hardening and all plots. '
                                'Unchecked specimens stay here for review and in the specimen export. '
-                               'Files/folders marked with ! are ignored entirely.</p>')
+                               'Files/folders marked with ! are ignored entirely. '
+                               '<b>Click a specimen name to inspect its calculation.</b></p>')
         hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File'}
         columns = [column for column in samples.columns if column not in hidden]
         def text_value(value):
@@ -293,6 +302,7 @@ class PropertyTablesView:
                                       for column in columns]
             self.specimens.rows = rows
             self.specimens.context = uuid.uuid4().hex
+        self.inspector.set_rows(rows)
         unit = next(('pp' if m[1] == '%' else m[1]) for m in METRICS if m[0] == self.metric.value)
         shown = comparison.drop(columns=['Source File', 'Instron Summary CSV', 'Specimen ID', 'Paired', 'Property', 'Unit',
                                           'Difference Unit', 'Instron Specimen Label', 'Instron Row'], errors='ignore')

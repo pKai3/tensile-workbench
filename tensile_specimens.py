@@ -23,6 +23,9 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens input[type=text] {box-sizing:border-box; width:215px; padding:5px; border:1px solid #b6c1cd; border-radius:3px; font:inherit; color:#24354a; background:#fff;}
     .tw-specimens input:focus-visible {outline:2px solid #1767a5; outline-offset:2px;}
     .tw-specimens input:disabled {cursor:default; opacity:.65;}
+    .tw-specimens .inspect {border:0;background:none;padding:0;color:#1767a5;text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere;}
+    .tw-specimens .inspect:hover {text-decoration:underline;}
+    .tw-specimens .inspect:focus-visible {outline:2px solid #1767a5;outline-offset:3px;}
     """
     _esm = """
     export default {render({model, el}) {
@@ -47,7 +50,12 @@ class SpecimenTable(anywidget.AnyWidget):
           const check = document.createElement('input'); check.type='checkbox'; check.checked=row.included;
           check.setAttribute('aria-label', 'Include ' + row.group + ' / ' + row.sample);
           tr.insertCell().append(check);
-          tr.insertCell().textContent=row.group; tr.insertCell().textContent=row.sample;
+          tr.insertCell().textContent=row.group;
+          const inspect = document.createElement('button'); inspect.type='button'; inspect.className='inspect';
+          inspect.textContent=row.sample; inspect.title='Inspect this specimen’s property calculations';
+          inspect.setAttribute('aria-label','Inspect ' + row.group + ' / ' + row.sample);
+          inspect.addEventListener('click', () => model.send({type:'inspect', context, id:row.id}));
+          tr.insertCell().append(inspect);
           tr.title=row.id;
           const reason = document.createElement('input'); reason.type='text'; reason.value=row.reason;
           reason.placeholder='Optional reason'; reason.disabled=row.included; reason.maxLength=2000;
@@ -80,17 +88,23 @@ class SpecimenTable(anywidget.AnyWidget):
     }};
     """
 
-    def __init__(self, on_selection=None, **kwargs):
+    def __init__(self, on_selection=None, on_inspect=None, **kwargs):
         super().__init__(**kwargs)
         self.on_selection = on_selection
+        self.on_inspect = on_inspect
         self.on_msg(self._receive)
 
     def _receive(self, widget, content, buffers):
-        if (content.get('type') != 'selection' or content.get('context') != self.context
-                or not isinstance(content.get('included'), bool)
-                or not isinstance(content.get('reason'), str)):
+        if content.get('context') != self.context:
             return
         if content.get('id') not in {row['id'] for row in self.rows}:
+            return
+        if content.get('type') == 'inspect':
+            if self.on_inspect:
+                self.on_inspect(content['id'])
+            return
+        if (content.get('type') != 'selection' or not isinstance(content.get('included'), bool)
+                or not isinstance(content.get('reason'), str)):
             return
         if self.on_selection:
             self.on_selection(content['id'], content['included'], content['reason'][:2000])

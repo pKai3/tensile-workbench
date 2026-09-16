@@ -16,7 +16,8 @@ from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView
-from tensile_selection import is_included, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX
+from tensile_properties import specimen_calculation
+from tensile_selection import is_included, specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX
 from tensile_startup import sample_data_settings, save_sample_data_visibility, resolve_folder
 import hashlib
 import io
@@ -223,6 +224,24 @@ class PreviewSession:
             'engine_sha256_at_load': self.engine_sha256,
             'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see specimen_diagnostics for source hashes.'}, indent=2))
         return destination
+
+    def specimen_inspection(self, state, spec, ident):
+        """Inspect only a currently selected group's loaded record; no file-path lookup.
+
+        Excluded records remain reviewable. Hard-ignored files and hidden sample
+        groups never reach this method's candidate list.
+        """
+        fractions = spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS)
+        for group in self.visible_groups(state['groups']):
+            for record in self._load(group):
+                if specimen_id(record) == ident:
+                    return {'group': group, 'sample': record['sample'], 'specimen_id': ident,
+                            'source_file': record['source_file'], 'source_sha256': record.get('source_sha256', ''),
+                            'included': is_included(record, spec),
+                            'exclusion_reason': spec.get('specimen_exclusions', {}).get(ident, ''),
+                            'calculation': specimen_calculation(record, fractions, self.engine.LANDMARK_YIELD_R2_WARNING),
+                            'reference': self.instron.match(group, record)}
+        raise ValueError('Specimen is no longer available in this graph. Refresh the tables.')
 
     def _wh_settings(self, state, spec):
         overrides = spec.get("youngs_modulus_overrides", {}) if state["respect_modulus_overrides"] else {}
@@ -585,13 +604,14 @@ class TensileWorkbench:
         self.viewer = DualPlotView(w, self.controls["columns"], self.controls["plot_width"], self.controls["renderer"])
         self.board = self.viewer.board
         self.details = w.Textarea(disabled=True, layout=w.Layout(width="98%", height="180px"))
-        self.tables = PropertyTablesView(w, on_selection=self._specimen_changed)
+        self.tables = PropertyTablesView(w, on_selection=self._specimen_changed,
+                                        inspect_loader=self._inspect_specimen)
         self.tables_update_button = w.Button(description='Update tables')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
             self.tables.ui, self._row([self.tables_update_button, self.table_export_button])
         ])], selected_index=None, layout=w.Layout(width='100%'))
-        self.properties_panel.set_title(0, 'Specimen properties · tables and Instron comparison')
+        self.properties_panel.set_title(0, 'Specimen properties · tables, calculation inspector and Instron comparison')
         general = w.Accordion(children=[w.VBox([self.override_group, self.override_name,
                              self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
         general.set_title(0, "Labels and colours · this graph, all plot types")
@@ -1126,6 +1146,10 @@ class TensileWorkbench:
         for key in VIEW_ONLY_SETTINGS:
             graph['settings'].pop(key, None)
         return json.dumps(graph, sort_keys=True)
+
+    def _inspect_specimen(self, ident):
+        with redirect_stdout(io.StringIO()):
+            return self.session.specimen_inspection(self.state(), self._current()['definition'], ident)
 
     def _refresh_properties(self):
         self.table_export_button.disabled = True

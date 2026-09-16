@@ -46,6 +46,16 @@ The existing YS calculation is preserved: fit an elastic line to the pre-UTS poi
 
 Uniform elongation is engineering strain at the first maximum engineering stress. Failure elongation is the terminal recorded engineering strain, not a post-fracture gauge-length measurement. Toughness is the engineering stress–strain integral of the recorded curve. Instron may use different elastic fitting, break detection, filtering or reported precision; differences must be interpreted with those settings in mind. No calculation is replaced by an Instron summary value.
 
+### Calculation inspector
+
+Expand **Specimen properties**, open **Specimens**, and click a specimen name. The **Calculation inspector** tab shows the exact prepared curve and elastic-fit points used by the shared property calculation. You can also choose a specimen directly in that tab, or use **Previous / Next** to follow the current table's filtered/sorted order. Excluded specimens can be inspected without re-including them; hard-ignored files cannot.
+
+**Yield detail** zooms to the elastic fit and 0.2% offset crossing. **Full curve** also shows the UTS/uniform-elongation point and terminal point used for failure EL. Drag to zoom; **Reset zoom** returns to the chosen view. The green points are the actual points used for fitting, not a representative average. The elastic and offset lines use the same specimen-specific modulus and intercept as the tables. An unresolved yield shows the available curve/fit and its reason instead of inventing a yield marker.
+
+Calculated and available matched Instron properties are listed side by side. Instron YS is shown as a horizontal stress reference only: no Instron yield strain is inferred. Fit fractions, selected-point count, R², intercept, crossing bracket, source identity and preparation details are available below the chart. Failure EL remains the terminal recorded strain, not automatic fracture-onset detection. The inspector does not use WH filters or the WH modulus.
+
+This is read-only inspection: changing its specimen or zoom does not change calculations, saved graph definitions, exclusions, publication plots or exports. No specimen chart is generated until selected, and nothing is written to the output folder. Manual fit overrides and raw-versus-filtered WH comparison are not part of this view.
+
 ### Instron summary CSVs
 
 PDFs are not read. Place group summary CSVs in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. Summary rows are never treated as raw curve points.

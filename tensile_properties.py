@@ -29,6 +29,21 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
     cache = record.setdefault('_property_cache', {})
     if key in cache:
         return dict(cache[key])
+    p = specimen_calculation(record, (low, high), r2_warning)['properties']
+    cache[key] = dict(p)
+    return p
+
+
+def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98):
+    """Return the same properties plus the exact points/indices used to fit them.
+
+    This is the single calculation path for tables, landmarks and inspection.
+    Diagnostic arrays are built only on demand; the properties cache stays small.
+    No filtering, manual fit adjustment or change to the source record is made.
+    """
+    low, high = map(float, fit_fractions)
+    if not 0 < low < high < 1:
+        raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')
     p = {'Sample': record['sample'], 'Raw source': record['source_file'],
          'Yield method': '0.2% offset, specimen-specific linear elastic fit',
          'Yield status': 'unresolved', 'Notes': ''}
@@ -38,8 +53,13 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
                   'Fit upper stress (MPa)'):
         p[field] = np.nan
     x, y = prepared_curve(record)
+    calculation = {'properties': p, 'strain_pct': x, 'stress_mpa': y,
+                   'elastic_mask': np.zeros(len(x), dtype=bool),
+                   'uts_index': None, 'yield_bracket': None,
+                   'fit_fractions': (low, high)}
     if len(x):
         peak = int(np.argmax(y))
+        calculation['uts_index'] = peak
         p.update({'UTS (MPa)': float(y[peak]), 'Uniform elongation (%)': float(x[peak]),
                   'Failure elongation (%)': float(x[-1])})
         raw_x, raw_y = np.asarray(record['strain_pct']), np.asarray(record['stress_mpa'])
@@ -53,6 +73,7 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
         if uts <= 0 or peak < 3:
             raise ValueError('missing resolved loading segment')
         elastic = (np.arange(len(x)) < peak) & (y >= low * uts) & (y <= high * uts)
+        calculation['elastic_mask'] = elastic
         p.update({'Fit lower stress (MPa)': low * uts, 'Fit upper stress (MPa)': high * uts})
         if elastic.sum() < 5 or np.ptp(x[elastic]) <= 0:
             raise ValueError('insufficient elastic data for offset yield')
@@ -71,6 +92,7 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
         if not len(crosses):
             raise ValueError('no valid 0.2% offset yield crossing')
         i = int(crosses[0])
+        calculation['yield_bracket'] = (i, i + 1)
         fraction = distance[i] / (distance[i] - distance[i + 1])
         p.update({'Yield (MPa)': float(y[i] + fraction * (y[i + 1] - y[i])),
                   'Yield strain (%)': float(x[i] + fraction * (x[i + 1] - x[i])),
@@ -78,5 +100,4 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
                   'Notes': 'Review elastic fit: low R2' if r2 < r2_warning else ''})
     except ValueError as error:
         p['Notes'] = str(error)
-    cache[key] = dict(p)
-    return p
+    return calculation
