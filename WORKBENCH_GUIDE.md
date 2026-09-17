@@ -54,7 +54,21 @@ Expand **Specimen properties**, open **Specimens**, and click a specimen name. T
 
 Calculated and available matched Instron properties are listed side by side. Instron YS is shown as a horizontal stress reference only: no Instron yield strain is inferred. Fit fractions, selected-point count, R², intercept, crossing bracket, source identity and preparation details are available below the chart. Failure EL remains the terminal recorded strain, not automatic fracture-onset detection. The inspector does not use WH filters or the WH modulus.
 
-This is read-only inspection: changing its specimen or zoom does not change calculations, saved graph definitions, exclusions, publication plots or exports. No specimen chart is generated until selected, and nothing is written to the output folder. Manual fit overrides and raw-versus-filtered WH comparison are not part of this view.
+Changing the selected specimen or zoom does not change calculations. No specimen chart is generated until selected, and inspecting or adjusting a preview writes nothing to the output folder.
+
+### Fit warnings and specimen overrides
+
+The **Warn if R² <** box above the property tables is editable and saved for all graphs (default **0.98**). It controls warnings only, not the fit or specimen inclusion. The banner above **Specimen properties** counts low-R², unresolved and stale-override fits in the selected groups, including excluded specimens. **Review fits** opens the inspector filtered to these specimens. Turn off **Only fits needing review** to return to the full table. A high R² alone does not establish that the selected region is elastic.
+
+In the inspector, expand **Adjust elastic fit · preview before applying**:
+
+- **Manual range:** enter start/end engineering strain (%) or click a purple range border, then drag its corner handles. Bounds snap to measured points; a least-squares line is fitted to all prepared points between them. At least five points are required, strictly before UTS.
+- **Manual line:** enter strain/stress endpoint coordinates, or click the purple line and drag its endpoints. This sets slope and intercept directly. R² describes residual agreement with measured points between the endpoints, not a least-squares fit; it can be negative. A positive slope and a resolved 0.2% offset yield intersection are required.
+- Inspect the resulting yield, modulus, R² and offset-line intersection against the measured curve and automatic baseline. Enter a reason, then select **Apply override · all graphs**. Until then, these are unsaved previews. **Cancel preview** discards edits; **Restore automatic fit** removes the saved override.
+
+Overrides belong to specimens, not graphs. Tables show **Fit method** and **Override status**, with warning markers for fits needing review. Applying/restoring an override updates property tables and invalidates cached plots; select **Update plots** before exporting new figures. The shared yield calculation is used by summary/scatter plots and landmark curves, including landmark-derived work hardening. Measured UTS, elongation, toughness and the separately configured WH modulus are not changed by an elastic-fit override.
+
+The ignored personal project JSON stores the specimen identity, raw-file fingerprint, bounds/endpoints, reason, timestamp, original automatic results and apply/restore history. Exported checks include the active definition and original automatic snapshot; export settings include relevant history. If a CSV's contents change, its override is flagged as stale and not applied: the automatic calculation is used until reviewed. Moving the data directory preserves relative identities; renaming a specimen does not silently transfer its override. Nothing edits the source CSVs.
 
 ### Instron summary CSVs
 

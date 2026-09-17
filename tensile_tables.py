@@ -1,8 +1,10 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
 from html import escape
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import uuid
+import json
 from tensile_selection import specimen_id, is_included
 from tensile_specimens import SpecimenTable
 
@@ -31,6 +33,56 @@ def _path_cell(value, column):
             '<span class="tw-path-hint">Full path · select to copy</span>'
             '<textarea class="tw-path-full" readonly rows="4" wrap="soft" spellcheck="false" '
             'aria-label="' + label + '">' + path + '</textarea></div></details>')
+
+
+def _override_cell(value):
+    """Present the saved fit, not its machine-readable audit JSON, in the UI."""
+    if pd.isna(value) or not str(value).strip():
+        return '—'
+    raw = str(value)
+    try:
+        saved = json.loads(raw)
+        from tensile_fit import validate_override
+        validate_override(saved)
+    except (ValueError, TypeError):
+        # Keep unexpected/legacy content inspectable, escaped and height-limited.
+        return ('<details class="tw-fit"><summary>Unrecognised saved record</summary>'
+                '<div class="tw-fit-body"><pre>' + escape(raw) + '</pre></div></details>')
+    low, high = saved['strain_bounds']
+    method = 'Manual range' if saved['mode'] == 'range' else 'Manual line'
+    rows = [('Start strain (%)', f'{low:.8g}'), ('End strain (%)', f'{high:.8g}')]
+    if saved['mode'] == 'line':
+        rows.extend([('Start stress (MPa)', f'{saved["endpoints"][0][1]:.8g}'),
+                     ('End stress (MPa)', f'{saved["endpoints"][1][1]:.8g}')])
+    fractions = saved.get('automatic_fit_fractions')
+    if (isinstance(fractions, list) and len(fractions) == 2 and
+            all(isinstance(v, (int, float)) and np.isfinite(v) for v in fractions)):
+        rows.append(('Automatic fit window', f'{fractions[0]*100:g}–{fractions[1]*100:g}% UTS'))
+    original = saved.get('automatic_snapshot', {})
+    if isinstance(original, dict):
+        for key, label in [('Yield (MPa)', 'Original automatic YS (MPa)'),
+                           ('Fitted E (GPa)', 'Original automatic E (GPa)'),
+                           ('Elastic fit R2', 'Original automatic R²')]:
+            value = original.get(key)
+            if isinstance(value, (int, float)) and np.isfinite(value):
+                rows.append((label, f'{value:.5f}' if key == 'Elastic fit R2' else f'{value:.3f}'))
+    return ('<details class="tw-fit"><summary title="Click to view the saved fit details">'
+            + method + f'<span>{low:.4f}–{high:.4f}% strain</span></summary>'
+            '<div class="tw-fit-body"><dl>' + ''.join('<dt>' + escape(label) + '</dt><dd>' +
+                escape(text) + '</dd>' for label, text in rows) + '</dl></div></details>')
+
+
+def _override_date_cell(value):
+    """Short readable timestamp; preserve its exact value in the tooltip/export."""
+    if pd.isna(value) or not str(value).strip():
+        return '—'
+    raw = str(value)
+    try:
+        date = datetime.fromisoformat(raw)
+        text = date.strftime('%Y-%m-%d %H:%M')
+    except ValueError:
+        text = raw
+    return '<span class="tw-fit-date" title="' + escape(raw, quote=True) + '">' + escape(text) + '</span>'
 
 METRICS = [
     ('0.2% yield strength', 'MPa', 'Yield (MPa)', 'ys'),
@@ -66,13 +118,22 @@ def property_tables(records, spec, engine, instron):
             identity = {'Included': included, 'Group': group, 'Sample': row['sample'],
                         'Specimen ID': specimen_id(row),
                         'Exclusion Reason': spec.get('specimen_exclusions', {}).get(specimen_id(row), '')}
-            samples.append({**identity, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
+            fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
+            saved_fit = row.get('_fit_override') or {}
+            samples.append({**identity, **fit_fields, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
                             'UTS (MPa)': p['UTS (MPa)'], 'Uniform Elongation (%)': p['Uniform elongation (%)'],
                             'Failure Elongation (%)': p['Failure elongation (%)'],
                             'Toughness (MJ/m^3)': p['Toughness (MJ/m^3)'], 'Fitted E (GPa)': p['Fitted E (GPa)'],
                             'Yield Strain (%)': p['Yield strain (%)'], 'Elastic Fit R2': p['Elastic fit R2'],
                             'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'], 'Source File': row['source_file']})
-            diagnostics.append({**identity, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
+            diagnostics.append({**identity, **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
+                                'R2 warning threshold': p['R2 warning threshold'], 'Fit Point Count': p['Fit point count'],
+                                'Fit Lower Strain (%)': p['Fit lower strain (%)'], 'Fit Upper Strain (%)': p['Fit upper strain (%)'],
+                                'Automatic 0.2% YS (MPa)': p['Automatic Yield (MPa)'],
+                                'Automatic E (GPa)': p['Automatic Fitted E (GPa)'],
+                                'Automatic R2': p['Automatic Elastic fit R2'],
+                                'Override Reason': saved_fit.get('reason', ''), 'Override Saved At': saved_fit.get('saved_at', ''),
+                                'Override Definition': json.dumps(saved_fit, sort_keys=True) if saved_fit else '',
                                 'Yield Method': p['Yield method'], 'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'],
                                 'Fitted E (GPa)': p['Fitted E (GPa)'], 'Elastic Fit R2': p['Elastic fit R2'],
                                 'Elastic Intercept (MPa)': p['Elastic intercept (MPa)'],
@@ -182,10 +243,19 @@ def summary_html(details):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None, inspect_loader=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None):
         from tensile_inspector import SpecimenInspector
         w = widgets
         self.frames = {}
+        self._threshold_sync = False
+        self.on_threshold = on_threshold
+        self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.005,
+            description='Warn if R² <', continuous_update=False, style={'description_width': 'initial'},
+            layout=w.Layout(width='240px'))
+        self.threshold_status = w.HTML('Applies to all graphs; warning only.')
+        self.threshold.observe(self._threshold_changed, names='value')
+        self.review_only = w.Checkbox(value=False, description='Only fits needing review', indent=False,
+                                     layout=w.Layout(width='auto'))
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
         self.metric = w.Dropdown(description='Compare:', options=[m[0] for m in METRICS if m[3]], value=METRICS[0][0],
                                  layout=w.Layout(width='330px'))
@@ -195,7 +265,7 @@ class PropertyTablesView:
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(4)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
-        self.inspector = SpecimenInspector(w, loader=inspect_loader)
+        self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply)
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
         specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
@@ -207,9 +277,27 @@ class PropertyTablesView:
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
                           w.HBox([self.filter, self.sort, self.descending], layout=w.Layout(flex_flow='row wrap')),
+                          w.HBox([self.threshold, self.threshold_status, self.review_only], layout=w.Layout(flex_flow='row wrap')),
                           self.metric, self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
-        for control in (self.filter, self.sort, self.descending, self.metric):
+        for control in (self.filter, self.sort, self.descending, self.metric, self.review_only):
             control.observe(lambda _: self.render(), names='value')
+
+    def set_threshold(self, value):
+        self._threshold_sync = True
+        try:
+            self.threshold.value = value
+        finally:
+            self._threshold_sync = False
+
+    def _threshold_changed(self, change):
+        if self._threshold_sync or self.on_threshold is None:
+            return
+        try:
+            self.on_threshold(change['new'])
+            self.threshold_status.value = 'Saved for all graphs; warning only.'
+        except Exception as error:
+            self.set_threshold(change['old'])
+            self.threshold_status.value = '<b>Not saved:</b> ' + escape(str(error))
 
     def set_frames(self, frames):
         self.frames = frames
@@ -231,6 +319,10 @@ class PropertyTablesView:
     def _filtered(self, frame):
         if frame.empty:
             return frame
+        if self.review_only.value and 'Specimen ID' in frame:
+            samples = self.frames['tensile_samples']
+            ids = set(samples.loc[samples['Fit review required'], 'Specimen ID'])
+            frame = frame[frame['Specimen ID'].isin(ids)]
         text = self.filter.value.strip().casefold()
         if text:
             keys = [key for key in ('Group', 'Sample', 'Source File', 'Instron Specimen Label') if key in frame]
@@ -252,6 +344,15 @@ class PropertyTablesView:
                  '.tw18-table th{position:sticky;top:0;background:#e8eef4;color:#152c3f;z-index:1;text-align:left}'
                  '.tw18-table th,.tw18-table td{padding:6px 9px;border-bottom:1px solid #dce3e9;min-width:70px;max-width:450px;overflow-wrap:anywhere}'
                  '.tw18-table tbody tr:nth-child(even){background:#f6f8fa}.tw18-table td{text-align:right}'
+                 '.tw18-table .tw-fit{width:210px;text-align:left;line-height:1.4}'
+                 '.tw18-table .tw-fit summary{cursor:pointer;color:#1767a5;white-space:normal}'
+                 '.tw18-table .tw-fit summary span{display:block;padding-left:14px;font-size:11px}'
+                 '.tw18-table .tw-fit-body{max-height:220px;overflow:auto;margin-top:8px;'
+                 'padding:8px;background:#fff;border:1px solid #dce3e9}'
+                 '.tw18-table .tw-fit-body dl{margin:0}.tw18-table .tw-fit-body dt{font-weight:600}'
+                 '.tw18-table .tw-fit-body dd{margin:0 0 8px}.tw18-table .tw-fit-body pre{'
+                 'white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.4 monospace;margin:0}'
+                 '.tw18-table .tw-fit-date{white-space:nowrap}'
                  '.tw18-table .tw-path{width:clamp(160px,24vw,280px);text-align:left;font-weight:normal}'
                  '.tw18-table .tw-path summary{display:block;list-style:none;cursor:pointer;color:#1767a5;border-radius:3px}'
                  '.tw18-table .tw-path summary::-webkit-details-marker{display:none}'
@@ -267,9 +368,17 @@ class PropertyTablesView:
                  'white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left}</style>')
         # Keep the shared numeric frames untouched: only the viewer gets HTML.
         safe = frame.rename(columns=lambda column: escape(str(column)))
-        formatters = {escape(str(column)): ((lambda value, name=column: _path_cell(value, name))
-                                            if column in PATH_COLUMNS else _display_cell)
-                      for column in frame.columns}
+        formatters = {}
+        for column in frame.columns:
+            if column in PATH_COLUMNS:
+                formatter = lambda value, name=column: _path_cell(value, name)
+            elif column == 'Override Definition':
+                formatter = _override_cell
+            elif column == 'Override Saved At':
+                formatter = _override_date_cell
+            else:
+                formatter = _display_cell
+            formatters[escape(str(column))] = formatter
         table = safe.to_html(index=False, escape=False, border=0, na_rep='—', formatters=formatters)
         return style + '<div class="tw18-table">' + table + '</div>'
 
@@ -288,7 +397,7 @@ class PropertyTablesView:
                                'Unchecked specimens stay here for review and in the specimen export. '
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Click a specimen name to inspect its calculation.</b></p>')
-        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File'}
+        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required'}
         columns = [column for column in samples.columns if column not in hidden]
         def text_value(value):
             if pd.isna(value):
@@ -296,7 +405,9 @@ class PropertyTablesView:
             return f'{value:.3f}' if isinstance(value, (float, np.floating)) else str(value)
         rows = [{'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
                  'sample': str(row['Sample']), 'reason': row['Exclusion Reason'],
-                 'values': [text_value(row[column]) for column in columns]} for _, row in samples.iterrows()]
+                 'fit_warning': bool(row['Fit review required']),
+                 'values': [f'{row[column]:.5f}' if column == 'Elastic Fit R2' and np.isfinite(row[column])
+                            else text_value(row[column]) for column in columns]} for _, row in samples.iterrows()]
         with self.specimens.hold_sync():
             self.specimens.columns = ['0.2% YS (MPa)' if column == '0.2% Offset Yield Strength (MPa)' else column
                                       for column in columns]

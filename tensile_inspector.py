@@ -1,7 +1,9 @@
-"""Read-only, on-demand inspection of the shared specimen-property calculation."""
+"""On-demand specimen inspection and explicitly applied fit-override previews."""
+from copy import deepcopy
 from html import escape
 
 import numpy as np
+from tensile_properties import specimen_calculation
 
 
 def inspection_ranges(calculation, mode='yield'):
@@ -23,7 +25,7 @@ def inspection_ranges(calculation, mode='yield'):
     return [left - .02 * span, right + .04 * span], [lower - .03 * upper, upper * 1.12]
 
 
-def inspection_figure(payload, mode='yield'):
+def inspection_figure(payload, mode='yield', edit=None):
     """Plot exact prepared points, not a mean/landmark or WH-filtered curve."""
     import plotly.graph_objects as go
 
@@ -48,7 +50,7 @@ def inspection_figure(payload, mode='yield'):
         points('Elastic-fit points', x[mask], y[mask], '#16a085', size=6)
         fig.add_shape(type='rect', x0=float(x[mask].min()), x1=float(x[mask].max()),
             y0=p['Fit lower stress (MPa)'], y1=p['Fit upper stress (MPa)'],
-            fillcolor='rgba(22,160,133,0.10)', line_width=0, layer='below')
+            fillcolor='rgba(22,160,133,0.10)', line_width=0, layer='below', editable=False)
     modulus = p['Fitted E (GPa)'] * 1000
     if np.isfinite(modulus) and modulus > 0:
         # Define the lines over the visible stress range, not to full fracture strain.
@@ -56,6 +58,12 @@ def inspection_figure(payload, mode='yield'):
         strains = (stresses - p['Elastic intercept (MPa)']) / modulus * 100
         line('Elastic fit', strains, stresses, '#16a085', dash='dash', width=1.8)
         line('0.2% offset line', strains + .2, stresses, '#d97706', dash='dash', width=1.8)
+    automatic = calculation.get('automatic_calculation')
+    if automatic and np.isfinite(automatic['properties']['Fitted E (GPa)']):
+        ap = automatic['properties']
+        stresses = np.array([0., max(1., p['UTS (MPa)'])])
+        strains = (stresses - ap['Elastic intercept (MPa)']) / (ap['Fitted E (GPa)'] * 1000) * 100
+        line('Automatic elastic fit', strains, stresses, '#94a3b8', dash='dot', width=1.3)
     if p['Yield status'] == 'resolved':
         points('Calculated 0.2% YS', [p['Yield strain (%)']], [p['Yield (MPa)']], '#d97706', 'diamond', 12)
     if calculation['uts_index'] is not None:
@@ -66,13 +74,24 @@ def inspection_figure(payload, mode='yield'):
     if np.isfinite(reported) and len(x):
         line('Instron YS (stress only)', [min(0., x[0]), x[-1]], [reported, reported],
              '#be185d', dash='dot', width=1.8)
+    if edit:
+        if edit['mode'] == 'range':
+            fig.add_shape(type='rect', name='fit-range', editable=True, x0=edit['strain_bounds'][0],
+                x1=edit['strain_bounds'][1], y0=0, y1=1, yref='paper',
+                line=dict(color='#7c3aed', width=3), fillcolor='rgba(124,58,237,.04)')
+        else:
+            (x0, y0), (x1, y1) = edit['endpoints']
+            fig.add_shape(type='line', name='fit-line', editable=True, x0=x0, x1=x1, y0=y0, y1=y1,
+                          line=dict(color='#7c3aed', width=4))
+            points('Manual line endpoints', [x0, x1], [y0, y1], '#7c3aed', 'circle-open', 12)
     xrange, yrange = inspection_ranges(calculation, mode)
     fig.update_layout(template='plotly_white', autosize=True, height=620,
         margin=dict(l=72, r=25, t=22, b=190), font=dict(family='Arial, sans-serif', size=12),
         xaxis=dict(title='Engineering strain (%)', range=xrange, automargin=True),
         yaxis=dict(title='Engineering stress (MPa)', range=yrange, automargin=True),
         legend=dict(orientation='h', x=0, xanchor='left', y=-.23, yanchor='top',
-                    entrywidth=240, font=dict(size=11)), hovermode='closest', dragmode='zoom')
+                    entrywidth=240, font=dict(size=11)), hovermode='closest', dragmode='zoom',
+        activeshape=dict(fillcolor='rgba(124,58,237,.12)', opacity=.9))
     return fig
 
 
@@ -97,14 +116,20 @@ def inspection_summary(payload):
               '.tw-inspect-warning{padding:8px;background:#fff4dc;border-left:3px solid #d97706}</style>',
               '<div class="tw-inspect-summary">',
               '<p><b>' + escape(payload['group'] + ' · ' + payload['sample']) + '</b> · ' +
-              ('Included in this graph' if payload['included'] else 'Excluded from this graph; inspection only') + '</p>']
+              ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
-    result.append('<table><thead><tr><th>Property</th><th>Calculated</th><th>Instron</th>'
+    show_automatic = bool(calculation.get('automatic_calculation'))
+    result.append('<p><b>Fit method: ' + escape(p.get('Fit method', 'Automatic')) + '</b> · ' +
+                  escape(p.get('Override status', 'None')) + '</p>')
+    result.append('<table><thead><tr><th>Property</th><th>Calculated</th>' +
+                  ('<th>Automatic</th>' if show_automatic else '') + '<th>Instron</th>'
                   '<th>Δ (Calc − Instron)</th></tr></thead><tbody>')
     for label, field, key in metrics:
         calculated, reported = p[field], values.get(key, np.nan)
-        result.append('<tr><td>' + escape(label) + '</td><td>' + number(calculated) + '</td><td>' +
+        auto = calculation['automatic_calculation']['properties'][field] if show_automatic else np.nan
+        result.append('<tr><td>' + escape(label) + '</td><td>' + number(calculated) + '</td>' +
+                      ('<td>' + number(auto) + '</td>' if show_automatic else '') + '<td>' +
                       number(reported) + '</td><td>' + number(calculated - reported) + '</td></tr>')
     result.append('</tbody></table><p>Δ uses the displayed units; elongation differences are percentage points. '
                   'Instron YS is drawn as a horizontal reference only; its yield strain is not inferred.</p>')
@@ -112,11 +137,26 @@ def inspection_summary(payload):
         result.append('<p class="tw-inspect-warning"><b>Yield ' + escape(p['Yield status']) + ':</b> ' +
                       escape(p['Notes']) + '</p>')
     low, high = calculation['fit_fractions']
-    result.append(f'<p>Elastic fit: {100 * low:g}–{100 * high:g}% of this specimen’s UTS, before the first UTS point '
+    description = (f'Automatic elastic fit: {100 * low:g}–{100 * high:g}% of this specimen’s UTS'
+                   if p.get('Fit method', 'Automatic') == 'Automatic' else
+                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"], 5)}–{number(p["Fit upper strain (%)"], 5)}% strain')
+    result.append(f'<p>{description}, before the first UTS point '
                   f'({number(p["Fit lower stress (MPa)"])}–{number(p["Fit upper stress (MPa)"])} MPa); '
                   f'<b>{int(calculation["elastic_mask"].sum())} selected points</b>. '
                   f'R² = {number(p["Elastic fit R2"], 5)}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
                   'This fitted E is independent of the WH modulus.</p>')
+    result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):g}. '
+                  'A high R² alone does not establish that a region is elastic.</p>')
+    if p.get('Fit method') == 'Manual line':
+        result.append('<p>Manual line is not a least-squares fit. R² measures residual agreement with the selected '
+                      'data points between the endpoint strains and can be negative.</p>')
+    saved = calculation.get('saved_override') or {}
+    if saved.get('saved_at'):
+        result.append('<p>Override saved: ' + escape(saved['saved_at']) + ' · ' + escape(saved.get('reason', '')) + '</p>')
+        original = saved.get('automatic_snapshot', {})
+        result.append('<details><summary>Automatic result when this override was applied</summary><p>' +
+                      '<br>'.join(escape(str(k)) + ': ' + escape(str(v) if v is not None else 'Unavailable')
+                                  for k, v in original.items()) + '</p></details>')
     bracket = calculation['yield_bracket']
     if bracket is not None:
         xs = calculation['strain_pct'][list(bracket)]
@@ -137,8 +177,10 @@ def inspection_summary(payload):
 
 class SpecimenInspector:
     """Create one disposable interactive figure only when a specimen is selected."""
-    def __init__(self, widgets, loader=None):
+    def __init__(self, widgets, loader=None, on_apply=None):
         self.w, self.loader = widgets, loader
+        self.on_apply = on_apply
+        self._painting, self._editing, self._draft = False, False, None
         self._updating, self._payload, self.chart, self._probe = False, None, None, None
         w = widgets
         self.choice = w.Dropdown(description='Specimen:', options=[('Choose a specimen…', '')],
@@ -150,15 +192,41 @@ class SpecimenInspector:
         self.status = w.HTML('Click a specimen name in the Specimens table, or choose one above.')
         self.summary = w.HTML(layout=w.Layout(width='100%', min_width='0'))
         self.chart_box = w.VBox(layout=w.Layout(width='100%', min_width='0'))
+        self.mode = w.Dropdown(description='Fit:', options=[('Inspect saved fit', 'inspect'),
+            ('Manual range', 'range'), ('Manual line', 'line')], value='inspect', layout=w.Layout(width='300px'))
+        self.x0 = w.FloatText(description='Start strain (%)', continuous_update=False, style={'description_width': 'initial'})
+        self.x1 = w.FloatText(description='End strain (%)', continuous_update=False, style={'description_width': 'initial'})
+        self.y0 = w.FloatText(description='Start stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
+        self.y1 = w.FloatText(description='End stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
+        self.line_fields = w.HBox([self.y0, self.y1], layout=w.Layout(flex_flow='row wrap', display='none'))
+        self.reason = w.Text(description='Reason:', placeholder='Why is the fit being adjusted?', continuous_update=True,
+                             layout=w.Layout(width='min(100%, 800px)'))
+        self.apply_button = w.Button(description='Apply override · all graphs', button_style='primary',
+                                     layout=w.Layout(width='auto'), disabled=True)
+        self.cancel_button = w.Button(description='Cancel preview', disabled=True)
+        self.restore_button = w.Button(description='Restore automatic fit', layout=w.Layout(width='auto'), disabled=True)
+        self.edit_status = w.HTML('Select a specimen to review or adjust its elastic fit.')
+        self.editor = w.Accordion(children=[w.VBox([self.mode,
+            w.HBox([self.x0, self.x1], layout=w.Layout(flex_flow='row wrap')), self.line_fields, self.reason,
+            w.HBox([self.apply_button, self.cancel_button, self.restore_button], layout=w.Layout(flex_flow='row wrap')),
+            self.edit_status])], selected_index=None)
+        self.editor.set_title(0, 'Adjust elastic fit · preview before applying')
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status, w.HBox([self.view, self.reset], layout=w.Layout(flex_flow='row wrap')),
+                          self.status, self.editor, w.HBox([self.view, self.reset], layout=w.Layout(flex_flow='row wrap')),
                           self.chart_box, self.summary], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(lambda _: self._reset_zoom(), names='value')
         self.reset.on_click(lambda _: self._reset_zoom())
         self.previous.on_click(lambda _: self._step(-1))
         self.next.on_click(lambda _: self._step(1))
+        self.mode.observe(self._mode_changed, names='value')
+        for control in (self.x0, self.x1, self.y0, self.y1):
+            control.observe(lambda _: self._preview(), names='value')
+        self.reason.observe(lambda _: self._buttons(), names='value')
+        self.apply_button.on_click(lambda _: self._apply())
+        self.cancel_button.on_click(lambda _: self._selected())
+        self.restore_button.on_click(lambda _: self._apply(restore=True))
         self._navigation()
 
     def _dispose(self):
@@ -169,6 +237,7 @@ class SpecimenInspector:
             self._probe.close()
         self._probe = None
         self.chart, self._payload = None, None
+        self._draft = None
         self.summary.value = ''
 
     def clear(self):
@@ -212,6 +281,8 @@ class SpecimenInspector:
         self.next.disabled = not ids or index >= len(ids) - 1
         self.view.disabled = self.chart is None
         self.reset.disabled = self.chart is None
+        self.mode.disabled = self.chart is None or self.on_apply is None
+        self._buttons()
 
     def _step(self, direction):
         ids = [value for _, value in self.choice.options if value]
@@ -229,20 +300,154 @@ class SpecimenInspector:
             return
         self.status.value = 'Loading specimen calculation…'
         try:
-            import plotly.graph_objects as go
-            from tensile_plotly import width_probe
             payload = self.loader(self.choice.value)
-            self.chart = go.FigureWidget(inspection_figure(payload, self.view.value))
-            self._payload = payload
-            self._probe = width_probe(self._resize)
-            self.chart_box.children = (self._probe, self.chart)
-            self.summary.value = inspection_summary(payload)
-            self.status.value = ('Read-only inspection · drag to zoom; use Reset zoom to return. '
-                                 'No graph settings, exclusions or results are changed.')
+            self._editing = True
+            self.mode.value = 'inspect'
+            self._editing = False
+            self._saved_payload = payload
+            self._seed_editor(payload)
+            self._paint(payload)
+            self.status.value = ('Read-only until Apply override · drag to zoom; use Reset zoom to return. '
+                                 'Fit overrides apply to this specimen in every graph.')
+            self.edit_status.value = 'Choose Manual range or Manual line to start an unsaved preview.'
         except Exception as error:
             self._dispose()
             self.status.value = '<b>Inspection unavailable:</b> ' + escape(str(error))
         self._navigation()
+
+    def _seed_editor(self, payload):
+        calc = payload['calculation']
+        saved = calc.get('override')
+        mask, x, y = calc['elastic_mask'], calc['strain_pct'], calc['stress_mpa']
+        if saved:
+            low, high = saved['strain_bounds']
+        elif mask.any():
+            low, high = float(x[mask][0]), float(x[mask][-1])
+        elif len(x) > 5:
+            end = max(4, min(len(x)-1, (calc['uts_index'] or len(x)) // 3))
+            low, high = float(x[0]), float(x[end])
+        else:
+            low, high = 0., .2
+        p = calc['properties']
+        self._editing = True
+        try:
+            self.x0.value, self.x1.value = low, high
+            if saved and saved['mode'] == 'line':
+                self.y0.value, self.y1.value = saved['endpoints'][0][1], saved['endpoints'][1][1]
+            elif np.isfinite(p['Fitted E (GPa)']):
+                self.y0.value, self.y1.value = [p['Fitted E (GPa)'] * 10 * v + p['Elastic intercept (MPa)'] for v in (low, high)]
+            elif len(x):
+                self.y0.value, self.y1.value = np.interp([low, high], x, y)
+            self.reason.value = (calc.get('saved_override') or {}).get('reason', '')
+        finally:
+            self._editing = False
+
+    def _buttons(self):
+        editing = self._payload is not None and self.mode.value != 'inspect'
+        self.x0.disabled = self.x1.disabled = self.reason.disabled = not editing
+        self.y0.disabled = self.y1.disabled = not editing or self.mode.value != 'line'
+        self.line_fields.layout.display = '' if self.mode.value == 'line' else 'none'
+        self.cancel_button.disabled = not editing
+        self.apply_button.disabled = not (editing and self._draft and self.reason.value.strip() and
+            self._payload['calculation']['properties']['Yield status'] == 'resolved' and self.on_apply)
+        self.restore_button.disabled = not (self._payload and self.on_apply and
+            self._saved_payload['calculation'].get('saved_override'))
+
+    def _mode_changed(self, _=None):
+        if self._editing or self._payload is None:
+            return
+        if self.mode.value == 'inspect':
+            self._selected()
+        else:
+            self._preview()
+
+    def _preview(self):
+        if self._editing or self._payload is None or self.mode.value == 'inspect':
+            return
+        self._draft = None
+        try:
+            record = self._saved_payload['record']
+            bounds = [self.x0.value, self.x1.value]
+            if self.mode.value == 'range':
+                # Snap range handles/numerical bounds to actual prepared measurement points.
+                x = self._saved_payload['calculation']['strain_pct']
+                if len(x):
+                    bounds = [float(x[np.argmin(abs(x-v))]) for v in bounds]
+            candidate = {'mode': self.mode.value, 'strain_bounds': bounds,
+                         'source_sha256': self._saved_payload['source_sha256']}
+            if self.mode.value == 'line':
+                candidate['endpoints'] = [[bounds[0], self.y0.value], [bounds[1], self.y1.value]]
+            calc = specimen_calculation(record, self._saved_payload['calculation']['fit_fractions'], override=candidate)
+            calc['properties']['Override status'] = 'Unsaved preview'
+            self._editing = True
+            self.x0.value, self.x1.value = bounds
+            self._editing = False
+            self._draft = candidate
+            self._paint({**self._saved_payload, 'calculation': calc}, edit=candidate, keep_zoom=True)
+            instruction = ('Click a purple range border, then drag its corner handles; all measured points between them are refitted.'
+                           if self.mode.value == 'range' else 'Click the purple line, then drag either endpoint; this directly changes slope/intercept.')
+            self.edit_status.value = '<b>Unsaved preview.</b> ' + instruction + ' Enter a reason, then Apply override to use it in every graph.'
+            if calc['properties']['Yield status'] != 'resolved':
+                self.edit_status.value += '<br><b>Cannot apply:</b> ' + escape(calc['properties']['Notes'])
+        except Exception as error:
+            self.edit_status.value = '<b>Invalid preview:</b> ' + escape(str(error)) + ' The chart retains the last valid view; nothing has been saved.'
+        finally:
+            self._editing = False
+            self._buttons()
+
+    def _paint(self, payload, edit=None, keep_zoom=False):
+        import plotly.graph_objects as go
+        from tensile_plotly import width_probe
+        fig = inspection_figure(payload, self.view.value, edit=edit)
+        self._painting = True
+        try:
+            if self.chart is None:
+                self.chart = go.FigureWidget(fig)
+                self.chart.layout.on_change(self._dragged, 'shapes')
+                self._probe = width_probe(self._resize)
+                self.chart_box.children = (self._probe, self.chart)
+            else:
+                if keep_zoom:
+                    fig.update_xaxes(range=self.chart.layout.xaxis.range)
+                    fig.update_yaxes(range=self.chart.layout.yaxis.range)
+                with self.chart.batch_update():
+                    self.chart.data = []
+                    self.chart.add_traces(fig.data)
+                    self.chart.layout.shapes = fig.layout.shapes
+                    self.chart.update_xaxes(range=fig.layout.xaxis.range)
+                    self.chart.update_yaxes(range=fig.layout.yaxis.range)
+            self._payload = payload
+            self.summary.value = inspection_summary(payload)
+            if self._probe and self._probe.pixels:
+                self._resize(self._probe.pixels)
+        finally:
+            self._painting = False
+
+    def _dragged(self, layout, shapes):
+        if self._painting or self.chart is None or layout is not self.chart.layout or self.mode.value == 'inspect':
+            return
+        shape = next((shape for shape in shapes if shape.name in ('fit-line', 'fit-range')), None)
+        if shape is None:
+            return
+        self._editing = True
+        try:
+            self.x0.value, self.x1.value = shape.x0, shape.x1
+            if shape.name == 'fit-line':
+                self.y0.value, self.y1.value = shape.y0, shape.y1
+        finally:
+            self._editing = False
+        self._preview()
+
+    def _apply(self, restore=False):
+        if not self.on_apply or not self._payload or (not restore and self.apply_button.disabled):
+            return
+        try:
+            self.on_apply(self.choice.value, self._saved_payload['source_sha256'],
+                          None if restore else deepcopy(self._draft), self.reason.value)
+            self._selected()
+            self.edit_status.value = 'Automatic fit restored in all graphs.' if restore else 'Override saved for this specimen in all graphs.'
+        except Exception as error:
+            self.edit_status.value = '<b>Not applied:</b> ' + escape(str(error))
 
     def _resize(self, width):
         if self.chart is None:

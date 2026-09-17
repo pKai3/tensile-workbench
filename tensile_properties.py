@@ -1,7 +1,10 @@
 """Specimen properties, independent of every plot and averaging method."""
 import numpy as np
+import json
+from tensile_fit import validate_override, validate_threshold
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
+USE_RECORD = object()
 
 
 def prepared_curve(record):
@@ -25,7 +28,8 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
     low, high = map(float, fit_fractions)
     if not 0 < low < high < 1:
         raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')
-    key = (low, high, float(r2_warning))
+    r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
+    key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True), record.get('source_sha256'))
     cache = record.setdefault('_property_cache', {})
     if key in cache:
         return dict(cache[key])
@@ -34,19 +38,30 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
     return p
 
 
-def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98):
+def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98, *, override=USE_RECORD):
     """Return the same properties plus the exact points/indices used to fit them.
 
     This is the single calculation path for tables, landmarks and inspection.
     Diagnostic arrays are built only on demand; the properties cache stays small.
-    No filtering, manual fit adjustment or change to the source record is made.
+    Specimen overrides take precedence over graph-level automatic fit fractions.
+    A preview override can be passed explicitly without changing the record.
     """
     low, high = map(float, fit_fractions)
     if not 0 < low < high < 1:
         raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')
+    r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
+    saved = record.get('_fit_override') if override is USE_RECORD else override
+    stale = bool(saved and saved.get('source_sha256') != record.get('source_sha256'))
+    active = saved if saved and not stale else None
+    if active:
+        validate_override(active)
     p = {'Sample': record['sample'], 'Raw source': record['source_file'],
          'Yield method': '0.2% offset, specimen-specific linear elastic fit',
-         'Yield status': 'unresolved', 'Notes': ''}
+         'Yield status': 'unresolved', 'Notes': '',
+         'Fit method': ('Manual range' if active['mode'] == 'range' else 'Manual line') if active else 'Automatic',
+         'Override status': 'Stale source — not applied' if stale else ('Applied' if active else 'None'),
+         'R2 warning threshold': r2_warning, 'Fit point count': 0,
+         'Fit lower strain (%)': np.nan, 'Fit upper strain (%)': np.nan}
     for field in ('Yield (MPa)', 'Yield strain (%)', 'UTS (MPa)', 'Uniform elongation (%)',
                   'Failure elongation (%)', 'Toughness (MJ/m^3)', 'Fitted E (GPa)',
                   'Elastic intercept (MPa)', 'Elastic fit R2', 'Fit lower stress (MPa)',
@@ -56,7 +71,8 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
     calculation = {'properties': p, 'strain_pct': x, 'stress_mpa': y,
                    'elastic_mask': np.zeros(len(x), dtype=bool),
                    'uts_index': None, 'yield_bracket': None,
-                   'fit_fractions': (low, high)}
+                   'fit_fractions': (low, high), 'override': active, 'saved_override': saved,
+                   'r2_threshold': r2_warning}
     if len(x):
         peak = int(np.argmax(y))
         calculation['uts_index'] = peak
@@ -72,12 +88,29 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
         uts = p['UTS (MPa)']
         if uts <= 0 or peak < 3:
             raise ValueError('missing resolved loading segment')
-        elastic = (np.arange(len(x)) < peak) & (y >= low * uts) & (y <= high * uts)
+        if active:
+            left, right = active['strain_bounds']
+            if left < x[0] or right >= x[peak]:
+                raise ValueError('Fit bounds must lie on the measured loading curve strictly before UTS.')
+            elastic = (np.arange(len(x)) < peak) & (x >= left) & (x <= right)
+            p['Yield method'] = '0.2% offset, ' + p['Fit method'].lower()
+        else:
+            elastic = (np.arange(len(x)) < peak) & (y >= low * uts) & (y <= high * uts)
         calculation['elastic_mask'] = elastic
         p.update({'Fit lower stress (MPa)': low * uts, 'Fit upper stress (MPa)': high * uts})
+        p['Fit point count'] = int(elastic.sum())
+        if elastic.any():
+            p.update({'Fit lower strain (%)': float(x[elastic][0]), 'Fit upper strain (%)': float(x[elastic][-1])})
+            if active:
+                p.update({'Fit lower stress (MPa)': float(y[elastic].min()), 'Fit upper stress (MPa)': float(y[elastic].max())})
         if elastic.sum() < 5 or np.ptp(x[elastic]) <= 0:
             raise ValueError('insufficient elastic data for offset yield')
-        modulus, intercept = np.polyfit(x[elastic] / 100, y[elastic], 1)
+        if active and active['mode'] == 'line':
+            (x0, y0), (x1, y1) = active['endpoints']
+            modulus = (y1 - y0) / ((x1 - x0) / 100)
+            intercept = y0 - modulus * x0 / 100
+        else:
+            modulus, intercept = np.polyfit(x[elastic] / 100, y[elastic], 1)
         if not np.isfinite(modulus) or modulus <= 0:
             raise ValueError('elastic fit has non-positive or invalid modulus')
         residual = y[elastic] - (modulus * x[elastic] / 100 + intercept)
@@ -100,4 +133,13 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
                   'Notes': 'Review elastic fit: low R2' if r2 < r2_warning else ''})
     except ValueError as error:
         p['Notes'] = str(error)
+    if stale:
+        p['Notes'] = ('Saved override does not match the current source; automatic fit used. ' + p['Notes']).strip()
+    p['Fit review required'] = bool(stale or p['Yield status'] != 'resolved' or
+                                   not np.isfinite(p['Elastic fit R2']) or p['Elastic fit R2'] < r2_warning)
+    automatic = specimen_calculation(record, (low, high), r2_warning, override=None) if active else None
+    baseline = automatic['properties'] if automatic else p
+    for field in ('Yield (MPa)', 'Yield strain (%)', 'Fitted E (GPa)', 'Elastic fit R2', 'Elastic intercept (MPa)'):
+        p['Automatic ' + field] = baseline[field]
+    calculation['automatic_calculation'] = automatic
     return calculation
