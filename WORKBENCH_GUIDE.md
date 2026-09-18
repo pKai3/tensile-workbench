@@ -181,6 +181,10 @@ Expand **Labels and colours · this graph, all plot types**, select a group, tic
 
 ## Advanced notebook mode
 
+The normal web app uses the **Tensile Workbench** browser-tab title and its own
+tensile-curve favicon, served locally from the bundled `web/` assets. Restart
+the launcher after an update; refresh the browser tab if it retains an old icon.
+
 The normal Launch files open the web app. For the original JupyterLab editor, run `launch_workbench.py --notebook` with the workbench environment's Python, then use **Run > Run All Cells**. This remains optional; both interfaces share calculations and saved definitions. Avoid simultaneous editing sessions for the same project.
 
 ## History and the original installation

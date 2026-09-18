@@ -23,6 +23,7 @@ def check_project_files(root):
                 'tensile_instron.py', 'tensile_tables.py', 'tensile_gauge.py', 'tensile_exports.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_inspector.py', 'tensile_fit.py', 'tensile_startup.py',
                 'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
                 'workbench_environment.py', 'workbench_app.py', 'workbench_server.py',
+                'web/templates/index.html.j2', 'web/static/tensile-favicon.svg',
                 'tensile_workbench_defaults.json', 'requirements.txt')
     unavailable = []
     for name in required:

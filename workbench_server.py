@@ -4,6 +4,7 @@ Voilà 0.5's browser redirect uses connection_url, which omits the login token.
 Keep its normal authentication and port selection; correct only browser opening.
 """
 import threading
+from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import webbrowser
 
@@ -11,6 +12,14 @@ from voila.app import Voila
 
 
 class WorkbenchVoila(Voila):
+    def setup_template_dirs(self):
+        super().setup_template_dirs()
+        # Ship branding with the app, not inside the user's Python environment.
+        # Absolute paths keep Mac/Windows launches independent of the cwd.
+        web_root = Path(__file__).resolve().parent / 'web'
+        self.template_paths = [str(web_root / 'templates'), *self.template_paths]
+        self.static_paths = [str(web_root / 'static'), *self.static_paths]
+
     def browser_url(self):
         # Called after listen() selects an available port. display_url is unsuitable:
         # Voilà deliberately redacts explicitly configured tokens there as "...".

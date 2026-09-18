@@ -1,0 +1,15 @@
+{# Extend the installed renderer; retain its streaming and widget support. #}
+{% extends 'voila/templates/lab/index.html.j2' %}
+
+{% block html_head %}
+  {# This is the renderer's in-memory metadata, not a saved notebook edit. #}
+  {% set _ = nb.metadata.update({'title': 'Tensile Workbench'}) %}
+  {{ super() }}
+  <link rel="icon" type="image/svg+xml" sizes="any"
+        href="{{ resources.base_url }}voila/static/tensile-favicon.svg?v=1">
+{% endblock html_head %}
+
+{% block body_header %}
+  {# The stock lab template inserts an empty favicon after the head. #}
+  {{ super() | replace('<link rel="icon" href="data:;base64,=">', '') }}
+{% endblock body_header %}
