@@ -17,6 +17,8 @@ from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView
 from tensile_properties import specimen_calculation
+from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
+from tensile_exports import export_results, export_curves
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import is_included, specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX
 from tensile_startup import sample_data_settings, save_sample_data_visibility, resolve_folder
@@ -25,6 +27,7 @@ import io
 import json
 import platform
 import re
+import textwrap
 import uuid
 
 NEW_GRAPH_ACTION = '__create_new_graph__'
@@ -42,7 +45,7 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
             continue  # An actual research group always keeps its own identity.
         rename = {group: SAMPLE_GROUP_PREFIX + group for group in groups}
         graph['settings']['groups'] = [rename[group] for group in groups]
-        for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides'):
+        for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides', 'gauge_reconstruction'):
             if key in graph['definition']:
                 graph['definition'][key] = {rename.get(k, k): v for k, v in graph['definition'][key].items()}
         exclusions = graph['definition'].get('specimen_exclusions')
@@ -65,6 +68,27 @@ def graph_menu_options(graphs):
         else:
             named.append((graph['name'], graph['id']))
     return named + drafts + [('＋ Create new graph…', NEW_GRAPH_ACTION)]
+
+
+def append_plot_caption(figure, note):
+    """Stack figure notes below the axes, reserving space in previews/exports.
+
+    Plotly already presents figure texts as a flowing caption. Keeping the
+    reconstruction note here also avoids a second title in the static view.
+    """
+    footers = [text for text in figure.texts if text.get_text() and text.get_position()[1] < .2]
+    paragraphs = [text.get_text() for text in footers] + [note]
+    for text in footers:
+        text.remove()
+    font_size = 9
+    line_width = max(32, int((figure.get_figwidth() * 72 - 36) / (font_size * .62)))
+    lines = [part for paragraph in paragraphs for line in paragraph.splitlines()
+             for part in (textwrap.wrap(line, line_width, break_long_words=False,
+                                        break_on_hyphens=False) or [''])]
+    figure.text(.5, .02, '\n'.join(lines), ha='center', va='bottom',
+                fontsize=font_size, linespacing=1.3)
+    footer_height = (len(lines) * font_size * 1.3 + 10) / (figure.get_figheight() * 72)
+    figure.tight_layout(rect=(0, .02 + footer_height, 1, 1))
 
 
 FAMILIES = [
@@ -153,6 +177,7 @@ class PreviewSession:
 
     def set_project(self, project):
         previous_policy = fit_policy(self.project)
+        project = migrate_group_gauges(project)
         self.project = deepcopy(project)
         self.graphs = [{**g["definition"], "name": g["name"]} for g in project["graphs"]]
         self.engine.NAME_LOOKUP = deepcopy(project.get("display_names", {}))
@@ -198,17 +223,18 @@ class PreviewSession:
                 raise ValueError(f"Unknown group: {group}")
             records = []
             for source in self.files[group]:
-                result = self.engine.load_and_prepare_curve(source)
+                result = self.engine.load_and_prepare_curve(source, return_metadata=True)
                 if result is None:
                     print(f"[SKIP] No usable stress–strain data: {source.name}")
                     continue
-                strain, stress = result
+                strain, stress, acquisition, indices = result
                 records.append({
                     "sample": source.stem, "source_file": str(source),
                     "specimen_id": ((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
                                     + source.relative_to(self.source_roots[group]).as_posix()),
                     "strain_pct": strain, "stress_mpa": stress,
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
+                    "_acquisition": acquisition, "_measurement_indices": indices,
                     "failure_elongation_pct": self.engine.failure_elongation_percent(strain),
                     "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                 })
@@ -226,13 +252,36 @@ class PreviewSession:
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
         key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
-                          spec.get('specimen_exclusions', {})], sort_keys=True)
+                          spec.get('specimen_exclusions', {}),
+                          {g: group_policy(state, spec, g) for g in state['groups']}], sort_keys=True)
         if key not in self._property_frames:
-            records = {group: self._load(group) for group in self.visible_groups(state['groups'])}
+            records = self.analysis_records(state, spec, include_excluded=True)
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron)
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
         return self._property_frames[key]
+
+    def analysis_records(self, state, spec, include_excluded=False, measured=False):
+        records = ({g: self._load(g) for g in self.visible_groups(state['groups'])}
+                   if include_excluded else self.included_records(state['groups'], spec))
+        if measured:
+            return records
+        result = {}
+        for g, rows in records.items():
+            policy = group_policy(state, spec, g)
+            result[g] = [gauge_record(r, self.instron.match(g, r), policy['enabled'], policy['target_gauge_mm']) for r in rows]
+        if not include_excluded:
+            errors = [f"{g}/{r['sample']}: {r['_gauge']['Gauge correction status']}"
+                      for g, rows in result.items() for r in rows
+                      if group_policy(state, spec, g)['enabled'] and r['_gauge']['Gauge correction status'] != 'Applied']
+            if errors:
+                raise ValueError('Specimen review required; none have been automatically excluded. ' + '; '.join(errors))
+            for g, rows in result.items():
+                if group_policy(state, spec, g)['enabled']:
+                    for r in rows:
+                        if r['_gauge']['Gauge model warning']:
+                            print(f"[GAUGE WARNING] {g}/{r['sample']}: {r['_gauge']['Gauge model warning']}")
+        return result
 
     def export_properties(self, state, spec):
         """Explicit table-only export; does not calculate average curves."""
@@ -242,12 +291,13 @@ class PreviewSession:
         base = self.output_root()
         destination = base / self.engine.safe_filename(spec['name']) / (datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_tables')
         destination.mkdir(parents=True, exist_ok=False)
-        for name, frame in frames.items():
-            self.engine.write_excel_table(frame, destination / (name + '.xlsx'), name[:31])
+        export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
+                       {'graph': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
+                        'engine_sha256': self.engine_sha256})
         (destination / 'settings.json').write_text(json.dumps({'graph_definition': spec, 'settings': state,
             'specimen_fit_policy': self.fit_provenance(state),
             'engine_sha256_at_load': self.engine_sha256,
-            'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see specimen_diagnostics for source hashes.'}, indent=2))
+            'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Checks sheet for source hashes.'}, indent=2))
         return destination
 
     def specimen_inspection(self, state, spec, ident):
@@ -260,13 +310,16 @@ class PreviewSession:
         for group in self.visible_groups(state['groups']):
             for record in self._load(group):
                 if specimen_id(record) == ident:
+                    reference = self.instron.match(group, record)
+                    policy = group_policy(state, spec, group)
                     return {'group': group, 'sample': record['sample'], 'specimen_id': ident,
                             'source_file': record['source_file'], 'source_sha256': record.get('source_sha256', ''),
                             'included': is_included(record, spec),
                             'exclusion_reason': spec.get('specimen_exclusions', {}).get(ident, ''),
                             'record': record,
                             'calculation': specimen_calculation(record, fractions, self.engine.LANDMARK_YIELD_R2_WARNING),
-                            'reference': self.instron.match(group, record)}
+                            'reference': reference, 'gauge_policy': policy,
+                            'gauge_preview': gauge_record(record, reference, True, policy['target_gauge_mm'])}
         raise ValueError('Specimen is no longer available in this graph. Refresh the tables.')
 
     def _wh_settings(self, state, spec):
@@ -361,7 +414,7 @@ class PreviewSession:
         before = set(e.plt.get_fignums())
         with redirect_stdout(stream), redirect_stderr(stream):
             try:
-                records = self.included_records(state['groups'], spec)
+                records = self.analysis_records(state, spec, measured=state['family'].startswith('work_hardening'))
                 if not records:
                     raise ValueError('No included usable specimens. Tick Include on the Specimens tab.')
                 empty = [g for g in state['groups'] if g not in records]
@@ -378,7 +431,9 @@ class PreviewSession:
                     ylim = state['wh_ylim'] if is_wh else state['tensile_ylim'] or auto_y
                 models = None
                 if family not in ("work_hardening", "representative", *PROPERTY_FAMILIES):
-                    key = json.dumps([spec, sorted(records), state["landmark_points"], state["pointwise_points"]], sort_keys=True)
+                    key = json.dumps([spec, {g: [specimen_id(r) for r in rows] for g, rows in records.items()},
+                        state["landmark_points"], state["pointwise_points"],
+                        family.startswith('work_hardening')], sort_keys=True)
                     if key not in self._models:
                         model_log = io.StringIO()
                         with redirect_stdout(model_log):
@@ -406,9 +461,14 @@ class PreviewSession:
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
                              dict((value, label) for label, value in FAMILIES)[family])
                 title = spec.get("workbench_titles", {}).get(family) or title
+                reconstructed = not family.startswith('work_hardening') and any(
+                    group_policy(state, spec, g)['enabled'] for g in records)
+                labels = spec.get('name_overrides', {})
+                if reconstructed:
+                    labels = {g: e.get_display_name(g, labels) + ' · ' + group_basis_label(state, spec, g) for g in records}
                 common = dict(out_path=Path("preview.png"), color_map={**self.colors, **spec.get('color_overrides', {})},
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
-                              title=title, name_overrides=spec.get("name_overrides", {}), preview=True)
+                              title=title, name_overrides=labels, preview=True)
                 wh = self._wh_settings(state, spec)
                 if family in PROPERTY_FAMILIES:
                     fig = e.render_strength_elongation_plot(records, family=family,
@@ -429,6 +489,16 @@ class PreviewSession:
                     fig = self._compare_wh(models, curves, common, wh)
                 if fig is None:
                     raise ValueError("No valid curves for this preview. " + stream.getvalue())
+                if reconstructed:
+                    for ax in fig.axes:
+                        ax.set_xlabel(('Elongation at failure (%)' if family in PROPERTY_FAMILIES
+                                       else 'Engineering strain (%)'))
+                    warning_count = sum(bool(r['_gauge']['Gauge model warning']) for rows in records.values() for r in rows
+                                        if r['_gauge']['Elongation basis'] == 'Estimated standard gauge')
+                    note = 'Gauge reconstruction: estimated post-peak strain; target gauges listed in the legend.'
+                    if warning_count:
+                        note += f'\nLonger-target model warnings: {warning_count} specimens; see inspector.'
+                    append_plot_caption(fig, note)
                 # Vector previews remain sharp at gallery and enlarged sizes.
                 # PNG exports retain the independent 600-DPI setting.
                 buffer = io.BytesIO()
@@ -437,7 +507,8 @@ class PreviewSession:
                                 "sha256_at_load": r["source_sha256"]} for g, rows in records.items() for r in rows]
                 return {"figure": fig, "svg": buffer.getvalue(), "state": deepcopy(state),
                         "graph_spec": spec, "sources": source_rows, "log": stream.getvalue(),
-                        "seconds": perf_counter() - start, "n_samples": len(source_rows)}
+                        "seconds": perf_counter() - start, "n_samples": len(source_rows),
+                        "export_records": records, "export_models": models}
             finally:
                 # Avoid duplicate notebook displays and accumulating open figures.
                 # Figure objects remain usable for an explicit later PNG export.
@@ -468,6 +539,7 @@ class PreviewSession:
         ax.legend()
         first.text(.5, .01, "Solid: mean specimen WH; dashed: derivative of landmark mean.\nFaint lines, if enabled: original specimen WH.", ha="center")
         first.tight_layout(rect=(0, .08, 1, 1))
+        first._export_wh = getattr(first, '_export_wh', []) + getattr(second, '_export_wh', [])
         return first
 
     def export(self, results, include_tables=False):
@@ -504,32 +576,20 @@ class PreviewSession:
             (destination / "settings.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
             (destination / "calculation_log.txt").write_text("\n\n".join(r["log"] for r in results), encoding="utf-8")
             if include_tables:
-                self._export_tables(destination, result)
+                self._export_tables(destination, results)
         except Exception as error:
             raise RuntimeError(f"Export incomplete in {destination}: {error}") from error
         return destination
 
-    def _export_tables(self, destination, result):
-        """Build all graph-level tables from cached original curves on demand."""
-        e, state, spec = self.engine, result["state"], result["graph_spec"]
-        records = self.included_records(state['groups'], spec)
-        with redirect_stdout(io.StringIO()):
-            models, audit, summary = e.prepare_average_curves(spec, records,
-                landmark_points_per_stage=state["landmark_points"], pointwise_points=state["pointwise_points"])
-        frames = dict(self.property_tables(state, spec))
-        frames.update(landmark_samples=e.pd.DataFrame(audit), landmark_summary=e.pd.DataFrame(summary),
-                      toughness_stats=e.pd.DataFrame(e.summarize_toughness_stats(models, spec)))
-        curves = []
-        for group, model in models.items():
-            for method in ("pointwise", "landmark"):
-                curve = model[method]
-                if curve is not None:
-                    curves.extend({"Group": group, "Method": method, "Strain (%)": float(x), "Stress (MPa)": float(y),
-                        "Segment": "stage-aligned" if method=="landmark" else ("fitted tail" if x>curve["measured_x"][-1] else "measured mean")}
-                        for x, y in zip(curve["x"], curve["y"]))
-        frames.update(average_curves=e.pd.DataFrame(curves))
-        for name, frame in frames.items():
-            e.write_excel_table(frame, destination / f"{name}.xlsx", name[:31])
+    def _export_tables(self, destination, results):
+        """Consolidated properties plus only the datasets in exported views."""
+        result = results[0]
+        state, spec = result['state'], result['graph_spec']
+        graph = self.engine.safe_filename(spec['name'])
+        export_results(self.property_tables(state, spec), destination / f'{graph}_results.xlsx',
+                       {'graph': spec, 'views': [r['state'] for r in results],
+                        'fit_policy': self.fit_provenance(state), 'engine_sha256': self.engine_sha256})
+        export_curves(results, self.engine, destination / f'{graph}_curves.xlsx')
 
 
 class TensileWorkbench:
@@ -542,7 +602,7 @@ class TensileWorkbench:
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
                                   self.project_dir / "tensile_workbench_defaults.json")
         self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
-        upgraded = upgrade_legacy_demo_graph(self.store.data, self.session.data_dir, self.session.sample_data_dir)
+        upgraded = migrate_group_gauges(upgrade_legacy_demo_graph(self.store.data, self.session.data_dir, self.session.sample_data_dir))
         if upgraded != self.store.data:
             self.store.save(upgraded)
             self.session.set_project(self.store.data)
@@ -628,6 +688,19 @@ class TensileWorkbench:
         self.override_e = w.BoundedFloatText(value=115, min=1, max=1000, description="E (GPa):")
         self.override_rep = w.Dropdown(description="Representative:", style={"description_width": "initial"}, layout=w.Layout(width="98%"))
         self.override_button = w.Button(description="Apply group overrides")
+        self._gauge_rows, self._gauge_graph_id, self._gauge_sync = {}, None, False
+        self.gauge_grid = w.GridBox(layout=w.Layout(
+            grid_template_columns='minmax(140px, 1fr) 140px 110px', grid_gap='2px 12px',
+            align_items='center', width='100%', min_width='420px', max_width='700px'))
+        self.gauge_message = w.HTML()
+        self.gauge_panel = w.Accordion(children=[w.VBox([
+            w.Box([self.gauge_grid], layout=w.Layout(width='100%', overflow='auto')),
+            self.gauge_message,
+            w.HTML('Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
+                   'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
+                   'overlay in the specimen inspector. Longer targets are allowed with a model warning; '
+                   'all reconstructed results remain derived estimates.')])], selected_index=None)
+        self.gauge_panel.set_title(0, 'Gauge reconstruction · per sample group')
         self.update_button = w.Button(description="Update plots", button_style="primary")
         self.reload_button = w.Button(description="Reload data")
         self.export_button = w.Button(description="Export plot set", tooltip="Export all generated plots in this set, including when one is enlarged.", disabled=True)
@@ -640,7 +713,10 @@ class TensileWorkbench:
         self.fit_warning = w.HTML(layout=w.Layout(width='100%'))
         self.review_fits = w.Button(description='Review fits', layout=w.Layout(width='110px', flex='0 0 110px'), disabled=True)
         self.review_fits.on_click(self._review_fits)
-        self.fit_review_bar = w.HBox([self.fit_warning, self.review_fits], layout=w.Layout(width='100%'))
+        self.fit_review_bar = w.VBox([
+            self._row([self.tables.threshold, self.tables.threshold_status]),
+            w.HBox([self.fit_warning, self.review_fits], layout=w.Layout(width='100%'))
+        ], layout=w.Layout(width='100%'))
         self.tables_update_button = w.Button(description='Update tables')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
@@ -700,6 +776,7 @@ class TensileWorkbench:
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
             w.HTML("Tick the exact sample groups to include, regardless of their naming format."), general,
+            self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
             self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
@@ -820,6 +897,7 @@ class TensileWorkbench:
             for family, control in self.title_inputs.items():
                 control.value = graph["definition"].get("workbench_titles", {}).get(family, legacy.get(title_keys.get(family), ""))
             self.override_group.options = self.session.visible_groups(state["groups"])
+            self._sync_gauge_rows(force=True)
             self._sample_data_note()
             self._load_overrides()
             self._sync_disabled()
@@ -850,7 +928,9 @@ class TensileWorkbench:
             state = self.state()
             check = {**state, "groups": state["groups"] or ["draft"], "family": state["families"][0] if state["families"] else "landmark"}
             self.session._validate(check)
-            project = deepcopy(self.store.data)
+            # Preserve legacy gauge choices before replacing settings with the
+            # current controls (which no longer contain graph-wide gauge fields).
+            project = migrate_group_gauges(self.store.data)
             graph = project["graphs"][self._index()]
             graph["name"] = self.name.value.strip()
             # Hiding samples is not a graph edit. Keep their previous selections
@@ -878,6 +958,7 @@ class TensileWorkbench:
             self._show_saved()
             if tuple(self.override_group.options) != tuple(state["groups"]):
                 self.override_group.options = state["groups"]
+            self._sync_gauge_rows()
             return True
         except Exception as error:
             self.save_status.value = "<b>Not saved:</b> " + escape(str(error))
@@ -966,6 +1047,9 @@ class TensileWorkbench:
     def reload_definitions(self, _=None):
         try:
             self.store.reload()
+            upgraded = migrate_group_gauges(self.store.data)
+            if upgraded != self.store.data:
+                self.store.save(upgraded)
             self.session.set_project(self.store.data)
             self._paused = True
             self._refresh_graph_options()
@@ -993,6 +1077,9 @@ class TensileWorkbench:
         self.delete_confirmation.layout.display = 'none'
 
     def _after_graph_action(self, message):
+        upgraded = migrate_group_gauges(self.store.data)
+        if upgraded != self.store.data:
+            self.store.save(upgraded)
         self.session.set_project(self.store.data)
         self._refresh_graph_options()
         self._apply_graph(self.store.data['selected_graph'])
@@ -1062,6 +1149,73 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = '<b>Specimen selection not saved:</b> ' + escape(str(error))
             self._refresh_properties()
+
+    def _sync_gauge_rows(self, force=False):
+        """Rebuild only on graph/group changes, not while a row is being edited."""
+        graph, w = self._current(), self.w
+        groups = self.session.visible_groups(graph['settings']['groups'])
+        if not force and self._gauge_graph_id == graph['id'] and tuple(self._gauge_rows) == tuple(groups):
+            return
+        self._gauge_sync = True
+        previous = self.gauge_grid.children
+        try:
+            cells = [w.HTML('<b>' + title + '</b>') for title in ('Sample group', 'Target (mm)', 'Reconstruct')]
+            self._gauge_rows = {}
+            self._gauge_graph_id = graph['id']
+            for group in groups:
+                policy = group_policy(graph['settings'], graph['definition'], group)
+                label = (group[len(SAMPLE_GROUP_PREFIX):].removeprefix('Demo_') + ' (sample)'
+                         if group.startswith(SAMPLE_GROUP_PREFIX) else group)
+                if group not in self.session.files:
+                    label += ' (unavailable)'
+                target = w.BoundedFloatText(value=policy['target_gauge_mm'], min=0,
+                    max=max(100000, policy['target_gauge_mm']), step=1, continuous_update=False,
+                    tooltip=label + ': target gauge length in mm; 0 means unset',
+                    layout=w.Layout(width='135px', margin='0'))
+                enabled = w.Checkbox(value=policy['enabled'], indent=False,
+                    tooltip=label + ': use reconstructed post-peak strain',
+                    layout=w.Layout(width='auto', margin='0'))
+                self._gauge_rows[group] = (target, enabled)
+                cells.extend([w.HTML(escape(label), layout=w.Layout(margin='0')), target, enabled])
+                for control in (target, enabled):
+                    control.observe(lambda change, group=group, graph_id=graph['id']:
+                                    self._gauge_row_changed(group, graph_id), names='value')
+            if not groups:
+                cells.append(w.HTML('Select sample groups above to set their target gauges.',
+                                    layout=w.Layout(grid_column='1 / -1')))
+            self.gauge_grid.children = tuple(cells)
+            self.gauge_message.value = ''
+        finally:
+            self._gauge_sync = False
+        for control in previous:
+            control.close()
+
+    def _gauge_row_changed(self, group, graph_id):
+        if self._paused or self._gauge_sync or graph_id != self.graph.value or group not in self._gauge_rows:
+            return
+        target, enabled = self._gauge_rows[group]
+        try:
+            policy = validate_group_policy({'enabled': enabled.value, 'target_gauge_mm': target.value})
+            if not self.save_current():
+                raise ValueError('Graph settings could not be saved; gauge settings were not applied.')
+            project = deepcopy(self.store.data)
+            project['graphs'][self._index()]['definition'].setdefault('gauge_reconstruction', {})[group] = policy
+            self.store.save(project)
+            self.session.set_project(self.store.data)
+            self._show_saved()
+            self._changed()
+            self.gauge_message.value = 'Saved · ' + escape(group) + ': ' + escape(
+                group_basis_label(self._current()['settings'], self._current()['definition'], group))
+        except Exception as error:
+            # An invalid edit must not look applied while calculations still use
+            # the previous saved policy. Restore that row without another event.
+            policy = group_policy(self._current()['settings'], self._current()['definition'], group)
+            self._gauge_sync = True
+            try:
+                target.value, enabled.value = policy['target_gauge_mm'], policy['enabled']
+            finally:
+                self._gauge_sync = False
+            self.gauge_message.value = '<b>Not saved:</b> ' + escape(str(error))
 
     def _load_overrides(self, _=None):
         group = self.override_group.value

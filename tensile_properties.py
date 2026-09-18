@@ -25,6 +25,16 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
     A failed yield fit does not discard measured UTS/elongation/toughness.
     No post-UTS segment or landmark-aligned curve is needed for yield.
     """
+    if '_measured_record' in record:
+        p = specimen_properties(record['_measured_record'], fit_fractions, r2_warning)
+        audit = record['_gauge']
+        p['Measured failure elongation (%)'] = p['Failure elongation (%)']
+        p['Measured toughness (MJ/m^3)'] = p['Toughness (MJ/m^3)']
+        p.update(audit)
+        if audit['Elongation basis'] == 'Estimated standard gauge':
+            p['Failure elongation (%)'] = audit['Estimated failure elongation (%)']
+            p['Toughness (MJ/m^3)'] = audit['Estimated toughness (MJ/m^3)']
+        return p
     low, high = map(float, fit_fractions)
     if not 0 < low < high < 1:
         raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')

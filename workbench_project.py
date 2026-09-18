@@ -4,12 +4,14 @@ from datetime import datetime
 from pathlib import Path
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
 import uuid
 from tensile_selection import valid_specimen_id
 from tensile_fit import validate_threshold, validate_override
+from tensile_gauge import validate_group_policy
 
 
 class ProjectConflict(RuntimeError):
@@ -49,6 +51,21 @@ def validate_project(project):
         names.add(name.casefold())
         if not isinstance(graph.get('settings'), dict) or not isinstance(graph.get('definition'), dict):
             raise ValueError('Each graph needs calculation settings and a definition.')
+        settings = graph['settings']
+        group_gauges = graph['definition'].get('gauge_reconstruction', {})
+        if not isinstance(group_gauges, dict):
+            raise ValueError('Group gauge settings must be a mapping.')
+        for group, policy in group_gauges.items():
+            if not isinstance(group, str) or not group:
+                raise ValueError('Gauge settings require a sample-group name.')
+            validate_group_policy(policy)
+        if not isinstance(settings.get('gauge_correction', False), bool):
+            raise ValueError('Gauge reconstruction must be a graph-level on/off setting.')
+        target = settings.get('target_gauge_mm', 0)
+        if (isinstance(target, bool) or not isinstance(target, (int, float)) or
+                not math.isfinite(target) or target < 0 or
+                (settings.get('gauge_correction') and target <= 0)):
+            raise ValueError('Gauge reconstruction requires a positive target gauge length in mm.')
         if not isinstance(graph['settings'].get('groups'), list):
             raise ValueError('Graph sample groups must be a list.')
         if len(set(graph['settings']['groups'])) != len(graph['settings']['groups']):

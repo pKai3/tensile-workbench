@@ -673,7 +673,7 @@ def read_tensile_csv_table(csv_path):
     return None
 
 
-def load_and_prepare_curve(csv_path):
+def load_and_prepare_curve(csv_path, return_metadata=False):
     """Load the complete recorded curve; display-only trimming happens later."""
     df_raw = read_tensile_csv_table(csv_path)
 
@@ -689,14 +689,16 @@ def load_and_prepare_curve(csv_path):
     if stress is None or strain_pct is None:
         return None
 
-    strain_pct, stress = trim_nonnegative_percent(strain_pct, stress)
-    if len(strain_pct) < 5:
+    from tensile_gauge import acquisition_metadata, prepared_indices
+    from types import SimpleNamespace
+    metadata = acquisition_metadata(SimpleNamespace(find_first_col=find_first_col,
+        FORCE_COLS=FORCE_COLS, STRAIN_COLS=STRAIN_COLS), df, units_map, strain_pct, stress)
+    indices = prepared_indices(metadata)
+    if len(indices) < 5:
         return None
-
-    order = np.argsort(strain_pct.values)
-    s_sorted = strain_pct.values[order]
-    st_sorted = stress.values[order]
-
+    s_sorted, st_sorted = metadata['strain'][indices], metadata['stress'][indices]
+    if return_metadata:
+        return s_sorted, st_sorted, metadata, indices
     return s_sorted, st_sorted
 
 def find_sample_groups(root: Path):
@@ -1136,7 +1138,8 @@ def render_work_hardening_plot(
 
     for group_name in sorted(groups_curves.keys()):
         wh_curves = []
-        for s_pct, stress_eng in groups_curves[group_name]:
+        wh_indices = []
+        for specimen_index, (s_pct, stress_eng) in enumerate(groups_curves[group_name]):
             result = compute_work_hardening_curve(
                 s_pct, stress_eng,
                 youngs_modulus_mpa=modulus_overrides.get(group_name, youngs_modulus_mpa),
@@ -1153,6 +1156,7 @@ def render_work_hardening_plot(
             eps_p_pct = eps_p_pct[valid]
             theta = theta[valid]
             wh_curves.append((eps_p_pct, theta))
+            wh_indices.append(specimen_index)
             all_rates.extend(theta[theta >= 0].tolist())
             x_max = max(x_max, float(np.nanmax(eps_p_pct)))
 
@@ -1167,6 +1171,13 @@ def render_work_hardening_plot(
             continue
 
         grid_pct, mean_theta, _, _ = averaged
+        figure = plt.gcf()
+        if not hasattr(figure, '_export_wh'):
+            figure._export_wh = []
+        figure._export_wh.append(('WH specimen average', group_name, None, grid_pct, mean_theta))
+        if show_individual:
+            figure._export_wh.extend(('WH individuals', group_name, i, x, y)
+                                     for i, (x, y) in zip(wh_indices, wh_curves))
         color = color_map[group_name]
 
         if show_individual:
@@ -1370,12 +1381,18 @@ def render_landmark_work_hardening_plot(
         x, theta = x[valid], theta[valid]
         color = color_map[group]
         if show_individual:
-            for strain, stress in groups_curves[group]:
+            for specimen_index, (strain, stress) in enumerate(groups_curves[group]):
                 individual = compute_work_hardening_curve(strain, stress, **settings)
                 if individual is not None:
                     ix, iy, _ = individual
                     iv = np.isfinite(ix) & np.isfinite(iy)
                     ax.plot(ix[iv], iy[iv], color=color, alpha=.18, lw=.7)
+                    if not hasattr(figure, '_export_wh'):
+                        figure._export_wh = []
+                    figure._export_wh.append(('WH individuals', group, specimen_index, ix[iv], iy[iv]))
+        if not hasattr(figure, '_export_wh'):
+            figure._export_wh = []
+        figure._export_wh.append(('WH landmark', group, None, x, theta))
         ax.plot(x, theta, color=color, lw=1.8,
                 label=f"{get_display_name(group, name_overrides)} (n={landmark['n']})")
         all_rates.extend(theta[theta >= 0].tolist())

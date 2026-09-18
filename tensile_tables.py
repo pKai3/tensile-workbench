@@ -110,6 +110,7 @@ def property_tables(records, spec, engine, instron):
         properties, references = [], []
         for row in rows:
             p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING)
+            measured = engine.specimen_properties(row.get('_measured_record', row), fractions, engine.LANDMARK_YIELD_R2_WARNING)
             reference = instron.match(group, row)
             included = is_included(row, spec)
             if included:
@@ -126,6 +127,11 @@ def property_tables(records, spec, engine, instron):
                             'Toughness (MJ/m^3)': p['Toughness (MJ/m^3)'], 'Fitted E (GPa)': p['Fitted E (GPa)'],
                             'Yield Strain (%)': p['Yield strain (%)'], 'Elastic Fit R2': p['Elastic fit R2'],
                             'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'], 'Source File': row['source_file']})
+            samples[-1].update(row.get('_gauge', {}))
+            samples[-1].update({'Measured failure elongation (%)': measured['Failure elongation (%)'],
+                               'Measured toughness (MJ/m^3)': measured['Toughness (MJ/m^3)'],
+                               'Width (mm)': reference['values'].get('width', np.nan),
+                               'Thickness (mm)': reference['values'].get('thickness', np.nan)})
             diagnostics.append({**identity, **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
                                 'R2 warning threshold': p['R2 warning threshold'], 'Fit Point Count': p['Fit point count'],
                                 'Fit Lower Strain (%)': p['Fit lower strain (%)'], 'Fit Upper Strain (%)': p['Fit upper strain (%)'],
@@ -148,7 +154,7 @@ def property_tables(records, spec, engine, instron):
             for label, unit, field, ref_key in METRICS:
                 if ref_key is None:
                     continue
-                calculated, reported = p[field], reference['values'].get(ref_key, np.nan)
+                calculated, reported = measured[field], reference['values'].get(ref_key, np.nan)
                 paired = bool(np.isfinite(calculated) and np.isfinite(reported))
                 difference = calculated - reported if paired else np.nan
                 comparison.append({**identity, 'Property': label, 'Unit': unit, 'Calculated': calculated, 'Instron': reported,
@@ -179,7 +185,19 @@ def property_tables(records, spec, engine, instron):
                                  'Mean Absolute Difference': float(np.mean(np.abs(difference))) if len(difference) else np.nan,
                                  'Max Absolute Difference': float(np.max(np.abs(difference))) if len(difference) else np.nan})
     details = pd.DataFrame(summaries)
-    return {'tensile_samples': pd.DataFrame(samples), 'tensile_summary': summary_wide(details),
+    summary = summary_wide(details)
+    sample_frame = pd.DataFrame(samples)
+    if not sample_frame.empty and 'Elongation basis' in sample_frame:
+        for group, frame in sample_frame.groupby('Group', sort=False):
+            mask = summary['Group'] == group
+            summary.loc[mask, 'Elongation basis'] = frame['Elongation basis'].iloc[0]
+            summary.loc[mask, 'Target gauge length (mm)'] = frame['Target gauge length (mm)'].iloc[0]
+            for field in ('Measured failure elongation (%)', 'Estimated failure elongation (%)',
+                          'Measured toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)'):
+                for stat, value in _stats(frame.loc[frame['Included'], field]).items():
+                    if stat in ('Mean', 'SD', 'n'):
+                        summary.loc[mask, field + ' · ' + stat] = value
+    return {'tensile_samples': sample_frame, 'tensile_summary': summary,
             'tensile_summary_details': details,
             'instron_comparison': comparisons, 'instron_comparison_summary': pd.DataFrame(paired_stats),
             'specimen_diagnostics': pd.DataFrame(diagnostics), 'uniform_elongation_summary': pd.DataFrame(uniform)}
@@ -249,9 +267,10 @@ class PropertyTablesView:
         self.frames = {}
         self._threshold_sync = False
         self.on_threshold = on_threshold
-        self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.005,
-            description='Warn if R² <', continuous_update=False, style={'description_width': 'initial'},
-            layout=w.Layout(width='240px'))
+        self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.001,
+            description='R² warning threshold:', continuous_update=False, style={'description_width': 'initial'},
+            tooltip='Flag fits below this R² for review. Does not exclude specimens or change the fit.',
+            layout=w.Layout(width='300px'))
         self.threshold_status = w.HTML('Applies to all graphs; warning only.')
         self.threshold.observe(self._threshold_changed, names='value')
         self.review_only = w.Checkbox(value=False, description='Only fits needing review', indent=False,
@@ -276,8 +295,7 @@ class PropertyTablesView:
         self.status = w.HTML('Select sample groups to load property tables.')
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
-                          w.HBox([self.filter, self.sort, self.descending], layout=w.Layout(flex_flow='row wrap')),
-                          w.HBox([self.threshold, self.threshold_status, self.review_only], layout=w.Layout(flex_flow='row wrap')),
+                          w.HBox([self.filter, self.sort, self.descending, self.review_only], layout=w.Layout(flex_flow='row wrap')),
                           self.metric, self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
         for control in (self.filter, self.sort, self.descending, self.metric, self.review_only):
             control.observe(lambda _: self.render(), names='value')
@@ -390,14 +408,24 @@ class PropertyTablesView:
         comparison = self._filtered(self.frames['instron_comparison'])
         diagnostic = self._filtered(self.frames['specimen_diagnostics'])
         comparison = comparison[comparison['Property'] == self.metric.value] if not comparison.empty else comparison
+        basis_note = ''
+        if not samples.empty and 'Elongation basis' in samples:
+            labels = []
+            for group, frame in samples.groupby('Group', sort=False):
+                basis = str(frame['Elongation basis'].iloc[0])
+                target = frame['Target gauge length (mm)'].iloc[0]
+                if basis == 'Estimated standard gauge' and np.isfinite(target):
+                    basis += f' ({target:g} mm)'
+                labels.append(escape(str(group)) + ': ' + escape(basis))
+            basis_note = '<p><b>Elongation/toughness basis by group:</b> ' + '; '.join(labels) + '. Instron values and agreement checks remain measured.</p>'
         self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
-                               'SD requires at least two values. “—” means unavailable.</p>' + summary_html(summary))
+                               'SD requires at least two values. “—” means unavailable.</p>' + basis_note + summary_html(summary))
         self.panels[1].value = ('<p><b>Include</b> applies to this graph only: statistics, averages, work hardening and all plots. '
                                'Unchecked specimens stay here for review and in the specimen export. '
                                'Files/folders marked with ! are ignored entirely. '
-                               '<b>Click a specimen name to inspect its calculation.</b></p>')
-        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required'}
+                               '<b>Click a specimen name to inspect its measured elastic-fit calculation.</b></p>' + basis_note)
+        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required', 'Gauge source'}
         columns = [column for column in samples.columns if column not in hidden]
         def text_value(value):
             if pd.isna(value):

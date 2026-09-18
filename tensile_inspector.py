@@ -25,7 +25,20 @@ def inspection_ranges(calculation, mode='yield'):
     return [left - .02 * span, right + .04 * span], [lower - .03 * upper, upper * 1.12]
 
 
-def inspection_figure(payload, mode='yield', edit=None):
+def overlay_ranges(payload, mode='yield', show_gauge=False):
+    xrange, yrange = inspection_ranges(payload['calculation'], mode)
+    preview = payload.get('gauge_preview')
+    if show_gauge and mode == 'full' and preview and preview['_gauge']['Gauge correction status'] == 'Applied':
+        x = np.asarray(preview['strain_pct'])
+        finite = x[np.isfinite(x)]
+        if len(finite):
+            left, right = min(xrange[0], float(finite.min())), max(xrange[1], float(finite.max()))
+            padding = .04 * max(right - left, .1)
+            xrange = [left, right + padding]
+    return xrange, yrange
+
+
+def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     """Plot exact prepared points, not a mean/landmark or WH-filtered curve."""
     import plotly.graph_objects as go
 
@@ -44,7 +57,23 @@ def inspection_figure(payload, mode='yield', edit=None):
             name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size),
             hovertemplate=escape(name) + '<br>Strain: %{x:.4f}%<br>Stress: %{y:.3f} MPa<extra></extra>'))
 
-    line('Measured curve (prepared)', x, y, '#334155', width=2)
+    if show_gauge:
+        measured = payload['record']
+        line('Measured AVE curve', measured['strain_pct'], measured['stress_mpa'], '#334155', width=2)
+        preview = payload.get('gauge_preview')
+        if preview and preview['_gauge']['Gauge correction status'] == 'Applied':
+            target = preview['_gauge']['Target gauge length (mm)']
+            line(f'Estimated curve · target {target:g} mm', preview['strain_pct'], preview['stress_mpa'], '#e76f00', dash='dash', width=2)
+            endpoint = int(preview['_gauge']['Failure measurement row (1-based)']) - 1
+            points('Estimated failure endpoint', [preview['_gauge']['Estimated failure elongation (%)']],
+                   [measured['_acquisition']['stress'][endpoint]], '#e76f00', 'x', 12)
+        acquisition = measured.get('_acquisition', {})
+        peak = acquisition.get('peak')
+        if peak is not None and np.isfinite(acquisition['strain'][peak]) and np.isfinite(acquisition['stress'][peak]):
+            points(acquisition['peak_basis'] + ' · original row ' + str(peak + 1),
+                   [acquisition['strain'][peak]], [acquisition['stress'][peak]], '#dc2626', 'diamond-open', 13)
+    else:
+        line('Measured curve (prepared)', x, y, '#334155', width=2)
     mask = calculation['elastic_mask']
     if mask.any():
         points('Elastic-fit points', x[mask], y[mask], '#16a085', size=6)
@@ -84,7 +113,7 @@ def inspection_figure(payload, mode='yield', edit=None):
             fig.add_shape(type='line', name='fit-line', editable=True, x0=x0, x1=x1, y0=y0, y1=y1,
                           line=dict(color='#7c3aed', width=4))
             points('Manual line endpoints', [x0, x1], [y0, y1], '#7c3aed', 'circle-open', 12)
-    xrange, yrange = inspection_ranges(calculation, mode)
+    xrange, yrange = overlay_ranges(payload, mode, show_gauge)
     fig.update_layout(template='plotly_white', autosize=True, height=620,
         margin=dict(l=72, r=25, t=22, b=190), font=dict(family='Arial, sans-serif', size=12),
         xaxis=dict(title='Engineering strain (%)', range=xrange, automargin=True),
@@ -133,6 +162,34 @@ def inspection_summary(payload):
                       number(reported) + '</td><td>' + number(calculated - reported) + '</td></tr>')
     result.append('</tbody></table><p>Δ uses the displayed units; elongation differences are percentage points. '
                   'Instron YS is drawn as a horizontal reference only; its yield strain is not inferred.</p>')
+    preview = payload.get('gauge_preview')
+    if preview:
+        audit = preview['_gauge']
+        enabled = payload.get('gauge_policy', {}).get('enabled', False)
+        result.append('<p><b>Gauge reconstruction for this group: ' + ('on' if enabled else 'off — preview only') + '</b>. '
+                      'The calculations and Instron comparison above remain measured. Overlaying a curve does not apply it.</p>')
+        result.append('<table><tr><th>AVE dot spacing (mm)</th><th>Group target (mm)</th><th>Ratio</th></tr>'
+                      '<tr><td>' + number(audit['AVE dot spacing (mm)']) + '</td><td>' +
+                      number(audit['Target gauge length (mm)']) + '</td><td>' + number(audit['Gauge ratio']) + '</td></tr></table>')
+        result.append('<table><tr><th>Property</th><th>Measured</th><th>Estimated</th></tr>')
+        for label, raw_key, estimated_key in (
+                ('Failure EL (%)', 'Failure elongation (%)', 'Estimated failure elongation (%)'),
+                ('Tensile toughness (MJ/m³)', 'Toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)')):
+            result.append('<tr><td>' + label + '</td><td>' + number(p[raw_key]) + '</td><td>' + number(audit[estimated_key]) + '</td></tr>')
+        result.append('</table><p>Derived localisation model, not a standards-compliant measurement. '
+                      'Pre-peak strain and stress values are unchanged.</p>')
+        if audit['Gauge correction status'] != 'Applied':
+            result.append('<p class="tw-inspect-warning"><b>Overlay unavailable:</b> ' + escape(audit['Gauge correction status']) +
+                          '. Set and save a target under Gauge reconstruction · per sample group.</p>')
+        for key in ('Gauge model warning', 'Gauge reconstruction notes'):
+            if audit.get(key):
+                result.append('<p class="tw-inspect-warning">' + escape(audit[key]) + '</p>')
+        acquisition = payload['record'].get('_acquisition', {})
+        peak = acquisition.get('peak')
+        if peak is not None:
+            result.append('<p>' + escape(acquisition['peak_basis']) + f': original measurement row {peak + 1}, '
+                          + 'time ' + number(acquisition['time'][peak]) + ' s, strain ' + number(acquisition['strain'][peak]) + '%. '
+                          'Peak comes from the original acquisition, independently of plotting cleanup.</p>')
     if p['Yield status'] != 'resolved' or p['Notes']:
         result.append('<p class="tw-inspect-warning"><b>Yield ' + escape(p['Yield status']) + ':</b> ' +
                       escape(p['Notes']) + '</p>')
@@ -189,6 +246,9 @@ class SpecimenInspector:
         self.next = w.Button(description='Next', layout=w.Layout(width='75px'), disabled=True)
         self.view = w.ToggleButtons(options=[('Yield detail', 'yield'), ('Full curve', 'full')], value='yield')
         self.reset = w.Button(description='Reset zoom', layout=w.Layout(width='110px'))
+        self.gauge_overlay = w.Checkbox(description='Overlay measured / reconstructed', value=False, indent=False,
+                                       layout=w.Layout(width='auto'))
+        self.gauge_status = w.HTML()
         self.status = w.HTML('Click a specimen name in the Specimens table, or choose one above.')
         self.summary = w.HTML(layout=w.Layout(width='100%', min_width='0'))
         self.chart_box = w.VBox(layout=w.Layout(width='100%', min_width='0'))
@@ -213,11 +273,12 @@ class SpecimenInspector:
         self.editor.set_title(0, 'Adjust elastic fit · preview before applying')
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status, self.editor, w.HBox([self.view, self.reset], layout=w.Layout(flex_flow='row wrap')),
-                          self.chart_box, self.summary], layout=w.Layout(width='100%', min_width='0'))
+                          self.status, self.editor, w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
+                          self.gauge_status, self.chart_box, self.summary], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(lambda _: self._reset_zoom(), names='value')
         self.reset.on_click(lambda _: self._reset_zoom())
+        self.gauge_overlay.observe(self._overlay_changed, names='value')
         self.previous.on_click(lambda _: self._step(-1))
         self.next.on_click(lambda _: self._step(1))
         self.mode.observe(self._mode_changed, names='value')
@@ -239,6 +300,7 @@ class SpecimenInspector:
         self.chart, self._payload = None, None
         self._draft = None
         self.summary.value = ''
+        self.gauge_status.value = ''
 
     def clear(self):
         self._updating = True
@@ -281,6 +343,7 @@ class SpecimenInspector:
         self.next.disabled = not ids or index >= len(ids) - 1
         self.view.disabled = self.chart is None
         self.reset.disabled = self.chart is None
+        self.gauge_overlay.disabled = self.chart is None
         self.mode.disabled = self.chart is None or self.on_apply is None
         self._buttons()
 
@@ -395,10 +458,17 @@ class SpecimenInspector:
             self._editing = False
             self._buttons()
 
+    def _overlay_changed(self, _=None):
+        if self._painting or self._updating or self._payload is None:
+            return
+        if self.gauge_overlay.value:
+            self.view.value = 'full'
+        self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
+
     def _paint(self, payload, edit=None, keep_zoom=False):
         import plotly.graph_objects as go
         from tensile_plotly import width_probe
-        fig = inspection_figure(payload, self.view.value, edit=edit)
+        fig = inspection_figure(payload, self.view.value, edit=edit, show_gauge=self.gauge_overlay.value)
         self._painting = True
         try:
             if self.chart is None:
@@ -418,6 +488,17 @@ class SpecimenInspector:
                     self.chart.update_yaxes(range=fig.layout.yaxis.range)
             self._payload = payload
             self.summary.value = inspection_summary(payload)
+            preview = payload.get('gauge_preview')
+            audit = preview['_gauge'] if preview else {}
+            self.gauge_status.value = ''
+            if self.gauge_overlay.value:
+                if audit.get('Gauge correction status') != 'Applied':
+                    self.gauge_status.value = '<b>Measured curve only — reconstruction unavailable:</b> ' + escape(
+                        audit.get('Gauge correction status', 'No gauge preview available'))
+                else:
+                    self.gauge_status.value = 'Display-only overlay: solid measured; dashed estimated. No settings or measurements changed.'
+                    if audit.get('Gauge model warning'):
+                        self.gauge_status.value += '<br><b>Model warning:</b> ' + escape(audit['Gauge model warning'])
             if self._probe and self._probe.pixels:
                 self._resize(self._probe.pixels)
         finally:
@@ -465,7 +546,7 @@ class SpecimenInspector:
     def _reset_zoom(self):
         if self.chart is None or self._payload is None:
             return
-        xrange, yrange = inspection_ranges(self._payload['calculation'], self.view.value)
+        xrange, yrange = overlay_ranges(self._payload, self.view.value, self.gauge_overlay.value)
         with self.chart.batch_update():
             self.chart.update_xaxes(range=xrange, autorange=False)
             self.chart.update_yaxes(range=yrange, autorange=False)

@@ -58,7 +58,7 @@ Changing the selected specimen or zoom does not change calculations. No specimen
 
 ### Fit warnings and specimen overrides
 
-The **Warn if R² <** box above the property tables is editable and saved for all graphs (default **0.98**). It controls warnings only, not the fit or specimen inclusion. The banner above **Specimen properties** counts low-R², unresolved and stale-override fits in the selected groups, including excluded specimens. **Review fits** opens the inspector filtered to these specimens. Turn off **Only fits needing review** to return to the full table. A high R² alone does not establish that the selected region is elastic.
+The **R² warning threshold** box beside the fit warnings, above the collapsible **Specimen properties** section, is editable and saved for all graphs (default **0.98**). Enter a value and press Enter or leave the field to save. Fits below this threshold are flagged; it does not change the fit or specimen inclusion. The banner counts low-R², unresolved and stale-override fits in the selected groups, including excluded specimens. **Review fits** opens the inspector filtered to these specimens. Turn off **Only fits needing review** to return to the full table. A high R² alone does not establish that the selected region is elastic.
 
 In the inspector, expand **Adjust elastic fit · preview before applying**:
 
@@ -77,6 +77,82 @@ PDFs are not read. Place group summary CSVs in the corresponding `<chosen data f
 Matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. Numeric similarity is never used to identify a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Labels, row numbers, paths and match method are shown for checking. Unknown identities stay unmatched.
 
 Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summary CSVs. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
+
+## Gauge-length reconstruction
+
+Expand **Gauge reconstruction · per sample group**. Each selected group has a
+row with a **Target (mm)** field and **Reconstruct** checkbox. Enter a positive
+target, then tick the checkbox to apply it. Changes save automatically; press
+Enter or leave a target field to commit its value. Each group can have a different target
+or remain measured within the same graph. These settings are saved with that
+graph; each specimen still uses its own initial AVE dot spacing from **Strain 1
+gauge length** in the matched Instron summary CSV, never a group-average spacing.
+New groups default to off with an unset target (0). Existing graph-wide choices
+are migrated to that graph's existing groups. Legends and exports identify each
+group's active basis and target when reconstruction is in use.
+
+To inspect before applying, save a target with reconstruction switched off.
+Open a specimen's **Calculation inspector** and enable **Overlay measured /
+reconstructed**. The measured curve is solid and the estimated curve dashed;
+Full curve/Reset zoom includes both. The comparison shows measured and estimated
+elongation/toughness, both lengths, the ratio, model warnings and the original
+force-peak row/time. This toggle changes the display only, not the group's
+calculation basis or any elastic-fit override.
+
+At/before maximum force, engineering strain is unchanged. After maximum force,
+the derived strain is `strain_at_peak + (AVE_spacing / target) *
+(measured_strain - strain_at_peak)`. Stress is unchanged. Reconstruction is
+performed per specimen before representative selection or averaging. Tensile
+plots, failure-elongation statistics/scatter plots and integrated areas then
+use the reconstructed curves. YS, UTS, modulus, uniform elongation and pre-peak
+work-hardening plots remain measured and unchanged. Source CSVs are never edited.
+
+Missing/conflicting gauge lengths or invalid endpoints require specimen review
+before reconstructed plots can proceed. No specimen is automatically excluded
+or silently replaced with its measured curve; inclusion checkboxes remain under
+user control. Measured WH is unaffected. Tables retain measured and estimated values
+separately; unavailable estimates are blank, never replaced with measured values.
+Any finite positive target is permitted. A target longer than the measured dot
+spacing applies the model as-is (a ratio below one reduces the post-peak
+increment), with an explicit warning rather than exclusion. It assumes both
+gauges capture the relevant localisation and cannot recover additional
+post-peak extension outside the measured interval. Inspect gauge status,
+ratio, original measurement row/time and strain at peak in Specimens. When no
+force channel is supplied, maximum engineering stress is an explicitly recorded
+proxy. The failure endpoint retains the existing maximum recorded retained
+strain definition rather than claiming an independently detected fracture.
+Peak strain is read from the original acquisition, even if the plotting cleanup
+dropped that row. Local ordering changes after reconstruction are handled by
+re-sorting intact strain/stress pairs for interpolation, without clipping strain
+or inventing a replacement peak. Counts and notes remain in the specimen audit.
+
+These are derived gauge-length estimates, not standards-compliant measured
+elongations. They assign the measured post-peak extension to a neck-centred
+target gauge, without resolving continued deformation or unloading elsewhere.
+Derived toughness is the area of that reconstructed engineering
+curve, not a newly measured gauge-independent property. Instron agreement checks
+continue to compare measured calculations with measured Instron results.
+
+## Consolidated Excel exports
+
+**Export tables only** writes `{graph_name}_results.xlsx`: Summary, Specimens,
+Checks, Instron comparison and Export info. Properties are available without
+selecting any plot. Measured and estimated elongation/toughness remain separate,
+and inclusion, source and override information is retained.
+
+**Export plot set**, with Excel tables enabled, additionally writes
+`{graph_name}_curves.xlsx` when curve plots are present. Only the exported plot
+methods are included. Each group/specimen has adjacent strain/stress (or plastic
+strain/WH-rate) columns with its own coordinates; shorter curves end in blanks.
+Pointwise projected stress is separate from measured mean stress. With/without
+individuals views share one copy of each average. Comparison plots include both
+methods; scatter plots reuse the results workbook. Curve checks retain coverage,
+area comparisons and landmark error-bar values. Different numerical curve
+variants are distinguished, with their view settings in Export info.
+
+Numeric cells retain full precision and display three decimals. Counts are
+integers. Historical exports are not rewritten. Restart the running app to load
+code changes before creating a new export.
 
 ## Strength versus elongation plots
 
