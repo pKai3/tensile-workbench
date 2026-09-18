@@ -975,8 +975,14 @@ def render_average_plot(models, records, out_path, family, show_individual,
     show_bar_note = family in ("landmark", "comparison") and landmark_error_bars
     if show_bar_note:
         note += "\nLandmark bars: ±1 SD (n ≥ 2); endpoint stress is pre-break."
-    figure.text(.5, .01, note, ha="center")
-    figure.tight_layout(rect=(0, .08, 1, 1))
+    print('[PLOT INFO] ' + note.replace('\n', ' '))
+    # Publication figures retain only the marker key, and only where all three
+    # landmark markers are drawn. Method/error-bar details stay in the log.
+    if family == "landmark" or (comparison and landmark_error_bars):
+        figure.text(.5, .01, "○ Mean YS   △ Mean UTS   × Mean failure elongation", ha="center")
+        figure.tight_layout(rect=(0, .05, 1, 1))
+    else:
+        figure.tight_layout()
     return finish_plot(figure, out_path, preview)
 
 def failure_elongation_percent(strain_percent):
@@ -1316,8 +1322,8 @@ def render_strength_elongation_plot(
     if show_individual:
         note += ' Faint circles: individual specimens.'
     note += '\nEL = terminal recorded engineering strain; properties calculated per specimen.'
-    figure.text(.5, .015, note, ha='center', fontsize=9)
-    figure.tight_layout(rect=(0, .08, 1, 1))
+    print('[PLOT INFO] ' + note.replace('\n', ' '))
+    figure.tight_layout()
     return finish_plot(figure, out_path, preview)
 
 
@@ -1421,8 +1427,8 @@ def render_landmark_work_hardening_plot(
     note += "\nEnds at mean uniform elongation."
     if show_individual:
         note += " Faint lines: individual specimens."
-    figure.text(.5, .01, note, ha="center")
-    figure.tight_layout(rect=(0, .08, 1, 1))
+    print('[PLOT INFO] ' + note.replace('\n', ' '))
+    figure.tight_layout()
     return finish_plot(figure, out_path, preview)
 
 def group_number(group_name):

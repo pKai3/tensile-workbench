@@ -27,7 +27,6 @@ import io
 import json
 import platform
 import re
-import textwrap
 import uuid
 
 NEW_GRAPH_ACTION = '__create_new_graph__'
@@ -68,27 +67,6 @@ def graph_menu_options(graphs):
         else:
             named.append((graph['name'], graph['id']))
     return named + drafts + [('＋ Create new graph…', NEW_GRAPH_ACTION)]
-
-
-def append_plot_caption(figure, note):
-    """Stack figure notes below the axes, reserving space in previews/exports.
-
-    Plotly already presents figure texts as a flowing caption. Keeping the
-    reconstruction note here also avoids a second title in the static view.
-    """
-    footers = [text for text in figure.texts if text.get_text() and text.get_position()[1] < .2]
-    paragraphs = [text.get_text() for text in footers] + [note]
-    for text in footers:
-        text.remove()
-    font_size = 9
-    line_width = max(32, int((figure.get_figwidth() * 72 - 36) / (font_size * .62)))
-    lines = [part for paragraph in paragraphs for line in paragraph.splitlines()
-             for part in (textwrap.wrap(line, line_width, break_long_words=False,
-                                        break_on_hyphens=False) or [''])]
-    figure.text(.5, .02, '\n'.join(lines), ha='center', va='bottom',
-                fontsize=font_size, linespacing=1.3)
-    footer_height = (len(lines) * font_size * 1.3 + 10) / (figure.get_figheight() * 72)
-    figure.tight_layout(rect=(0, .02 + footer_height, 1, 1))
 
 
 FAMILIES = [
@@ -278,6 +256,9 @@ class PreviewSession:
                 raise ValueError('Specimen review required; none have been automatically excluded. ' + '; '.join(errors))
             for g, rows in result.items():
                 if group_policy(state, spec, g)['enabled']:
+                    target = group_policy(state, spec, g)['target_gauge_mm']
+                    print(f'[GAUGE] {g}: estimated post-peak strain at target gauge {target:g} mm; '
+                          f'{len(rows)} specimens, each using its own AVE dot spacing.')
                     for r in rows:
                         if r['_gauge']['Gauge model warning']:
                             print(f"[GAUGE WARNING] {g}/{r['sample']}: {r['_gauge']['Gauge model warning']}")
@@ -461,14 +442,9 @@ class PreviewSession:
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
                              dict((value, label) for label, value in FAMILIES)[family])
                 title = spec.get("workbench_titles", {}).get(family) or title
-                reconstructed = not family.startswith('work_hardening') and any(
-                    group_policy(state, spec, g)['enabled'] for g in records)
-                labels = spec.get('name_overrides', {})
-                if reconstructed:
-                    labels = {g: e.get_display_name(g, labels) + ' · ' + group_basis_label(state, spec, g) for g in records}
                 common = dict(out_path=Path("preview.png"), color_map={**self.colors, **spec.get('color_overrides', {})},
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
-                              title=title, name_overrides=labels, preview=True)
+                              title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
                 wh = self._wh_settings(state, spec)
                 if family in PROPERTY_FAMILIES:
                     fig = e.render_strength_elongation_plot(records, family=family,
@@ -489,16 +465,6 @@ class PreviewSession:
                     fig = self._compare_wh(models, curves, common, wh)
                 if fig is None:
                     raise ValueError("No valid curves for this preview. " + stream.getvalue())
-                if reconstructed:
-                    for ax in fig.axes:
-                        ax.set_xlabel(('Elongation at failure (%)' if family in PROPERTY_FAMILIES
-                                       else 'Engineering strain (%)'))
-                    warning_count = sum(bool(r['_gauge']['Gauge model warning']) for rows in records.values() for r in rows
-                                        if r['_gauge']['Elongation basis'] == 'Estimated standard gauge')
-                    note = 'Gauge reconstruction: estimated post-peak strain; target gauges listed in the legend.'
-                    if warning_count:
-                        note += f'\nLonger-target model warnings: {warning_count} specimens; see inspector.'
-                    append_plot_caption(fig, note)
                 # Vector previews remain sharp at gallery and enlarged sizes.
                 # PNG exports retain the independent 600-DPI setting.
                 buffer = io.BytesIO()
@@ -537,8 +503,9 @@ class PreviewSession:
             ax.set_ylim(min(ax.get_ylim()[0], second.axes[0].get_ylim()[0]),
                         max(ax.get_ylim()[1], second.axes[0].get_ylim()[1]))
         ax.legend()
-        first.text(.5, .01, "Solid: mean specimen WH; dashed: derivative of landmark mean.\nFaint lines, if enabled: original specimen WH.", ha="center")
-        first.tight_layout(rect=(0, .08, 1, 1))
+        print('[PLOT INFO] Solid: mean specimen WH; dashed: derivative of landmark mean. '
+              'Faint lines, if enabled: original specimen WH.')
+        first.tight_layout()
         first._export_wh = getattr(first, '_export_wh', []) + getattr(second, '_export_wh', [])
         return first
 

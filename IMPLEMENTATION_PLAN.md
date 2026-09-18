@@ -17,9 +17,9 @@ The following scope supersedes the historical design notes farther below.
 - Gauge controls are compact auto-saving rows (group, target, checkbox), not a
   one-group-at-a-time dropdown. The editable project-wide R² warning threshold
   is visible beside fit warnings above the collapsible specimen tables.
-- Reconstruction notes are wrapped footers with reserved layout space, not
-  overlapping figure titles. Static previews/exports and Plotly captions use
-  the same note; gauge targets and measured/estimated basis remain in legends.
+- Publication plots omit explanatory footers and gauge labels. Only the
+  landmark marker key is retained where its three marker types are displayed.
+  Gauge basis/targets and method notes remain in logs, tables and metadata.
 - Replace the former all-groups reconstruction controls with controls for each
   sample group: enabled/disabled and target gauge length in mm. Storage
   is per-group settings inside each graph definition, alongside the existing
@@ -30,8 +30,9 @@ The following scope supersedes the historical design notes farther below.
   measured/off, not silently inherit an unrelated target.
 - Resolve one effective group policy centrally for plots, properties, caches,
   inspector previews and exports. Retain each specimen's own AVE dot spacing;
-  never replace it with a group-average spacing. Exports and labels must expose
-  each group's active basis and target, including mixed measured/derived views.
+  never replace it with a group-average spacing. Exports and UI audit fields
+  expose each group's active basis and target, including mixed measured/derived
+  views, without adding them to publication plot legends.
 - Replace the hard longer-target rejection with a documented model warning.
   The algebra is defined for any finite positive gauge ratio: ratios below one
   reduce the post-peak increment, while ratios above one increase it. This is

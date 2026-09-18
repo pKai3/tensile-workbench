@@ -88,8 +88,9 @@ or remain measured within the same graph. These settings are saved with that
 graph; each specimen still uses its own initial AVE dot spacing from **Strain 1
 gauge length** in the matched Instron summary CSV, never a group-average spacing.
 New groups default to off with an unset target (0). Existing graph-wide choices
-are migrated to that graph's existing groups. Legends and exports identify each
-group's active basis and target when reconstruction is in use.
+are migrated to that graph's existing groups. Tables, the calculation log and
+exports identify each group's active basis and target. Plot legends keep only
+the configured group names and sample counts, without gauge-estimation suffixes.
 
 To inspect before applying, save a target with reconstruction switched off.
 Open a specimen's **Calculation inspector** and enable **Overlay measured /
@@ -132,6 +133,16 @@ target gauge, without resolving continued deformation or unloading elsewhere.
 Derived toughness is the area of that reconstructed engineering
 curve, not a newly measured gauge-independent property. Instron agreement checks
 continue to compare measured calculations with measured Instron results.
+
+### Publication plot annotations
+
+Static figures, PNG exports and Plotly views omit explanatory footers and gauge
+reconstruction notices. Landmark tensile plots retain only **○ Mean YS △ Mean
+UTS × Mean failure elongation**; comparison plots show this key only when all
+three marker types are displayed. Normal titles, axis labels, group legends and
+sample counts are retained. Method descriptions, error-bar meanings and gauge
+warnings remain in the calculation log, inspector and/or export metadata for
+use in publication captions and methods sections.
 
 ## Consolidated Excel exports
 
