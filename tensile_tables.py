@@ -8,16 +8,17 @@ import json
 from tensile_selection import specimen_id, selection_state
 from tensile_specimens import SpecimenTable
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
+from tensile_fit import fit_display_places
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
 
 
-def _display_cell(value):
+def _display_cell(value, places=2):
     """Escape ordinary cells before inserting our own path controls as HTML."""
     if pd.isna(value):
         return '—'
     if isinstance(value, (float, np.floating)):
-        return f'{value:.2f}'
+        return f'{value:.{places}f}'
     return escape(str(value))
 
 
@@ -51,7 +52,7 @@ def _override_cell(value):
                 '<div class="tw-fit-body"><pre>' + escape(raw) + '</pre></div></details>')
     low, high = saved['strain_bounds']
     method = 'Manual range' if saved['mode'] == 'range' else 'Manual line'
-    rows = [('Start strain (%)', f'{low:.2f}'), ('End strain (%)', f'{high:.2f}')]
+    rows = [('Start strain (%)', f'{low:.5f}'), ('End strain (%)', f'{high:.5f}')]
     if saved['mode'] == 'line':
         rows.extend([('Start stress (MPa)', f'{saved["endpoints"][0][1]:.2f}'),
                      ('End stress (MPa)', f'{saved["endpoints"][1][1]:.2f}')])
@@ -66,9 +67,9 @@ def _override_cell(value):
                            ('Elastic fit R2', 'Original automatic R²')]:
             value = original.get(key)
             if isinstance(value, (int, float)) and np.isfinite(value):
-                rows.append((label, f'{value:.2f}'))
+                rows.append((label, f'{value:.{fit_display_places(key)}f}'))
     return ('<details class="tw-fit"><summary title="Click to view the saved fit details">'
-            + method + f'<span>{low:.2f}–{high:.2f}% strain</span></summary>'
+            + method + f'<span>{low:.5f}–{high:.5f}% strain</span></summary>'
             '<div class="tw-fit-body"><dl>' + ''.join('<dt>' + escape(label) + '</dt><dd>' +
                 escape(text) + '</dd>' for label, text in rows) + '</dl></div></details>')
 
@@ -186,7 +187,7 @@ def specimen_table_data(samples, comparisons):
     rows = []
     for position, (_, row) in enumerate(samples.iterrows()):
         values = [('' if name == property_column('Failure elongation', '%', 'Reconstruct') and pd.isna(value) else
-                   text_value(value))
+                   text_value(value, fit_display_places(name)))
                   for name, value in display.iloc[position].items()]
         rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
                      'sample': specimen_label(row), 'reason': row['Exclusion Reason'],
@@ -216,7 +217,7 @@ def specimen_check_failures(properties, reference, gauge=None):
         if not np.isfinite(r2):
             failures.append('Elastic fit: R² unavailable.')
         elif r2 < threshold:
-            failures.append(f'Elastic fit: R² {r2:.2f} below threshold {threshold:.2f} (checked before rounding).')
+            failures.append(f'Elastic fit: R² {r2:.5f} below threshold {threshold:.5f} (checked before rounding).')
         if str(properties.get('Override status', '')).startswith('Stale'):
             failures.append('Fit override: source changed; saved override was not applied.')
     gauge = gauge or {}
@@ -551,7 +552,7 @@ class PropertyTablesView:
             elif column == 'Checks':
                 formatter = lambda value: '<div class="tw-checks">' + escape(str(value)) + '</div>' if value else ''
             else:
-                formatter = _display_cell
+                formatter = lambda value, name=column: _display_cell(value, fit_display_places(name))
             formatters[escape(str(column))] = formatter
         table = safe.to_html(index=False, escape=False, border=0, na_rep='—', formatters=formatters)
         return style + '<div class="tw18-table">' + table + '</div>'
@@ -579,7 +580,8 @@ class PropertyTablesView:
                                'Reconstruct = its gauge reconstruction, blank unless enabled and available. '
                                'Instron columns remain available for uniform elongation and tensile toughness. Missing fracture detection is '
                                'flagged in Checks; no final-reading fallback is used. '
-                               'Values display two decimals; calculations and checks retain full precision.</p>'
+                               'Results display two decimals; elastic-fit R² and fit-strain details display five. '
+                               'Calculations and checks retain full precision.</p>'
                                + basis_note + summary_html(summary))
         self.panels[1].value = ('<p><b>Include</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This graph only</b> for an explicit exception; choose <b>Global default</b> to remove it. '

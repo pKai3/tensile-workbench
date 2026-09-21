@@ -7,6 +7,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 from tensile_gauge import group_basis_label, group_policy
+from tensile_fit import fit_display_places
 
 
 def write_workbook(path, sheets):
@@ -49,7 +50,9 @@ def write_workbook(path, sheets):
                         cell.alignment = Alignment(wrap_text=True, vertical='top')
                 if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
                     header = headers[cell.column - 1].lower()
-                    cell.number_format = '0' if (header.endswith(' n') or header in ('n', 'included n', 'available n') or 'row (1-based)' in header) else '0.00'
+                    integer = (header.endswith(' n') or header in ('n', 'included n', 'available n')
+                               or 'row (1-based)' in header)
+                    cell.number_format = '0' if integer else '0.' + '0' * fit_display_places(header)
         for cell in sheet[1]:
             cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
             cell.fill = PatternFill('solid', fgColor='24445C')
@@ -152,7 +155,7 @@ def export_results(frames, path, metadata):
         'estimate': 'Post-peak reconstruction assumes both gauge intervals capture the localisation. Longer targets are allowed with warnings. Not a standards-compliant measurement.',
         'gauge_formula': 'r = L_dots / L_target; pre-peak strain unchanged; post-peak strain_est = strain_u + r * (strain_measured - strain_u). Failure EL_est = EL_u + r * (EL_measured - EL_u). All strains are total engineering strain in percent; stress unchanged throughout.',
         'failure_endpoint': 'Acquisition-order load-collapse detector (v2): a substantial non-recovering loss faster than preceding necking, refined to the last raw pre-collapse measurement. Force is preferred; engineering stress is the explicit fallback signal. No strain-grid interpolation, terminal-reading fallback, or use of Instron EL for detection. Heuristic selection requiring review, not a standards-compliant post-fracture measurement.',
-        'precision': 'Full numeric precision stored; two decimal places displayed (counts and row identifiers remain integers).'}}
+        'precision': 'Full numeric precision stored; two decimal places for ordinary results, five for elastic-fit R2, its warning threshold and fit/yield strain details. Counts and row identifiers remain integers.'}}
     write_workbook(path, {'Summary': summary, 'Specimens': specimens, 'Audit': checks,
                          'Export info': flatten_info(metadata)})
 

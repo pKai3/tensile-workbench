@@ -1430,8 +1430,8 @@ class TensileWorkbench:
         self.fit_warning.value = (
             f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
             f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} fit review</b> · {included} included; {excluded} excluded. '
-            f'R² below {threshold:.2f}, unresolved fit, or stale override. Checks use full precision. No automatic exclusion.</div>'
-            if len(flagged) else f'Elastic-fit checks: no warnings at R² threshold {threshold:.2f}.')
+            f'R² below {threshold:.5f}, unresolved fit, or stale override. Checks use full precision. No automatic exclusion.</div>'
+            if len(flagged) else f'Elastic-fit checks: no warnings at R² threshold {threshold:.5f}.')
 
     def _inspect_specimen(self, ident):
         with redirect_stdout(io.StringIO()):

@@ -4,6 +4,7 @@ from html import escape
 
 import numpy as np
 from tensile_properties import specimen_calculation, elongation_report
+from tensile_fit import fit_display_places
 
 # Stable display-layer IDs: visibility never changes measurements/calculations.
 INSPECTOR_LAYERS = {
@@ -91,14 +92,16 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     fig = go.Figure()
 
     def line(name, xs, ys, color, *, layer, **kwargs):
+        places = 5 if mode == 'yield' or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
             name=name, mode='lines', line=dict(color=color, **kwargs), meta={'inspector_layer': layer},
-            hovertemplate=escape(name) + '<br>Strain: %{x:.2f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
+            hovertemplate=escape(name) + '<br>Strain: %{x:.' + str(places) + 'f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
     def points(name, xs, ys, color, symbol='circle', size=9, *, layer):
+        places = 5 if mode == 'yield' or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
             name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size), meta={'inspector_layer': layer},
-            hovertemplate=escape(name) + '<br>Strain: %{x:.2f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
+            hovertemplate=escape(name) + '<br>Strain: %{x:.' + str(places) + 'f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
     acquisition = payload['record'].get('_acquisition', {})
     measured_x = np.asarray(acquisition.get('strain', x), float)
@@ -179,7 +182,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             fig.add_trace(go.Scatter(x=[strain_at_reported_ys], y=[float(reported)],
                 name='Instron YS', mode='markers', meta={'inspector_layer': 'yield_instron'},
                 marker=dict(color='#be185d', symbol='diamond-open', size=13, line=dict(width=2)),
-                hovertemplate='Instron YS: %{y:.2f} MPa<br>CSV-interpolated strain: %{x:.2f}%'
+                hovertemplate='Instron YS: %{y:.2f} MPa<br>CSV-interpolated strain: %{x:.5f}%'
                               '<br>First ascending pre-UTS crossing; strain is not an Instron yield result<extra></extra>'))
     reported_el = payload['reference'].get('values', {}).get('el', np.nan)
     if np.isfinite(reported_el) and len(x):
@@ -265,8 +268,8 @@ def inspection_summary(payload):
     calculation, reference = payload['calculation'], payload['reference']
     p, values = calculation['properties'], reference.get('values', {})
 
-    def number(value):
-        return f'{value:.2f}' if np.isfinite(value) else '—'
+    def number(value, places=2):
+        return f'{value:.{places}f}' if np.isfinite(value) else '—'
 
     def row_number(value):
         return str(int(value)) if np.isfinite(value) else '—'
@@ -394,13 +397,13 @@ def inspection_summary(payload):
     low, high = calculation['fit_fractions']
     description = (f'Automatic elastic fit: {100 * low:.2f}–{100 * high:.2f}% of this specimen’s UTS'
                    if p.get('Fit method', 'Automatic') == 'Automatic' else
-                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"])}–{number(p["Fit upper strain (%)"])}% strain')
+                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"], 5)}–{number(p["Fit upper strain (%)"], 5)}% strain')
     result.append(f'<p>{description}, before the first UTS point '
                   f'({number(p["Fit lower stress (MPa)"])}–{number(p["Fit upper stress (MPa)"])} MPa); '
                   f'<b>{int(calculation["elastic_mask"].sum())} selected points</b>. '
-                  f'R² = {number(p["Elastic fit R2"])}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
+                  f'R² = {number(p["Elastic fit R2"], 5)}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
                   'This fitted E is independent of the WH modulus.</p>')
-    result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.2f}. '
+    result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.5f}. '
                   'Checks use full precision, before display rounding. '
                   'A high R² alone does not establish that a region is elastic.</p>')
     if p.get('Fit method') == 'Manual line':
@@ -411,13 +414,13 @@ def inspection_summary(payload):
         result.append('<p>Override saved: ' + escape(saved['saved_at']) + ' · ' + escape(saved.get('reason', '')) + '</p>')
         original = saved.get('automatic_snapshot', {})
         result.append('<details><summary>Automatic result when this override was applied</summary><p>' +
-                      '<br>'.join(escape(str(k)) + ': ' + escape(number(v) if isinstance(v, (int, float))
+                      '<br>'.join(escape(str(k)) + ': ' + escape(number(v, fit_display_places(k)) if isinstance(v, (int, float))
                                   else str(v) if v is not None else 'Unavailable')
                                   for k, v in original.items()) + '</p></details>')
     bracket = calculation['yield_bracket']
     if bracket is not None:
         xs = calculation['strain_pct'][list(bracket)]
-        result.append(f'<p>0.2% YS is interpolated between {xs[0]:.2f}% and {xs[1]:.2f}% strain, '
+        result.append(f'<p>0.2% YS is interpolated between {xs[0]:.5f}% and {xs[1]:.5f}% strain, '
                       'at the first eligible crossing after the elastic-fit region and before UTS.</p>')
     result.append('<p>Uniform elongation uses the first maximum engineering stress. Tensile plots, fracture EL and '
                   'toughness use the detected CSV drop onset, or its reconstruction when enabled. Missing detection '

@@ -27,7 +27,7 @@ Expand **Specimen properties · tables and calculation inspector** above the plo
 - **Specimens:** **Include** checkboxes at the far left and an **Applies to** selector, followed by the same properties and source-specific EL columns as Summary. Calc elongation always shows the unreconstructed detected endpoint; Reconstruct shows its correction separately. Calc toughness uses the group's selected measured/reconstructed basis. Instron remains the original reported value where provided. Peak-force row numbers, timestamps, final-reading bookkeeping and plotting-grid diagnostics remain in the inspector/audit data. Useful fit, geometry and **EL source for plots** fields remain at the right. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
 - **Calculation inspector:** click a specimen name to see its measured values, original Instron values and exact differences, plus fit and gauge details. **Original CSV ↔ Instron verification values** gives the values and tolerances used for matching checks. **Source and preparation details** contains full source paths and acquisition provenance. Separate Instron and Checks tabs are no longer needed; detailed diagnostic records remain available on the exported **Audit** sheet.
 
-Filtering and sorting affect only the displayed tables, not graph selection or exported populations. Tables, inspector readouts, plot tooltips and Excel quantities display two decimals; calculations, comparisons and Excel cell values retain full precision. Counts and row identifiers remain integers. Editable settings retain their entered precision. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
+Filtering and sorting affect only the displayed tables, not graph selection or exported populations. Ordinary results display two decimals. Elastic-fit R², its warning threshold and fit/yield strain details display five decimals in tables, inspector readouts and Excel; yield-detail strain tooltips also use five decimals. Calculations, comparisons and Excel cell values retain full precision. Counts and row identifiers remain integers. Editable settings retain their entered precision. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
 
 ### Include/exclude specimens
 
@@ -228,7 +228,7 @@ methods; scatter plots reuse the results workbook. Curve checks retain coverage,
 area comparisons and landmark error-bar values. Different numerical curve
 variants are distinguished, with their view settings in Export info.
 
-Numeric cells retain full precision and display two decimals. Counts are
+Numeric cells retain full precision and display two decimals, except elastic-fit R², its threshold and fit/yield strain details, which display five. Counts are
 integers. Historical exports are not rewritten. Restart the running app to load
 code changes before creating a new export.
 

@@ -5,6 +5,14 @@ import re
 DEFAULT_R2_WARNING = .98
 
 
+def fit_display_places(field):
+    """Precision exception for near-unity R² and small fit-strain intervals."""
+    name = str(field).casefold().replace('²', '2')
+    precise = (re.search(r'\br2\b', name) or any(label in name for label in
+               ('fit lower strain', 'fit upper strain', 'yield strain', 'start strain', 'end strain')))
+    return 5 if precise else 2
+
+
 def validate_threshold(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
         raise ValueError('R² warning threshold must be a finite number between 0 and 1.')
