@@ -84,7 +84,7 @@ def gauge_record(record, reference, enabled, target):
              'Estimated failure elongation (%)': np.nan, 'Estimated toughness (MJ/m^3)': np.nan,
              'Peak-force measurement row (1-based)': np.nan, 'Peak-force time (s)': np.nan,
              'Strain at peak force (%)': np.nan, 'Failure measurement row (1-based)': np.nan,
-             'Failure time (s)': np.nan, 'Failure endpoint': 'Detected CSV drop onset (interpolated)'}
+             'Failure time (s)': np.nan, 'Failure endpoint': 'Last measurement before detected load collapse'}
     view = dict(record)
     view.pop('_property_cache', None)
     view['_measured_record'] = record
@@ -123,7 +123,7 @@ def gauge_record(record, reference, enabled, target):
             raise ValueError('Failure strain is below peak-force strain')
         ratio = dots / target
         corrected = measured_x.copy()
-        # ID -1 is the synthetic interpolated fracture endpoint, after peak.
+        # ID -1 is reserved for a compatibility endpoint without a source row.
         post = (ids > peak) | (ids == -1)
         corrected[post] = eu + ratio * (corrected[post] - eu)
         # Reapplying a piecewise transform to a strain-sorted plotting grid can
@@ -154,10 +154,9 @@ def gauge_record(record, reference, enabled, target):
                       'Gauge reconstruction notes': ' '.join(notes),
                       'Peak identification': meta['peak_basis'], 'Strain channel': meta['strain_channel'],
                       'Strain at peak force (%)': eu, 'Measured endpoint strain (%)': ef,
-                      'Failure measurement row (1-based)': (endpoint['row_before']
-                          if endpoint['row_before'] == endpoint['row_after'] else np.nan),
+                      'Failure measurement row (1-based)': endpoint['row_before'],
                       'Failure time (s)': endpoint['time_s'],
-                      'Failure time basis': 'Interpolated at detected drop onset',
+                      'Failure time basis': 'Original timestamp at selected pre-collapse measurement',
                       'Failure endpoint stress (MPa)': endpoint['stress_mpa']})
         if enabled:
             view.update(strain_pct=corrected, raw_strain_pct=corrected,

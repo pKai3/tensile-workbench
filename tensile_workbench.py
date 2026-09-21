@@ -779,7 +779,7 @@ class TensileWorkbench:
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
-            w.HTML("Tick the exact sample groups to include, regardless of their naming format."), general,
+            w.HTML("Tick the exact sample groups to include, regardless of their naming format."),
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
@@ -787,7 +787,7 @@ class TensileWorkbench:
             w.HTML("Choose plots below. Each selector has its own settings. Shared averaging parameters and axis ranges stay linked between related plots."),
             self.plot_options,
             self._row([self.update_button, self.reload_button, self.controls["live_update"]]),
-            self.status, self.viewer.ui,
+            self.status, general, self.viewer.ui,
             self._row([self.export_button, self.controls["export_tables"]]), log,
         ], layout=w.Layout(width="100%"))
         self._refresh_graph_options()

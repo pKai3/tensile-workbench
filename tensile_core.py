@@ -62,7 +62,7 @@ TENSILE_MEAN_TAIL = {
     "polynomial_order": 2,        # 1 = linear, 2 = quadratic
     "max_extension_ratio": 2.0,   # maximum extrapolation / fitted strain span
     "adaptive_fit": False,       # widen fit / permit a peak in a rising tail
-    "fracture_slope_fraction": 0.30,  # lower = detect slower fracture drops
+    "fracture_slope_fraction": 0.30,  # Legacy saved setting; v2 detection no longer uses strain slope.
 }
 
 YOUNGS_MODULUS_MPA = 115000.0
@@ -767,7 +767,7 @@ def average_group_curves(curves, num_points=600):
     return grid, mean, std, counts
 
 def tensile_fracture_onset(strain, stress, slope_fraction=0.30):
-    """Compatibility wrapper: unresolved onset is NaN, never terminal strain."""
+    """Supplied-order compatibility wrapper; legacy slope argument is unused."""
     return detect_drop_onset(strain, stress, slope_fraction)['strain_pct']
 
 def build_tensile_mean_tail(curves, points, settings, fracture_ends=None):
@@ -778,8 +778,6 @@ def build_tensile_mean_tail(curves, points, settings, fracture_ends=None):
     ratio = float(settings["max_extension_ratio"])
     adaptive = settings.get("adaptive_fit", False)
     slope_fraction = float(settings.get("fracture_slope_fraction", 0.30))
-    if not np.isfinite(slope_fraction) or slope_fraction <= 0:
-        raise ValueError("fracture_slope_fraction must be positive.")
     if order not in (1, 2) or not np.isfinite([window,setback,ratio]).all() or window <= 0 or setback < 0 or ratio <= 0:
         raise ValueError("Tensile mean-tail settings require order 1/2, positive window/ratio and nonnegative setback.")
     clean = []

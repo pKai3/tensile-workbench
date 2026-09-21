@@ -82,7 +82,7 @@ def overlay_ranges(payload, mode='yield', show_gauge=False):
 
 
 def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
-    """Plot exact prepared points, not a mean/landmark or WH-filtered curve."""
+    """Plot original measurements and prepared fit points, never an averaged curve."""
     import plotly.graph_objects as go
 
     calculation = payload['calculation']
@@ -100,9 +100,15 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size), meta={'inspector_layer': layer},
             hovertemplate=escape(name) + '<br>Strain: %{x:.2f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
+    acquisition = payload['record'].get('_acquisition', {})
+    measured_x = np.asarray(acquisition.get('strain', x), float)
+    measured_y = np.asarray(acquisition.get('stress', y), float)
+    valid = np.isfinite(measured_x) & np.isfinite(measured_y)
+    # Keep acquisition order, including repeated/reversing strain at collapse.
+    # Fit points remain the prepared points used by the yield calculation.
+    line('Measured CSV', np.where(valid, measured_x, np.nan), np.where(valid, measured_y, np.nan),
+         '#334155', layer='measured', width=2)
     if show_gauge:
-        measured = payload['record']
-        line('Measured CSV', measured['strain_pct'], measured['stress_mpa'], '#334155', layer='measured', width=2)
         preview = payload.get('gauge_preview')
         if preview and preview['_gauge']['Gauge correction status'] == 'Applied':
             target = preview['_gauge']['Target gauge length (mm)']
@@ -110,8 +116,6 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
                  layer='reconstructed', dash='dash', width=2)
             points('Reconstruct EL', [preview['_gauge']['Estimated failure elongation (%)']],
                    [preview['_gauge']['Failure endpoint stress (MPa)']], '#e76f00', 'x', 12, layer='fracture_reconstructed')
-    else:
-        line('Measured CSV', x, y, '#334155', layer='measured', width=2)
     mask = calculation['elastic_mask']
     if mask.any():
         points('Fit points', x[mask], y[mask], '#16a085', size=6, layer='fit_points')
@@ -133,7 +137,6 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
         line('Automatic fit', strains, stresses, '#94a3b8', layer='automatic_fit', dash='dot', width=1.3)
     if p['Yield status'] == 'resolved':
         points('Calc YS', [p['Yield strain (%)']], [p['Yield (MPa)']], '#d97706', 'diamond', 12, layer='yield_calc')
-    acquisition = payload['record'].get('_acquisition', {})
     raw_peak = acquisition.get('peak')
     raw_peak_valid = (raw_peak is not None and np.isfinite(acquisition['strain'][raw_peak])
                       and np.isfinite(acquisition['stress'][raw_peak]))
@@ -244,9 +247,9 @@ def gauge_model_help(expanded=False):
         <li>Continued deformation and elastic unloading outside the target gauge cannot
           be separated from this single gauge history. For targets longer than the AVE
           spacing, additional post-peak extension outside the measured interval is not recovered.</li>
-        <li>The failure endpoint is the detected onset of the terminal stress drop in
-          the measured CSV curve, before any shape-trimming setback. It is an interpolated
-          heuristic estimate, not Instron’s break result or a post-fracture gauge measurement.
+        <li>The failure endpoint is the last recorded point before a detected sustained
+          load collapse, selected in original acquisition order without a strain setback.
+          It is a heuristic selection, not Instron’s break result or a post-fracture gauge measurement.
           If no drop is detected, fracture EL and reconstruction are unavailable.</li>
         <li>Stress values stay unchanged throughout. Reconstructed toughness is the area
           under the estimated engineering curve, not a newly measured material property.</li>
@@ -314,7 +317,7 @@ def inspection_summary(payload):
             ('Instron summary EL', 'Instron summary EL (%)', 'Imported Instron Strain 1 at break result.'),
             ('Last valid CSV strain', 'Last valid CSV strain (%)', 'Last finite strain in original acquisition order, not necessarily fracture.'),
             ('Max retained CSV strain', 'CSV endpoint EL (%)', 'Maximum strain after preparation; audit only, not used as fracture EL.'),
-            ('CSV-derived fracture EL', 'CSV-derived fracture EL (%)', 'Detected terminal-drop onset, before the landmark setback; not detected if unavailable.'),
+            ('CSV-derived fracture EL', 'CSV-derived fracture EL (%)', 'Last recorded point before detected load collapse; no strain setback.'),
             ('Reconstructed EL', 'Reconstructed EL (%)', 'Gauge reconstruction of detected CSV fracture EL; blank unless enabled and available.')):
         result.append('<tr><td>' + escape(label) + '</td><td>' + number(el[key]) + '</td><td>' + escape(description) + '</td></tr>')
     result.append('</table><p>These endpoint definitions are distinct. EL is not used to verify specimen identity, '
@@ -324,18 +327,21 @@ def inspection_summary(payload):
                   'No marker is extrapolated if that strain lies outside the CSV range.</p>')
     result.append('<p><b>Fracture detection: ' + escape(el['Fracture detection status']) + '</b>' +
                   (': ' + escape(el['Fracture detection reason']) if el['Fracture detection reason'] else '') +
-                  '. The purple cross marks detected onset on the full measured curve; review it against the drop. '
-                  'The detector selects the first qualifying decline and may mistake earlier necking for fracture. '
-                  'Its grid spacing is recorded below. The separate landmark shape setback is not '
-                  'subtracted from reported fracture EL.</p>')
+                  '. The purple cross marks the last recorded point before the selected load collapse. '
+                  'Detection uses acquisition order, distinguishes rapid loss from preceding necking and rejects '
+                  'drops that recover. Review the selection against the full curve. No strain-grid interpolation '
+                  'or landmark shape setback is subtracted from reported EL.</p>')
     result.append('<details><summary>Fracture detection details</summary><p>' + escape(el['Fracture EL method']) +
-                  '; grid spacing ' + number(el['Fracture detector grid spacing (%)']) + '% strain.</p>')
+                  '.</p><p>Signal: ' + escape(el['Fracture load signal']) + '; rate basis: ' +
+                  escape(el['Fracture rate basis']) + '. Detected load loss: ' +
+                  number(el['Fracture detected load loss (%)']) + '% of peak.</p>')
     if el['Fracture detection status'] == 'Detected':
-        result.append('<p>Interpolated between original measurement rows ' +
-                      row_number(el['Fracture bracket first row (1-based)']) + ' and ' +
+        result.append('<p>Selected pre-collapse measurement row: ' +
+                      row_number(el['Fracture bracket first row (1-based)']) + '; first collapse row: ' +
                       row_number(el['Fracture bracket second row (1-based)']) +
-                      '; fraction ' + number(el['Fracture interpolation fraction']) +
-                      ', interpolated time ' + number(el['Fracture interpolated time (s)']) + ' s.</p>')
+                      '; time: ' + number(el['Fracture endpoint time (s)']) + ' s.</p>')
+    if el['Fracture detection notes']:
+        result.append('<p>' + escape(el['Fracture detection notes']) + '</p>')
     result.append('</details>')
     from tensile_tables import specimen_check_failures
     failures = specimen_check_failures(p, reference,
@@ -418,8 +424,9 @@ def inspection_summary(payload):
                   'is not replaced by a final reading or an Instron result; pre-peak calculations remain available.</p>')
     result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
-                  '</p><p>Curve uses the workbench’s existing CSV loading and property preparation: finite pairs, '
-                  'sorted by strain, with the maximum stress retained for repeated strain values. '
+                  '</p><p>The measured line preserves original acquisition order. Elastic-fit points use the '
+                  'existing property preparation: finite pairs sorted by strain, with the maximum stress retained '
+                  'for repeated strain values. Fracture detection uses the original load sequence. '
                   'No WH filters, averaging, extrapolation or landmark alignment are applied.</p><p>Instron match: ' +
                   escape(reference.get('status', 'Unavailable')) + '. ' + escape(reference.get('notes', '')) +
                   '</p><p>Instron source: ' + escape(reference.get('source', '') or 'Unavailable') +

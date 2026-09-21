@@ -2,7 +2,7 @@
 import numpy as np
 import json
 from tensile_fit import validate_override, validate_threshold
-from tensile_fracture import prepared_points, fracture_endpoint, fracture_curve, fracture_audit
+from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint, fracture_curve, fracture_audit
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
@@ -17,7 +17,7 @@ EL_SOURCE_FIELDS = (
 def elongation_report(record, reference, measured_properties):
     """Report distinct endpoint sources without substituting one for another.
 
-    Analysis uses the detected drop onset, not the earlier shape-trimming point.
+    Analysis uses the last pre-collapse measurement, not the shape-trimming point.
     """
     measured = record.get('_measured_record', record)
     meta = measured.get('_acquisition', {})
@@ -38,8 +38,8 @@ def elongation_report(record, reference, measured_properties):
         'Reconstructed EL (%)': reconstructed,
         'EL plot source': 'Reconstruct' if enabled else 'Calc',
         'EL analysis source': ('Reconstructed CSV-derived fracture EL' if enabled else
-                               'CSV-derived fracture EL (detected drop onset)'),
-        'Reconstructed EL endpoint source': 'Detected CSV drop onset' if enabled else '',
+                               'CSV-derived fracture EL (last pre-collapse measurement)'),
+        'Reconstructed EL endpoint source': 'Last pre-collapse CSV measurement' if enabled else '',
         'Last valid strain measurement row (1-based)': last + 1 if last is not None else np.nan,
         'Last valid strain time (s)': float(times[last]) if last is not None and last < len(times) else np.nan,
         'CSV-derived fracture EL (%)': end['strain_pct'],
@@ -72,7 +72,8 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
     if not 0 < low < high < 1:
         raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')
     r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
-    key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True), record.get('source_sha256'))
+    key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True),
+           record.get('source_sha256'), FRACTURE_METHOD)
     cache = record.setdefault('_property_cache', {})
     if key in cache:
         return dict(cache[key])
