@@ -3,6 +3,7 @@ import csv
 import hashlib
 from pathlib import Path
 import re
+from decimal import Decimal, InvalidOperation
 import numpy as np
 from tensile_selection import csv_files
 
@@ -42,6 +43,91 @@ def _number(value, unit, kind):
     return number * scales.get(kind, {}).get(unit, np.nan)
 
 
+def reported_resolution(value):
+    """Least significant printed digit, including trailing zeros/scientific notation."""
+    try:
+        number = Decimal(str(value).strip())
+        if number.is_finite():
+            result = float(Decimal(10) ** number.as_tuple().exponent)
+            if np.isfinite(result) and result > 0:
+                return result
+    except (InvalidOperation, ValueError, OverflowError):
+        pass
+    return np.nan
+
+
+def raw_check_precision(frame, has_units, stress_column, strain_column, metadata):
+    """Record CSV precision before float conversion, never from filtered curves."""
+    raw = frame.iloc[1:] if has_units else frame
+    result = {}
+    for key, column, values in (('uts', stress_column, metadata['stress']),
+                                ('el', strain_column, metadata['strain'])):
+        ids = np.flatnonzero(np.isfinite(values))
+        if column is None or not len(ids):
+            continue
+        maximum = float(np.max(values[ids]))
+        peak_ids = ids[values[ids] == maximum]
+        resolutions = []
+        for index in peak_ids:
+            token = raw.iloc[int(index)][column]
+            try:
+                original = float(token)
+                # Conversion scale inferred from this exact original/converted
+                # pair, so the check uses the loader's existing unit handling.
+                scale = abs(values[index] / original) if original != 0 else np.nan
+                resolution = reported_resolution(token) * scale
+                if np.isfinite(resolution):
+                    resolutions.append(resolution)
+            except (ValueError, TypeError):
+                pass
+        result[key] = max(resolutions) if resolutions else np.nan
+    return result
+
+
+def _verify_reference(result, record, name_ok, name_failures=()):
+    """Verify an identity-selected candidate; never search for the closest value."""
+    measured = record.get('_measured_record', record)
+    meta = measured.get('_acquisition', {})
+    failures = list(name_failures)
+    if not name_ok and not failures:
+        failures.append('Name: no unambiguous dataset/export-row or exact-label match.')
+    audit = {}
+    for key, array, title, unit in (('uts', 'stress', 'UTS', 'MPa'), ('el', 'strain', 'EL', '%')):
+        values = np.asarray(meta.get(array, []), dtype=float)
+        finite = values[np.isfinite(values)]
+        raw = float(np.max(finite)) if len(finite) else np.nan
+        reported = result['values'].get(key, np.nan)
+        resolution = result.get('resolution', {}).get(key, np.nan)
+        raw_resolution = meta.get('check_resolution', {}).get(key, np.nan)
+        # Half a printed unit from each CSV, plus a floating-point floor. This
+        # is a rounding tolerance, not an adjustable percentage-of-strength fit.
+        tolerance = (resolution / 2 + (raw_resolution / 2 if np.isfinite(raw_resolution) else 0)
+                     + 1e-9 * max(1, abs(raw), abs(reported))) if np.isfinite(resolution) else np.nan
+        difference = raw - reported
+        passed = bool(np.isfinite(raw) and np.isfinite(reported) and np.isfinite(tolerance)
+                      and abs(difference) <= tolerance)
+        audit.update({f'{title} raw CSV maximum ({unit})': raw,
+                      f'{title} Instron value ({unit})': reported,
+                      f'{title} check difference ({unit})': difference,
+                      f'{title} check tolerance ({unit})': tolerance})
+        if not np.isfinite(raw):
+            failures.append(f'{title}: original recorded {array} unavailable; cannot verify.')
+        elif not np.isfinite(reported) or not np.isfinite(tolerance):
+            failures.append(f'{title}: summary value missing, conflicting or unreadable; cannot verify.')
+        elif not passed:
+            detail = (f'{title}: CSV maximum {raw:.6g} {unit} vs Instron {reported:.6g} {unit} '
+                      f'(Δ {difference:+.6g}; tolerance ±{tolerance:.3g}).')
+            if key == 'el':
+                detail += ' Review endpoint: maximum recorded strain is not necessarily Instron strain at break.'
+            failures.append(detail)
+    for note in result.get('notes', '').split('\n'):
+        if note and note not in failures:
+            failures.append(note)
+    result['check_failures'] = list(dict.fromkeys(failures))
+    result['check_values'] = audit
+    return result
+
+
 def read_summary_csv(path):
     """Return the first supported Results Table; stop before raw time-series data."""
     path = Path(path)
@@ -67,7 +153,7 @@ def read_summary_csv(path):
                         if not match or len(row) != len(header):
                             continue
                         item = {'index': int(match[2]), 'excluded': bool(match[1]), 'label': '',
-                                'values': {}, 'source': str(path), 'notes': []}
+                                'values': {}, 'resolution': {}, 'source': str(path), 'notes': []}
                         for index, label in enumerate(header):
                             if 'specimen text input' in _normal(label):
                                 item['label'] = row[index].strip()
@@ -75,6 +161,7 @@ def read_summary_csv(path):
                             if field:
                                 unit = units[index] if index < len(units) else ''
                                 item['values'][field] = _number(row[index], unit, kind)
+                                item['resolution'][field] = _number(reported_resolution(row[index]), unit, kind)
                                 if row[index].strip() not in ('', '-----', '----', '---') and not np.isfinite(item['values'][field]):
                                     item['notes'].append(f'{label}: missing/unsupported unit or numeric value')
                         rows.append(item)
@@ -144,16 +231,20 @@ class InstronSummaries:
         if not candidates:
             if dataset is None or index is None:
                 result['notes'] = 'No embedded summary or unambiguous dataset/row identity. No numerical matching attempted.'
-            return result
+            return _verify_reference(result, record, False)
         # Multiple summary revisions may agree numerically but differ in labels.
         # Preserve non-conflicting fields; never select a conflicting value.
-        values, conflicts = {}, []
+        values, resolution, conflicts = {}, {}, []
         for field in {key for row in candidates for key in row['values']}:
             available = [row['values'][field] for row in candidates if np.isfinite(row['values'].get(field, np.nan))]
             if not available:
                 values[field] = np.nan
             elif np.allclose(available, available[0], rtol=0, atol=1e-9):
                 values[field] = available[0]
+                precision = [row.get('resolution', {}).get(field, np.nan) for row in candidates
+                             if np.isfinite(row['values'].get(field, np.nan))]
+                precision = [value for value in precision if np.isfinite(value)]
+                resolution[field] = min(precision) if precision else np.nan
             else:
                 values[field] = np.nan
                 conflicts.append(field)
@@ -161,13 +252,26 @@ class InstronSummaries:
         notes = sorted({note for row in candidates for note in row['notes']})
         if conflicts:
             notes.append('Conflicting summary values left blank: ' + ', '.join(sorted(conflicts)))
-        if len(labels) > 1:
-            notes.append('Specimen labels differ between summary revisions; match uses export row number.')
         excluded = any(row['excluded'] for row in candidates)
         if excluded:
             notes.append('Marked excluded (X) in an Instron summary; not automatically excluded here.')
-        result.update(values=values, status='Conflicting summaries' if conflicts else method,
-                      notes=' '.join(notes), source='; '.join(sorted({row['source'] for row in candidates})),
+        result.update(values=values, resolution=resolution, status='Conflicting summaries' if conflicts else method,
+                      notes='\n'.join(notes), source='; '.join(sorted({row['source'] for row in candidates})),
                       sha256='; '.join(sorted({row['sha256'] for row in candidates})),
                       index=candidates[0]['index'], label=' / '.join(labels), excluded=excluded)
-        return result
+        name_ok = (method == 'Dataset + Instron row number' or
+                   (method == 'Exact specimen label' and len(candidates) == 1) or
+                   (method == 'Embedded CSV summary' and
+                    ((index is not None and all(row['index'] == index for row in candidates)) or
+                     (index is None and len(candidates) == 1 and
+                      candidates[0]['label'].casefold() == source.stem.casefold()))))
+        name_failures = []
+        if method == 'Exact specimen label' and len(candidates) > 1:
+            name_failures.append('Name: exact specimen label appears in multiple summary rows/files; review identity.')
+        if len({(row['source'], row['index']) for row in candidates}) < len(candidates):
+            name_failures.append('Name: duplicate row number within a summary file; review identity.')
+        if method == 'Embedded CSV summary' and index is not None and not name_ok:
+            name_failures.append(f'Name: export row {index} differs from the embedded summary row.')
+        if len(labels) > 1:
+            name_failures.append('Name: conflicting operator specimen labels across summary revisions.')
+        return _verify_reference(result, record, name_ok, name_failures)

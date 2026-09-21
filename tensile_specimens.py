@@ -25,6 +25,10 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens input[type=text] {box-sizing:border-box; width:215px; padding:5px; border:1px solid #b6c1cd; border-radius:3px; font:inherit; color:#24354a; background:#fff;}
     .tw-specimens input:focus-visible {outline:2px solid #1767a5; outline-offset:2px;}
     .tw-specimens input:disabled {cursor:default; opacity:.65;}
+    .tw-specimens select {font:inherit;padding:5px;min-width:135px;cursor:pointer;}
+    .tw-specimens .selection-scope {text-align:left;white-space:nowrap;}
+    .tw-specimens .selection-scope small {display:block;color:#526170;}
+    .tw-specimens .checks {white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:#944900;}
     .tw-specimens .inspect {border:0;background:none;padding:0;color:#1767a5;text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere;}
     .tw-specimens .inspect:hover {text-decoration:underline;}
     .tw-specimens .inspect:focus-visible {outline:2px solid #1767a5;outline-offset:3px;}
@@ -41,7 +45,7 @@ class SpecimenTable(anywidget.AnyWidget):
         const context = model.get('context');
         const table = document.createElement('table');
         const header = table.createTHead().insertRow();
-        ['Include','Group','Specimen','Exclusion reason (optional)',...model.get('columns')].forEach(label => {
+        ['Include','Group','Specimen','Applies to','Exclusion reason (optional)',...model.get('columns')].forEach(label => {
           const th = document.createElement('th'); th.textContent = label; th.scope='col'; header.append(th);
         });
         const body = table.createTBody();
@@ -49,17 +53,28 @@ class SpecimenTable(anywidget.AnyWidget):
         for (const row of model.get('rows')) {
           const tr = body.insertRow();
           if (!row.included) tr.className='excluded';
-          if (row.fit_warning) tr.classList.add('fit-warning');
+          if (row.check_warning || row.fit_warning) tr.classList.add('fit-warning');
           const check = document.createElement('input'); check.type='checkbox'; check.checked=row.included;
           check.setAttribute('aria-label', 'Include ' + row.group + ' / ' + row.sample);
           tr.insertCell().append(check);
           tr.insertCell().textContent=row.group;
           const inspect = document.createElement('button'); inspect.type='button'; inspect.className='inspect';
-          inspect.textContent=(row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';
+          inspect.textContent=(row.check_warning || row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';
           inspect.setAttribute('aria-label','Inspect ' + row.group + ' / ' + row.sample);
           inspect.addEventListener('click', () => model.send({type:'inspect', context, id:row.id}));
           tr.insertCell().append(inspect);
           tr.title=row.id;
+          const scope = document.createElement('select');
+          [['global','Global default'],['graph','This graph only']].forEach(([value,label]) => {
+            const option=document.createElement('option'); option.value=value; option.textContent=label; scope.append(option);
+          });
+          scope.value=row.scope || 'global';
+          scope.setAttribute('aria-label','Inclusion scope for ' + row.group + ' / ' + row.sample);
+          const scopeCell=tr.insertCell(); scopeCell.className='selection-scope'; scopeCell.append(scope);
+          if (row.scope==='graph') {
+            const note=document.createElement('small'); note.textContent='Global: ' + (row.global_included ? 'included' : 'excluded');
+            scopeCell.append(note);
+          }
           const reason = document.createElement('input'); reason.type='text'; reason.value=row.reason;
           reason.placeholder='Optional reason'; reason.disabled=row.included; reason.maxLength=2000;
           reason.setAttribute('aria-label','Exclusion reason for ' + row.group + ' / ' + row.sample);
@@ -67,19 +82,22 @@ class SpecimenTable(anywidget.AnyWidget):
           row.values.forEach((value, index) => {
             const cell=tr.insertCell(); cell.textContent=value;
             if (model.get('columns')[index]==='Fit method' && value.startsWith('Manual')) cell.className='fit-override';
+            if (model.get('columns')[index]==='Checks') cell.className='checks';
           });
-          const submit = () => {
+          const submit = (action='selection') => {
             if (pending) return;
             pending = true;
-            const message = {type:'selection', context, id:row.id, included:check.checked, reason:reason.value};
+            const message = {type:'selection', context, id:row.id, included:check.checked,
+                             reason:reason.value, scope:scope.value, action};
             // Wait for the Python-side save/validation; don't silently change statistics in the browser.
-            container.querySelectorAll('input').forEach(input => {input.disabled=true;});
+            container.querySelectorAll('input, select').forEach(input => {input.disabled=true;});
             model.send(message);
           };
-          check.addEventListener('change', submit);
+          check.addEventListener('change', () => submit());
+          scope.addEventListener('change', () => submit(scope.value==='global' ? 'inherit' : 'selection'));
           let edited = false;
           reason.addEventListener('input', () => {edited=true;});
-          reason.addEventListener('change', submit);
+          reason.addEventListener('change', () => submit());
           reason.addEventListener('blur', () => {if(edited) submit();});
           reason.addEventListener('keydown', event => {if(event.key==='Enter') {event.preventDefault(); submit();}});
         }
@@ -110,7 +128,10 @@ class SpecimenTable(anywidget.AnyWidget):
                 self.on_inspect(content['id'])
             return
         if (content.get('type') != 'selection' or not isinstance(content.get('included'), bool)
-                or not isinstance(content.get('reason'), str)):
+                or not isinstance(content.get('reason'), str)
+                or content.get('scope', 'global') not in ('global', 'graph')
+                or content.get('action', 'selection') not in ('selection', 'inherit')):
             return
         if self.on_selection:
-            self.on_selection(content['id'], content['included'], content['reason'][:2000])
+            self.on_selection(content['id'], content['included'], content['reason'][:2000],
+                              content.get('scope', 'global'), content.get('action', 'selection'))

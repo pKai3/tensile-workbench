@@ -15,7 +15,7 @@ Existing users upgrading from notebook-only mode should run Setup once to add Vo
 
 - Detailed application usage: [workbench guide](WORKBENCH_GUIDE.md).
 
-Graph definitions support confirmed deletion with persistent Undo. The Specimens table has per-graph **Include** checkboxes controlling statistics and every plot method, without renaming source files; excluded rows remain available for review. The Summary tab compares **Calc / Instron** side by side under each property. `!` remains a hard-ignore marker anywhere in data filenames or nested folder names. See the guide for export/audit details.
+Graph definitions support confirmed deletion with persistent Undo. The Specimens table has **global Include defaults with explicit per-graph overrides**, controlling statistics and every plot method without renaming source files. Excluded rows remain available for review. A single **Checks** column lists only failed/incomplete identity, original-data agreement and fit checks. The Summary tab compares **Calc / Instron** side by side under each property. `!` remains a hard-ignore marker anywhere in data filenames or nested folder names. See the guide for export/audit details.
 
 On first run the app asks for **Data folder** and **Output folder** before loading data. Defaults are **`./data`** and **`./output`**, relative to the folder containing the workbench code, not the terminal's current directory. Either location can be an absolute path elsewhere on the computer or an accessible external/network drive.
 

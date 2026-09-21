@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import uuid
 import json
-from tensile_selection import specimen_id, is_included
+from tensile_selection import specimen_id, selection_state
 from tensile_specimens import SpecimenTable
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
@@ -103,7 +103,31 @@ def _stats(values):
             'Max': float(np.max(values)) if len(values) else np.nan}
 
 
-def property_tables(records, spec, engine, instron):
+def specimen_check_failures(properties, reference, gauge=None):
+    """One failure-only message column; retain numeric audit fields separately."""
+    failures = list(reference.get('check_failures', []))
+    if properties.get('Fit review required'):
+        if properties.get('Yield status') != 'resolved':
+            failures.append('Yield fit: ' + (properties.get('Notes') or 'unresolved fit.'))
+        r2 = properties.get('Elastic fit R2', np.nan)
+        threshold = properties['R2 warning threshold']
+        if not np.isfinite(r2):
+            failures.append('Elastic fit: R² unavailable.')
+        elif r2 < threshold:
+            failures.append(f'Elastic fit: R² {r2:.5f} below threshold {threshold:g}.')
+        if str(properties.get('Override status', '')).startswith('Stale'):
+            failures.append('Fit override: source changed; saved override was not applied.')
+    gauge = gauge or {}
+    if gauge.get('Elongation basis') == 'Estimated standard gauge':
+        if gauge.get('Gauge correction status') != 'Applied':
+            failures.append('Gauge reconstruction: ' + gauge.get('Gauge correction status', 'unavailable'))
+        for key in ('Gauge model warning', 'Gauge reconstruction notes'):
+            if gauge.get(key):
+                failures.append('Gauge reconstruction: ' + gauge[key])
+    return '\n'.join(dict.fromkeys(failures))
+
+
+def property_tables(records, spec, engine, instron, project=None):
     samples, diagnostics, comparison, summaries, uniform = [], [], [], [], []
     fractions = spec.get('landmark_yield_fit_fractions', engine.LANDMARK_YIELD_FIT_FRACTIONS)
     for group, rows in records.items():
@@ -112,16 +136,20 @@ def property_tables(records, spec, engine, instron):
             p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING)
             measured = engine.specimen_properties(row.get('_measured_record', row), fractions, engine.LANDMARK_YIELD_R2_WARNING)
             reference = instron.match(group, row)
-            included = is_included(row, spec)
+            selection = selection_state(row, spec, project)
+            included = selection['included']
             if included:
                 properties.append(p)
                 references.append(reference)
             identity = {'Included': included, 'Group': group, 'Sample': row['sample'],
                         'Specimen ID': specimen_id(row),
-                        'Exclusion Reason': spec.get('specimen_exclusions', {}).get(specimen_id(row), '')}
+                        'Exclusion Reason': selection['reason'], 'Inclusion Scope': selection['scope'],
+                        'Global Included': selection['global_included'], 'Global Exclusion Reason': selection['global_reason']}
+            checks = specimen_check_failures(p, reference, row.get('_gauge'))
             fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
             saved_fit = row.get('_fit_override') or {}
-            samples.append({**identity, **fit_fields, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
+            samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
+                            **fit_fields, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
                             'UTS (MPa)': p['UTS (MPa)'], 'Uniform Elongation (%)': p['Uniform elongation (%)'],
                             'Failure Elongation (%)': p['Failure elongation (%)'],
                             'Toughness (MJ/m^3)': p['Toughness (MJ/m^3)'], 'Fitted E (GPa)': p['Fitted E (GPa)'],
@@ -132,7 +160,8 @@ def property_tables(records, spec, engine, instron):
                                'Measured toughness (MJ/m^3)': measured['Toughness (MJ/m^3)'],
                                'Width (mm)': reference['values'].get('width', np.nan),
                                'Thickness (mm)': reference['values'].get('thickness', np.nan)})
-            diagnostics.append({**identity, **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
+            diagnostics.append({**identity, 'Checks': checks, **reference.get('check_values', {}),
+                                **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
                                 'R2 warning threshold': p['R2 warning threshold'], 'Fit Point Count': p['Fit point count'],
                                 'Fit Lower Strain (%)': p['Fit lower strain (%)'], 'Fit Upper Strain (%)': p['Fit upper strain (%)'],
                                 'Automatic 0.2% YS (MPa)': p['Automatic Yield (MPa)'],
@@ -157,7 +186,7 @@ def property_tables(records, spec, engine, instron):
                 calculated, reported = measured[field], reference['values'].get(ref_key, np.nan)
                 paired = bool(np.isfinite(calculated) and np.isfinite(reported))
                 difference = calculated - reported if paired else np.nan
-                comparison.append({**identity, 'Property': label, 'Unit': unit, 'Calculated': calculated, 'Instron': reported,
+                comparison.append({**identity, 'Checks': checks, 'Property': label, 'Unit': unit, 'Calculated': calculated, 'Instron': reported,
                                    'Difference (calc - Instron)': difference,
                                    'Difference Unit': 'percentage points' if unit == '%' else unit,
                                    'Difference (%)': 100 * difference / reported if paired and reported != 0 else np.nan,
@@ -371,6 +400,7 @@ class PropertyTablesView:
                  '.tw18-table .tw-fit-body dd{margin:0 0 8px}.tw18-table .tw-fit-body pre{'
                  'white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.4 monospace;margin:0}'
                  '.tw18-table .tw-fit-date{white-space:nowrap}'
+                 '.tw18-table .tw-checks{white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:#944900;line-height:1.4}'
                  '.tw18-table .tw-path{width:clamp(160px,24vw,280px);text-align:left;font-weight:normal}'
                  '.tw18-table .tw-path summary{display:block;list-style:none;cursor:pointer;color:#1767a5;border-radius:3px}'
                  '.tw18-table .tw-path summary::-webkit-details-marker{display:none}'
@@ -394,6 +424,8 @@ class PropertyTablesView:
                 formatter = _override_cell
             elif column == 'Override Saved At':
                 formatter = _override_date_cell
+            elif column == 'Checks':
+                formatter = lambda value: '<div class="tw-checks">' + escape(str(value)) + '</div>' if value else ''
             else:
                 formatter = _display_cell
             formatters[escape(str(column))] = formatter
@@ -421,19 +453,27 @@ class PropertyTablesView:
         self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
                                'SD requires at least two values. “—” means unavailable.</p>' + basis_note + summary_html(summary))
-        self.panels[1].value = ('<p><b>Include</b> applies to this graph only: statistics, averages, work hardening and all plots. '
+        self.panels[1].value = ('<p><b>Include</b> changes the global default for statistics, averages, work hardening and all plots. '
+                               'Choose <b>This graph only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
+                               'Other graphs’ explicit overrides are preserved. '
                                'Unchecked specimens stay here for review and in the specimen export. '
                                'Files/folders marked with ! are ignored entirely. '
-                               '<b>Click a specimen name to inspect its measured elastic-fit calculation.</b></p>' + basis_note)
-        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required', 'Gauge source'}
+                               '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '
+                               'Click a specimen name to inspect calculations and exact comparison values.</p>' + basis_note)
+        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required', 'Gauge source',
+                  'Inclusion Scope', 'Global Included', 'Global Exclusion Reason', 'Instron Specimen Label',
+                  'Yield Status', 'Yield Notes', 'Override status', 'Gauge correction status',
+                  'Gauge model warning', 'Gauge reconstruction notes', 'Peak retained in plotting grid',
+                  'Reconstructed grid order reversals', 'Post-peak points below peak strain'}
         columns = [column for column in samples.columns if column not in hidden]
         def text_value(value):
             if pd.isna(value):
                 return '—'
             return f'{value:.3f}' if isinstance(value, (float, np.floating)) else str(value)
         rows = [{'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
-                 'sample': str(row['Sample']), 'reason': row['Exclusion Reason'],
-                 'fit_warning': bool(row['Fit review required']),
+                 'sample': str(row['Instron Specimen Label'] or row['Sample']), 'reason': row['Exclusion Reason'],
+                 'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
+                 'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
                  'values': [f'{row[column]:.5f}' if column == 'Elastic Fit R2' and np.isfinite(row[column])
                             else text_value(row[column]) for column in columns]} for _, row in samples.iterrows()]
         with self.specimens.hold_sync():
@@ -444,11 +484,18 @@ class PropertyTablesView:
         self.inspector.set_rows(rows)
         unit = next(('pp' if m[1] == '%' else m[1]) for m in METRICS if m[0] == self.metric.value)
         shown = comparison.drop(columns=['Source File', 'Instron Summary CSV', 'Specimen ID', 'Paired', 'Property', 'Unit',
-                                          'Difference Unit', 'Instron Specimen Label', 'Instron Row'], errors='ignore')
+                                          'Difference Unit', 'Instron Specimen Label', 'Instron Row', 'Instron Match', 'Notes',
+                                          'Inclusion Scope', 'Global Included', 'Global Exclusion Reason'], errors='ignore')
         shown = shown.rename(columns={'Difference (calc - Instron)': f'Δ ({unit})', 'Difference (%)': 'Δ (%)', 'Instron Match': 'Match'})
-        self.panels[2].value = ('<p>Δ = calculated − Instron; Δ (%) is relative to Instron. This is not a pass/fail test. '
+        self.panels[2].value = ('<p>Δ = calculated − Instron; Δ (%) is relative to Instron. Calculated YS is not used to verify identity. '
+                               'Candidate Instron values remain visible when checks fail; review flagged rows before relying on them. '
                                'See Checks for identity, elastic-fit details and source files.</p>' + self._html(shown))
-        self.panels[3].value = self._html(diagnostic.drop(columns=['Specimen ID', 'Source SHA256', 'Instron Summary SHA256'], errors='ignore'))
+        audit_columns = [c for c in diagnostic if any(c.startswith(prefix) for prefix in
+            ('UTS raw CSV', 'EL raw CSV', 'UTS Instron value', 'EL Instron value',
+             'UTS check ', 'EL check '))]
+        self.panels[3].value = self._html(diagnostic.drop(columns=[*audit_columns, 'Specimen ID', 'Source SHA256', 'Instron Summary SHA256',
+            'Instron Match', 'Instron Notes', 'Instron Excluded', 'Fit review required', 'Yield Status', 'Yield Notes',
+            'Override status', 'Inclusion Scope', 'Global Included', 'Global Exclusion Reason'], errors='ignore'))
         matched = int((comparison['Paired'] & comparison['Included']).sum()) if not comparison.empty else 0
         included = int(samples['Included'].sum()) if not samples.empty else 0
         self.status.value = (f'{len(samples)} displayed specimens · {included} included · {matched} included paired comparisons '

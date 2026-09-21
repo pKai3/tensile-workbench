@@ -45,6 +45,8 @@ def write_workbook(path, sheets):
                 cell.font = Font(name='Arial', size=10)
                 if isinstance(cell.value, str):
                     cell.data_type = 's'  # literal names/paths, never formulas
+                    if headers[cell.column - 1] == 'Checks':
+                        cell.alignment = Alignment(wrap_text=True, vertical='top')
                 if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
                     header = headers[cell.column - 1].lower()
                     cell.number_format = '0' if (header.endswith(' n') or header in ('n', 'included n', 'available n') or 'row (1-based)' in header) else '0.000'
@@ -55,6 +57,8 @@ def write_workbook(path, sheets):
         sheet.row_dimensions[1].height = 45
         for i, header in enumerate(headers, 1):
             sheet.column_dimensions[get_column_letter(i)].width = min(38, max(18, len(header) * .65))
+            if header == 'Checks':
+                sheet.column_dimensions[get_column_letter(i)].width = 65
         sheet.auto_filter.ref = sheet.dimensions
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -114,8 +118,11 @@ def export_results(frames, path, metadata):
     metadata = {**metadata, 'definitions': {
         'calculated_basis': 'Failure elongation/toughness use each group\'s selected basis within this graph; measured and estimated values are also retained separately.',
         'instron_comparison': 'Differences compare measured calculations with original Instron values, never reconstructed values.',
+        'checks': 'Failure/review messages only. Identity must match by name/export row and values must agree with original CSV maxima within printed-digit rounding tolerances. EL endpoint differences require review. No automatic exclusion or numerical rematching.',
+        'selection': 'Global specimen exclusions apply unless this graph contains an explicit inclusion override. Hard-ignored ! files never load.',
         'gauge': 'Strain 1 gauge length is the AVE-measured initial dot spacing. Target and enabled state are per sample group within this graph.',
         'estimate': 'Post-peak reconstruction assumes both gauge intervals capture the localisation. Longer targets are allowed with warnings. Not a standards-compliant measurement.',
+        'gauge_formula': 'r = L_dots / L_target; pre-peak strain unchanged; post-peak strain_est = strain_u + r * (strain_measured - strain_u). Failure EL_est = EL_u + r * (EL_measured - EL_u). All strains are total engineering strain in percent; stress unchanged throughout.',
         'failure_endpoint': 'Maximum retained recorded strain (legacy endpoint), not independently detected fracture.',
         'precision': 'Full numeric precision stored; three decimal places displayed.'}}
     write_workbook(path, {'Summary': frames['tensile_summary'], 'Specimens': specimens,

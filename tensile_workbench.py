@@ -20,7 +20,8 @@ from tensile_properties import specimen_calculation
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_fit import fit_policy, validate_override, validate_threshold
-from tensile_selection import is_included, specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX
+from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
+                               specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX)
 from tensile_startup import sample_data_settings, save_sample_data_visibility, resolve_folder
 import hashlib
 import io
@@ -51,6 +52,11 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
         if exclusions is not None:
             graph['definition']['specimen_exclusions'] = {
                 SAMPLE_ID_PREFIX + k if k.split('/')[0] in rename else k: v for k, v in exclusions.items()}
+        for mapping in (project.get('specimen_exclusions', {}),
+                        graph['definition'].get('specimen_inclusion_overrides', {})):
+            for ident in list(mapping):
+                if ident.split('/')[0] in rename:
+                    mapping[SAMPLE_ID_PREFIX + ident] = mapping.pop(ident)
         for group, replacement in rename.items():
             if group in project.get('display_names', {}):
                 project['display_names'][replacement] = project['display_names'][group]
@@ -155,7 +161,8 @@ class PreviewSession:
 
     def set_project(self, project):
         previous_policy = fit_policy(self.project)
-        project = migrate_group_gauges(project)
+        previous_selections = self.selection_signature()
+        project = migrate_specimen_selections(migrate_group_gauges(project))
         self.project = deepcopy(project)
         self.graphs = [{**g["definition"], "name": g["name"]} for g in project["graphs"]]
         self.engine.NAME_LOOKUP = deepcopy(project.get("display_names", {}))
@@ -167,6 +174,10 @@ class PreviewSession:
             self._property_frames.clear()
             self._models.clear()
             self._previews.clear()
+        if previous_selections != self.selection_signature() and hasattr(self, '_records'):
+            self._property_frames.clear()
+            self._models.clear()
+            self._previews.clear()
 
     def _bind_fit_context(self, record):
         record['_fit_override'] = deepcopy(self.project.get('specimen_fit_overrides', {}).get(specimen_id(record)))
@@ -174,6 +185,16 @@ class PreviewSession:
 
     def fit_signature(self):
         return json.dumps(fit_policy(self.project), sort_keys=True)
+
+    def selection_signature(self):
+        return json.dumps([self.project.get('specimen_exclusions', {}),
+            {g['id']: g['definition'].get('specimen_inclusion_overrides', {})
+             for g in self.project['graphs']}], sort_keys=True)
+
+    def selection_provenance(self, state, spec):
+        ids = {specimen_id(r) for group in self.visible_groups(state['groups']) for r in self._load(group)}
+        return {'global_exclusions': {k: v for k, v in self.project.get('specimen_exclusions', {}).items() if k in ids},
+                'graph_overrides': {k: v for k, v in spec.get('specimen_inclusion_overrides', {}).items() if k in ids}}
 
     def fit_provenance(self, state):
         ids = {specimen_id(r) for group in self.visible_groups(state['groups']) for r in self._load(group)}
@@ -225,16 +246,17 @@ class PreviewSession:
     def included_records(self, groups, spec):
         """The single selection gate for every plot family and average export."""
         return {group: selected for group in self.visible_groups(groups)
-                if (selected := [row for row in self._load(group) if is_included(row, spec)])}
+                if (selected := [row for row in self._load(group) if is_included(row, spec, self.project)])}
 
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
         key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
+                          self.project.get('specimen_exclusions', {}), spec.get('specimen_inclusion_overrides', {}),
                           spec.get('specimen_exclusions', {}),
                           {g: group_policy(state, spec, g) for g in state['groups']}], sort_keys=True)
         if key not in self._property_frames:
             records = self.analysis_records(state, spec, include_excluded=True)
-            self._property_frames[key] = property_tables(records, spec, self.engine, self.instron)
+            self._property_frames[key] = property_tables(records, spec, self.engine, self.instron, self.project)
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
         return self._property_frames[key]
@@ -274,9 +296,11 @@ class PreviewSession:
         destination.mkdir(parents=True, exist_ok=False)
         export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
                        {'graph': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
+                        'specimen_selection': self.selection_provenance(state, spec),
                         'engine_sha256': self.engine_sha256})
         (destination / 'settings.json').write_text(json.dumps({'graph_definition': spec, 'settings': state,
             'specimen_fit_policy': self.fit_provenance(state),
+            'specimen_selection': self.selection_provenance(state, spec),
             'engine_sha256_at_load': self.engine_sha256,
             'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Checks sheet for source hashes.'}, indent=2))
         return destination
@@ -293,10 +317,11 @@ class PreviewSession:
                 if specimen_id(record) == ident:
                     reference = self.instron.match(group, record)
                     policy = group_policy(state, spec, group)
+                    selection = selection_state(record, spec, self.project)
                     return {'group': group, 'sample': record['sample'], 'specimen_id': ident,
                             'source_file': record['source_file'], 'source_sha256': record.get('source_sha256', ''),
-                            'included': is_included(record, spec),
-                            'exclusion_reason': spec.get('specimen_exclusions', {}).get(ident, ''),
+                            'included': selection['included'], 'selection_scope': selection['scope'],
+                            'exclusion_reason': selection['reason'],
                             'record': record,
                             'calculation': specimen_calculation(record, fractions, self.engine.LANDMARK_YIELD_R2_WARNING),
                             'reference': reference, 'gauge_policy': policy,
@@ -368,7 +393,8 @@ class PreviewSession:
                 key_state.pop(key, None)
             if family == "work_hardening":
                 key_state.pop("landmark_points", None)
-        key = json.dumps([key_state, self.graphs[state["graph_index"]], self.project.get("display_names", {})], sort_keys=True)
+        key = json.dumps([key_state, self.graphs[state["graph_index"]], self.project.get("display_names", {}),
+                          self.selection_signature()], sort_keys=True)
         if key not in self._previews:
             self._previews[key] = self._render_uncached(state)
             if len(self._previews) > 12:
@@ -378,6 +404,7 @@ class PreviewSession:
         spec["tensile_mean_tail"] = {**self.engine.TENSILE_MEAN_TAIL, **spec.get("tensile_mean_tail", {}),
             "enabled": state["tail_enabled"], "fit_window_percent": state["tail_window"], "setback_percent": state["tail_setback"]}
         return {**self._previews[key], "state": deepcopy(state), "graph_spec": spec,
+                'selection_signature': self.selection_signature(),
                 'fit_signature': self.fit_signature(), 'specimen_fit_policy': self.fit_provenance(state)}
 
     def _render_uncached(self, state):
@@ -515,6 +542,8 @@ class PreviewSession:
             raise ValueError("There are no valid previews to export.")
         if any(r.get('fit_signature') != self.fit_signature() for r in results):
             raise ValueError('Specimen fit settings changed. Update plots before exporting.')
+        if any(r.get('selection_signature') != self.selection_signature() for r in results):
+            raise ValueError('Specimen inclusion changed. Update plots before exporting.')
         result = results[0]
         graph = self.engine.safe_filename(result["graph_spec"]["name"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:6]
@@ -555,6 +584,7 @@ class PreviewSession:
         graph = self.engine.safe_filename(spec['name'])
         export_results(self.property_tables(state, spec), destination / f'{graph}_results.xlsx',
                        {'graph': spec, 'views': [r['state'] for r in results],
+                        'specimen_selection': self.selection_provenance(state, spec),
                         'fit_policy': self.fit_provenance(state), 'engine_sha256': self.engine_sha256})
         export_curves(results, self.engine, destination / f'{graph}_curves.xlsx')
 
@@ -569,7 +599,8 @@ class TensileWorkbench:
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
                                   self.project_dir / "tensile_workbench_defaults.json")
         self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
-        upgraded = migrate_group_gauges(upgrade_legacy_demo_graph(self.store.data, self.session.data_dir, self.session.sample_data_dir))
+        upgraded = migrate_specimen_selections(migrate_group_gauges(
+            upgrade_legacy_demo_graph(self.store.data, self.session.data_dir, self.session.sample_data_dir)))
         if upgraded != self.store.data:
             self.store.save(upgraded)
             self.session.set_project(self.store.data)
@@ -660,13 +691,15 @@ class TensileWorkbench:
             grid_template_columns='minmax(140px, 1fr) 140px 110px', grid_gap='2px 12px',
             align_items='center', width='100%', min_width='420px', max_width='700px'))
         self.gauge_message = w.HTML()
+        from tensile_inspector import gauge_model_help
         self.gauge_panel = w.Accordion(children=[w.VBox([
             w.Box([self.gauge_grid], layout=w.Layout(width='100%', overflow='auto')),
             self.gauge_message,
             w.HTML('Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
                    'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
                    'overlay in the specimen inspector. Longer targets are allowed with a model warning; '
-                   'all reconstructed results remain derived estimates.')])], selected_index=None)
+                   'all reconstructed results remain derived estimates.'),
+            w.HTML(gauge_model_help(expanded=True))])], selected_index=None)
         self.gauge_panel.set_title(0, 'Gauge reconstruction · per sample group')
         self.update_button = w.Button(description="Update plots", button_style="primary")
         self.reload_button = w.Button(description="Reload data")
@@ -1014,7 +1047,7 @@ class TensileWorkbench:
     def reload_definitions(self, _=None):
         try:
             self.store.reload()
-            upgraded = migrate_group_gauges(self.store.data)
+            upgraded = migrate_specimen_selections(migrate_group_gauges(self.store.data))
             if upgraded != self.store.data:
                 self.store.save(upgraded)
             self.session.set_project(self.store.data)
@@ -1044,7 +1077,7 @@ class TensileWorkbench:
         self.delete_confirmation.layout.display = 'none'
 
     def _after_graph_action(self, message):
-        upgraded = migrate_group_gauges(self.store.data)
+        upgraded = migrate_specimen_selections(migrate_group_gauges(self.store.data))
         if upgraded != self.store.data:
             self.store.save(upgraded)
         self.session.set_project(self.store.data)
@@ -1082,7 +1115,7 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = '<b>Could not restore graph:</b> ' + escape(str(error))
 
-    def _specimen_changed(self, ident, included, reason):
+    def _specimen_changed(self, ident, included, reason, scope='global', action='selection'):
         if self._paused:
             return
         if not self.save_current():
@@ -1095,11 +1128,20 @@ class TensileWorkbench:
                 raise ValueError('Specimen is no longer in this graph. Reload its tables.')
             project = deepcopy(self.store.data)
             spec = project['graphs'][self._index()]['definition']
-            exclusions = spec.setdefault('specimen_exclusions', {})
-            if included:
-                exclusions.pop(ident, None)
+            overrides = spec.setdefault('specimen_inclusion_overrides', {})
+            if action == 'inherit':
+                overrides.pop(ident, None)
+            elif scope == 'graph':
+                overrides[ident] = {'included': included, 'reason': reason.strip()}
             else:
-                exclusions[ident] = reason.strip()
+                # Normal Include changes are global. Existing explicit overrides
+                # in other graphs remain deliberate exceptions.
+                exclusions = project.setdefault('specimen_exclusions', {})
+                if included:
+                    exclusions.pop(ident, None)
+                else:
+                    exclusions[ident] = reason.strip()
+                overrides.pop(ident, None)
             if project != self.store.data:
                 self.store.save(project)
                 self.session.set_project(self.store.data)
@@ -1112,7 +1154,9 @@ class TensileWorkbench:
             if self.controls['live_update'].value:
                 self.update(save=False)
             else:
-                self.status.value = 'Specimen selection saved for this graph. Tables updated; click Update plots when ready.'
+                self.status.value = ('Specimen selection saved ' + ('for this graph.' if scope == 'graph' and action != 'inherit'
+                    else 'globally; explicit graph overrides remain in effect.' if action != 'inherit'
+                    else 'using the global default.') + ' Tables updated; click Update plots when ready.')
         except Exception as error:
             self.save_status.value = '<b>Specimen selection not saved:</b> ' + escape(str(error))
             self._refresh_properties()
@@ -1198,7 +1242,7 @@ class TensileWorkbench:
         self.override_e_enabled.value = modulus is not None
         self.override_e.value = modulus/1000 if modulus is not None else self.controls["modulus_gpa"].value
         with redirect_stdout(io.StringIO()):
-            rows = [r for r in self.session._load(group) if is_included(r, spec)] if group in self.session.files else []
+            rows = [r for r in self.session._load(group) if is_included(r, spec, self.store.data)] if group in self.session.files else []
         choices = [("Automatic: closest failure elongation", "")] + [(r["sample"], r["sample"]) for r in rows]
         saved = spec.get("representative_overrides", {}).get(group, "")
         if saved and saved not in [value for _, value in choices]:
@@ -1301,7 +1345,7 @@ class TensileWorkbench:
         graph = deepcopy(self._current())
         for key in VIEW_ONLY_SETTINGS:
             graph['settings'].pop(key, None)
-        return json.dumps([graph, fit_policy(self.store.data)], sort_keys=True)
+        return json.dumps([graph, fit_policy(self.store.data), self.store.data.get('specimen_exclusions', {})], sort_keys=True)
 
     def _fit_settings_saved(self):
         self.session.set_project(self.store.data)

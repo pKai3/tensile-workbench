@@ -24,7 +24,7 @@ Select sample groups using the exact-name checkboxes. There is no numbered-range
 Expand **Specimen properties · tables and Instron comparison** above the plot controls to see the tables and their update/export buttons. This section starts collapsed and can be folded away without clearing or recalculating its data. The tables work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
 
 - **Summary:** one row per group, with properties as columns and adjacent **Calc / Instron** cells showing mean ± sample SD. Included n is shown beside the group; each cell shows its own valid n when different. These are statistics of individual included specimens, not properties measured from an average curve. Missing Instron values show “—”. The wide Excel summary keeps numeric means, SDs and counts in separate columns; `tensile_summary_details.xlsx` retains the long-form statistics including min/max.
-- **Specimens:** **Include** checkboxes at the far left, then per-specimen 0.2% offset YS, UTS, uniform elongation, terminal failure elongation, tensile toughness, fitted elastic modulus, elastic-fit R² and calculation notes. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
+- **Specimens:** **Include** checkboxes at the far left, an **Applies to** selector, then per-specimen properties. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
 - **Instron:** select YS, UTS, elongation or modulus. Absolute and relative differences are calculated minus Instron. Elongation differences are percentage points. Comparison is not an automatic pass/fail assessment.
 - **Checks:** raw CSV and summary provenance, specimen identity, fit range/intercept, Instron dimensions, flags and missing/conflicting values. Source-path cells show the end of each path within a compact column. Click a path (or focus it and press Enter) to reveal a selectable full path; click again to collapse. Excel exports retain complete paths and source hashes.
 
@@ -32,9 +32,13 @@ Filtering and sorting affect only the displayed tables, not graph selection or e
 
 ### Include/exclude specimens
 
-The **Include** checkbox is saved **per graph**. It controls group statistics, Instron summary/difference statistics, both tensile averages, both work-hardening methods, representative-curve selection, and individual curves in static/Plotly plots and exports. Duplicating a graph copies its inclusion choices; a new graph starts without exclusions. An excluded representative override falls back to automatic selection among included specimens. A group with no included usable specimens is omitted from plots and retains zero counts in its summary.
+The **Include** checkbox is **global by default**, saved in the personal project file. Excluding a bad specimen applies to existing and future graphs, including statistics, Instron comparisons, both tensile averages, both work-hardening methods, representative selection and individual plots/exports.
 
-Unchecked specimens remain in the per-specimen/diagnostic exports, with `Included`, `Specimen ID` and `Exclusion Reason` columns; they never contribute to averages. Searching/sorting is display-only and does not change these choices. With live preview off, changing Include clears the old plots and requires **Update plots**, so an old population cannot be mistaken for the new one. With live preview on, plots update automatically. Tables update independently of plot selection.
+For an exception, first change **Applies to** to **This graph only**, then set Include. This explicitly overrides the global setting for this specimen in this graph. Choosing **Global default** again removes the exception and restores the current global choice; it does not copy the local choice into the global setting. Changes to the global default leave other graphs' explicit exceptions untouched. The row shows whether the global default is included or excluded while an override is active.
+
+On first opening this update, existing exclusions from active graphs are promoted to global exclusions, retaining their reasons. Deleted graphs' historical exclusions are kept as local overrides if those graphs are restored. A new graph inherits the global choices; duplicating a graph also copies its explicit exceptions. The previous project save remains in the normal backup. An excluded representative override falls back to an included specimen; a group with no included usable specimens has zero summary counts and is omitted from plots.
+
+Unchecked specimens remain in per-specimen/diagnostic exports, with effective inclusion, inclusion scope, global default, specimen identity and reason; they never contribute to averages. Searching/sorting is display-only. With live preview off, changing Include clears the old plots and requires **Update plots**. With live preview on, plots update automatically. Tables update independently of plot selection. All selection settings are private/ignored, not shared deployment defaults.
 
 Research exclusions use file paths relative to the data folder, not absolute machine paths or B-number names. Bundled samples use a separate `sample-data://` identity so they cannot collide with real specimens having the same names. Both survive moving their source folder to another computer. Renaming/moving individual CSVs within it changes their identity; review selections after reorganising source files. Missing-file exclusions remain saved in case those files return. Unticking Include does not rename or modify any source file.
 
@@ -66,7 +70,7 @@ In the inspector, expand **Adjust elastic fit · preview before applying**:
 - **Manual line:** enter strain/stress endpoint coordinates, or click the purple line and drag its endpoints. This sets slope and intercept directly. R² describes residual agreement with measured points between the endpoints, not a least-squares fit; it can be negative. A positive slope and a resolved 0.2% offset yield intersection are required.
 - Inspect the resulting yield, modulus, R² and offset-line intersection against the measured curve and automatic baseline. Enter a reason, then select **Apply override · all graphs**. Until then, these are unsaved previews. **Cancel preview** discards edits; **Restore automatic fit** removes the saved override.
 
-Overrides belong to specimens, not graphs. Tables show **Fit method** and **Override status**, with warning markers for fits needing review. Applying/restoring an override updates property tables and invalidates cached plots; select **Update plots** before exporting new figures. The shared yield calculation is used by summary/scatter plots and landmark curves, including landmark-derived work hardening. Measured UTS, elongation, toughness and the separately configured WH modulus are not changed by an elastic-fit override.
+Overrides belong to specimens, not graphs. Tables show **Fit method**; stale overrides and low-R²/unresolved fits appear in the single **Checks** column. The inspector/export retain full override status and provenance. Applying/restoring an override updates tables and invalidates cached plots; select **Update plots** before exporting. The shared yield calculation is used by summary/scatter plots and landmark curves, including landmark-derived work hardening. Measured UTS, elongation, toughness and the separately configured WH modulus are not changed by an elastic-fit override.
 
 The ignored personal project JSON stores the specimen identity, raw-file fingerprint, bounds/endpoints, reason, timestamp, original automatic results and apply/restore history. Exported checks include the active definition and original automatic snapshot; export settings include relevant history. If a CSV's contents change, its override is flagged as stale and not applied: the automatic calculation is used until reviewed. Moving the data directory preserves relative identities; renaming a specimen does not silently transfer its override. Nothing edits the source CSVs.
 
@@ -74,7 +78,7 @@ The ignored personal project JSON stores the specimen identity, raw-file fingerp
 
 PDFs are not read. Place group summary CSVs in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. Summary rows are never treated as raw curve points.
 
-Matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. Numeric similarity is never used to identify a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Labels, row numbers, paths and match method are shown for checking. Unknown identities stay unmatched.
+Candidate matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. It then independently verifies the name/row association and original recorded data. Numeric similarity never selects or reassigns a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Unknown identities are flagged even if data values happen to agree.
 
 **“Dataset + Instron row number”** uses the dataset name from the immediate export
 folder (`<dataset>.is_tens_Exports` or `<dataset>.id_tens_Exports`) and the specimen
@@ -96,6 +100,12 @@ order, test-property similarity or PDFs. Multiple candidate summaries are
 compared field by field; conflicting fields remain blank rather than choosing
 the newest file or the closest result. Renamed or mixed datasets can break this
 name-based identity convention; numerical agreement does not prove identity.
+
+**Verification** compares the summary UTS with the maximum finite engineering stress in the untouched CSV acquisition, including rows removed from the plotting grid. No elastic fit, smoothing, average curve or gauge reconstruction is used. Summary EL is compared with maximum finite original strain, but a difference is explicitly an **endpoint review**: Instron's strain-at-break and the maximum recorded strain need not be the same quantity.
+
+Each check allows half the least significant printed digit from each CSV, after unit conversion, plus `1e-9 × max(1, |raw|, |summary|)` for floating-point arithmetic. Trailing zeros and scientific notation are preserved when reading precision. Missing summary properties, unsupported values, unverified/ambiguous names, conflicting labels, numerical mismatches and Instron X flags are listed in the single **Checks** column. No pass messages or separate pass/fail columns are shown. Exact comparison values and tolerances are available under **Original CSV ↔ Instron verification values** in the inspector and in the exported audit data.
+
+Flagging does not automatically exclude a specimen, replace its data, select a different summary or suppress available candidate values. Review flagged rows before relying on their Instron comparisons or dimensions; use the inclusion controls if you decide to exclude them. Calculated YS differences are not used to establish identity.
 
 Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summary CSVs. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
 
@@ -121,10 +131,13 @@ elongation/toughness, both lengths, the ratio, model warnings and the original
 force-peak row/time. This toggle changes the display only, not the group's
 calculation basis or any elastic-fit override.
 
-Immediately below the derived-model notice, expand **Gauge reconstruction:
-formula and assumptions** for the pre-/post-peak equations, variable definitions,
-a worked example and the localisation, endpoint and toughness limitations.
-This explanation stays in the inspector and is not printed on plots.
+Immediately below the derived-model notice, **Gauge reconstruction:
+formula and assumptions** is open by default. It contains the pre-/post-peak equations,
+variable definitions, a worked example and the localisation, endpoint and toughness
+limitations. The same help is available beside the group reconstruction controls.
+It is not printed on plots. With all strains expressed in percent,
+`ΔL_post = L_dots × (EL_measured − EL_at_peak) / 100` in mm, and
+`EL_estimated = EL_at_peak + (L_dots / L_target) × (EL_measured − EL_at_peak)`.
 
 At/before maximum force, engineering strain is unchanged. After maximum force,
 the derived strain is `strain_at_peak + (AVE_spacing / target) *

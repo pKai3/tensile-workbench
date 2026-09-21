@@ -124,9 +124,9 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     return fig
 
 
-def gauge_model_help():
-    """Inspector-only model explanation; plain HTML needs no MathJax or network."""
-    return '''<details><summary>Gauge reconstruction: formula and assumptions</summary>
+def gauge_model_help(expanded=False):
+    """Settings/inspector help; plain HTML needs no MathJax or network."""
+    return ('<details open>' if expanded else '<details>') + '''<summary>Gauge reconstruction: formula and assumptions</summary>
       <p>Define <b>r = L<sub>dots</sub> / L<sub>target</sub></b>.</p>
       <div class="tw-gauge-equations">
         <div>At or before maximum force: <b>ε<sub>est</sub> = ε<sub>measured</sub></b></div>
@@ -134,6 +134,8 @@ def gauge_model_help():
           r (ε<sub>measured</sub> − ε<sub>u</sub>)</b></div>
         <div>At the selected failure endpoint: <b>ε<sub>f,est</sub> = ε<sub>u</sub> +
           r (ε<sub>f,measured</sub> − ε<sub>u</sub>)</b></div>
+        <div>Post-peak extension (mm): <b>ΔL<sub>post</sub> = L<sub>dots</sub>
+          (ε<sub>f,measured</sub> − ε<sub>u</sub>) / 100</b>, with strain expressed in %.</div>
       </div>
       <p><b>L<sub>dots</sub></b> is this specimen’s initial AVE dot spacing, imported from
       <i>Strain 1 gauge length</i>; <b>L<sub>target</sub></b> is the saved target for its group.
@@ -189,6 +191,10 @@ def inspection_summary(payload):
               '<div class="tw-inspect-summary">',
               '<p><b>' + escape(payload['group'] + ' · ' + payload['sample']) + '</b> · ' +
               ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
+    result.append('<p>Inclusion: ' + ('explicit override for this graph' if payload.get('selection_scope') == 'graph'
+                                    else 'inherited from the global default') + '.</p>')
+    if reference.get('label'):
+        result.append('<p>Operator specimen/location label: <b>' + escape(reference['label']) + '</b></p>')
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
     show_automatic = bool(calculation.get('automatic_calculation'))
@@ -205,6 +211,20 @@ def inspection_summary(payload):
                       number(reported) + '</td><td>' + number(calculated - reported) + '</td></tr>')
     result.append('</tbody></table><p>Δ uses the displayed units; elongation differences are percentage points. '
                   'Instron YS is drawn as a horizontal reference only; its yield strain is not inferred.</p>')
+    from tensile_tables import specimen_check_failures
+    failures = specimen_check_failures(p, reference,
+        payload.get('gauge_preview', {}).get('_gauge') if payload.get('gauge_policy', {}).get('enabled') else None)
+    if failures:
+        result.append('<p class="tw-inspect-warning" style="white-space:pre-line"><b>Checks</b><br>' + escape(failures) + '</p>')
+    if reference.get('check_values'):
+        result.append('<details><summary>Original CSV ↔ Instron verification values</summary><table>')
+        for label, value in reference['check_values'].items():
+            result.append('<tr><td>' + escape(label) + '</td><td>' + number(value, 6) + '</td></tr>')
+        result.append('</table><p>Name verification uses dataset/export row or an exact label, not numerical similarity. '
+                      'UTS uses maximum engineering stress from the original CSV. EL compares maximum recorded '
+                      'strain with Instron strain at break; an endpoint difference requires review, not automatic rematching. '
+                      'Tolerance is half the last printed unit from each CSV plus a floating-point allowance. '
+                      'No smoothing, yield fit or gauge reconstruction is used.</p></details>')
     preview = payload.get('gauge_preview')
     if preview:
         audit = preview['_gauge']
@@ -221,7 +241,7 @@ def inspection_summary(payload):
             result.append('<tr><td>' + label + '</td><td>' + number(p[raw_key]) + '</td><td>' + number(audit[estimated_key]) + '</td></tr>')
         result.append('</table><p>Derived localisation model, not a standards-compliant measurement. '
                       'Pre-peak strain is unchanged; stress values are unchanged throughout.</p>')
-        result.append(gauge_model_help())
+        result.append(gauge_model_help(expanded=True))
         if audit['Gauge correction status'] != 'Applied':
             result.append('<p class="tw-inspect-warning"><b>Overlay unavailable:</b> ' + escape(audit['Gauge correction status']) +
                           '. Set and save a target under Gauge reconstruction · per sample group.</p>')

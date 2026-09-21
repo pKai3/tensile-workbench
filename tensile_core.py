@@ -663,7 +663,7 @@ def read_tensile_csv_table(csv_path):
                     source.seek(0)
                     for _ in range(header_line):
                         source.readline()
-                    frame = pd.read_csv(source, sep=sep)
+                    frame = pd.read_csv(source, sep=sep, dtype=str)
                 frame.columns = [str(column).strip() for column in frame.columns]
                 frame.attrs["measurement_header_line"] = header_line + 1
                 return frame
@@ -681,7 +681,7 @@ def load_and_prepare_curve(csv_path, return_metadata=False):
         return None
 
     has_units, units_map = detect_units_row(df_raw)
-    df = coerce_numeric(df_raw, skip_first_row=has_units)
+    df = coerce_numeric(df_raw.copy(), skip_first_row=has_units)
 
     stress = compute_stress_mpa(df, units_map if has_units else {})
     strain_pct = compute_strain_percent(df, units_map if has_units else {})
@@ -693,6 +693,9 @@ def load_and_prepare_curve(csv_path, return_metadata=False):
     from types import SimpleNamespace
     metadata = acquisition_metadata(SimpleNamespace(find_first_col=find_first_col,
         FORCE_COLS=FORCE_COLS, STRAIN_COLS=STRAIN_COLS), df, units_map, strain_pct, stress)
+    from tensile_instron import raw_check_precision
+    metadata['check_resolution'] = raw_check_precision(df_raw, has_units,
+        find_first_col(df, STRESS_COLS), find_first_col(df, STRAIN_COLS), metadata)
     indices = prepared_indices(metadata)
     if len(indices) < 5:
         return None

@@ -1,5 +1,6 @@
 """Portable specimen identities and hard-ignore rules shared by all data readers."""
 import os
+from copy import deepcopy
 from pathlib import Path, PurePosixPath
 
 SAMPLE_GROUP_PREFIX = 'Sample data / '
@@ -33,5 +34,45 @@ def specimen_id(record):
     return record.get('specimen_id', record['source_file'])
 
 
-def is_included(record, spec):
-    return specimen_id(record) not in spec.get('specimen_exclusions', {})
+def selection_state(record, spec, project=None):
+    """A graph override wins; otherwise inherit the persistent global choice."""
+    ident = specimen_id(record)
+    excluded = (project or {}).get('specimen_exclusions', {})
+    override = spec.get('specimen_inclusion_overrides', {}).get(ident)
+    # Compatibility for callers still holding a pre-migration definition.
+    if override is None and ident in spec.get('specimen_exclusions', {}):
+        override = {'included': False, 'reason': spec['specimen_exclusions'][ident]}
+    return {'included': override['included'] if override is not None else ident not in excluded,
+            'reason': override.get('reason', '') if override is not None else excluded.get(ident, ''),
+            'scope': 'graph' if override is not None else 'global',
+            'global_included': ident not in excluded,
+            'global_reason': excluded.get(ident, '')}
+
+
+def is_included(record, spec, project=None):
+    return selection_state(record, spec, project)['included']
+
+
+def migrate_specimen_selections(project):
+    """Promote existing active-graph exclusions once; never lose saved reasons.
+
+    Deleted graphs do not change the current global population. Their old
+    exclusions become explicit local overrides for use if they are restored.
+    """
+    project = deepcopy(project)
+    excluded = project.setdefault('specimen_exclusions', {})
+    for graph in project['graphs']:
+        for ident, reason in graph['definition'].pop('specimen_exclusions', {}).items():
+            previous = excluded.get(ident, '')
+            excluded[ident] = '\n'.join(dict.fromkeys(filter(None, [previous, reason])))
+    for entry in project.get('deleted_graphs', []):
+        for key in ('graph', 'replacement'):
+            if key in entry:
+                spec = entry[key]['definition']
+                for ident, reason in spec.pop('specimen_exclusions', {}).items():
+                    spec.setdefault('specimen_inclusion_overrides', {}).setdefault(
+                        ident, {'included': False, 'reason': reason})
+    default = project.get('new_graph_defaults', {}).get('definition', {})
+    default.pop('specimen_exclusions', None)
+    default.pop('specimen_inclusion_overrides', None)
+    return project

@@ -22,6 +22,11 @@ def validate_project(project):
     if project.get('schema_version') != 1:
         raise ValueError('Unsupported workbench project schema; the existing file was not changed.')
     validate_threshold(project.get('yield_r2_warning', .98))
+    exclusions = project.get('specimen_exclusions', {})
+    if not isinstance(exclusions, dict) or any(
+            not valid_specimen_id(key) or not isinstance(reason, str)
+            for key, reason in exclusions.items()):
+        raise ValueError('Global specimen exclusions must map relative specimen paths to reason text.')
     overrides = project.get('specimen_fit_overrides', {})
     if not isinstance(overrides, dict):
         raise ValueError('Specimen fit overrides must be a mapping.')
@@ -77,6 +82,13 @@ def validate_project(project):
                 not valid_specimen_id(key) or not isinstance(reason, str)
                 for key, reason in exclusions.items()):
             raise ValueError('Specimen exclusions must map relative specimen paths to reason text.')
+        selections = graph['definition'].get('specimen_inclusion_overrides', {})
+        if not isinstance(selections, dict) or any(
+                not valid_specimen_id(key) or not isinstance(value, dict)
+                or not isinstance(value.get('included'), bool)
+                or not isinstance(value.get('reason', ''), str)
+                for key, value in selections.items()):
+            raise ValueError('Graph specimen overrides require an Include value and optional reason.')
         for group, color in graph['definition'].get('color_overrides', {}).items():
             if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
                 raise ValueError(f'Colour override for {group} must be a six-digit hex colour, e.g. #1f77b4.')
@@ -167,6 +179,7 @@ class ProjectStore:
         base = deepcopy(template or project['new_graph_defaults'])
         if template is None:
             base['definition'].pop('specimen_exclusions', None)
+            base['definition'].pop('specimen_inclusion_overrides', None)
         existing = {g['name'].casefold() for g in project['graphs']}
         stem = base['name'] + ' copy' if template else 'New graph'
         name, number = stem, 2
@@ -189,6 +202,7 @@ class ProjectStore:
             draft.update(id=uuid.uuid4().hex, name='New graph')
             draft['definition']['name'] = draft['name']
             draft['definition'].pop('specimen_exclusions', None)
+            draft['definition'].pop('specimen_inclusion_overrides', None)
             draft['settings'].update(groups=[], live_update=False)
             project['graphs'].append(draft)
             entry['replacement'] = deepcopy(draft)
