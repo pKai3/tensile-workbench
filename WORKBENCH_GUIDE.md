@@ -76,6 +76,27 @@ PDFs are not read. Place group summary CSVs in the corresponding `<chosen data f
 
 Matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. Numeric similarity is never used to identify a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Labels, row numbers, paths and match method are shown for checking. Unknown identities stay unmatched.
 
+**“Dataset + Instron row number”** uses the dataset name from the immediate export
+folder (`<dataset>.is_tens_Exports` or `<dataset>.id_tens_Exports`) and the specimen
+number from `<dataset>_<number>.csv` or `<dataset>_<number>_1.csv`. It searches the
+same sample-group folder for summaries named after that dataset, optionally with
+one or two numeric suffixes, and selects the row whose first column contains
+that specimen number. This is the printed Instron specimen ID, not a physical
+CSV/Excel line number, the specimen’s text label or a raw time-series row.
+For example, `B11.is_tens_Exports/B11_3.csv` matches specimen `3` in a summary
+such as `B11.csv`, `B11_1.csv` or `B11_1_1.csv`. Preserve these export names and
+the immediate export folder if relying on this matching method.
+
+An embedded summary in the raw CSV takes priority: a single summary row is used
+directly, or a multi-row summary is selected using the export specimen number.
+Without an embedded summary, if dataset/number matching finds no candidates,
+the fallback is an exact, case-insensitive match between the raw filename stem
+and the summary’s **Specimen text input**. It does not use fuzzy names, list
+order, test-property similarity or PDFs. Multiple candidate summaries are
+compared field by field; conflicting fields remain blank rather than choosing
+the newest file or the closest result. Renamed or mixed datasets can break this
+name-based identity convention; numerical agreement does not prove identity.
+
 Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summary CSVs. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
 
 ## Gauge-length reconstruction
@@ -99,6 +120,11 @@ Full curve/Reset zoom includes both. The comparison shows measured and estimated
 elongation/toughness, both lengths, the ratio, model warnings and the original
 force-peak row/time. This toggle changes the display only, not the group's
 calculation basis or any elastic-fit override.
+
+Immediately below the derived-model notice, expand **Gauge reconstruction:
+formula and assumptions** for the pre-/post-peak equations, variable definitions,
+a worked example and the localisation, endpoint and toughness limitations.
+This explanation stays in the inspector and is not printed on plots.
 
 At/before maximum force, engineering strain is unchanged. After maximum force,
 the derived strain is `strain_at_peak + (AVE_spacing / target) *

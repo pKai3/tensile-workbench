@@ -124,6 +124,46 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     return fig
 
 
+def gauge_model_help():
+    """Inspector-only model explanation; plain HTML needs no MathJax or network."""
+    return '''<details><summary>Gauge reconstruction: formula and assumptions</summary>
+      <p>Define <b>r = L<sub>dots</sub> / L<sub>target</sub></b>.</p>
+      <div class="tw-gauge-equations">
+        <div>At or before maximum force: <b>ε<sub>est</sub> = ε<sub>measured</sub></b></div>
+        <div>After maximum force: <b>ε<sub>est</sub> = ε<sub>u</sub> +
+          r (ε<sub>measured</sub> − ε<sub>u</sub>)</b></div>
+        <div>At the selected failure endpoint: <b>ε<sub>f,est</sub> = ε<sub>u</sub> +
+          r (ε<sub>f,measured</sub> − ε<sub>u</sub>)</b></div>
+      </div>
+      <p><b>L<sub>dots</sub></b> is this specimen’s initial AVE dot spacing, imported from
+      <i>Strain 1 gauge length</i>; <b>L<sub>target</sub></b> is the saved target for its group.
+      Both lengths are in mm. <b>ε<sub>u</sub></b> is total engineering strain at the original
+      maximum-force reading. All strains use the same engineering-strain definition and are
+      expressed in percent, including the elastic component. The breakpoint is applied by
+      acquisition order, not by testing whether a strain value exceeds ε<sub>u</sub>.
+      Maximum engineering stress is used as a recorded proxy only if no force channel exists.</p>
+      <p><b>Example:</b> 10% strain at peak force, 18% measured failure strain, 50 mm dots
+      and a 25 mm target give 10 + (50 / 25) × (18 − 10) = <b>26%</b>.</p>
+      <p><b>Assumptions and limits</b></p>
+      <ul>
+        <li>Deformation before maximum force is assumed approximately uniform, so the
+          uniform-strain component is not rescaled.</li>
+        <li>Both gauges are assumed to contain the same neck/fracture region. The model
+          assigns all measured post-peak extension to the neck-centred target gauge.</li>
+        <li>Continued deformation and elastic unloading outside the target gauge cannot
+          be separated from this single gauge history. For targets longer than the AVE
+          spacing, additional post-peak extension outside the measured interval is not recovered.</li>
+        <li>The failure endpoint is the maximum retained recorded strain used by the
+          workbench, not an independently detected fracture onset or a post-fracture gauge measurement.</li>
+        <li>Stress values stay unchanged throughout. Reconstructed toughness is the area
+          under the estimated engineering curve, not a newly measured material property.</li>
+      </ul>
+      <p>This is a derived estimate, not a standards-compliant measurement. If the original
+      video or spatial-strain data are available, reprocessing with the correct virtual gauge
+      is preferable.</p>
+    </details>'''
+
+
 def inspection_summary(payload):
     """Display fit provenance and available Instron values without inventing matches."""
     calculation, reference = payload['calculation'], payload['reference']
@@ -142,6 +182,9 @@ def inspection_summary(payload):
               '.tw-inspect-summary th,.tw-inspect-summary td{padding:6px 12px;border-bottom:1px solid #dce3e9;text-align:right}'
               '.tw-inspect-summary th:first-child,.tw-inspect-summary td:first-child{text-align:left}'
               '.tw-inspect-summary th{background:#e8eef4}.tw-inspect-summary details{margin:8px 0}'
+              '.tw-inspect-summary summary{cursor:pointer}'
+              '.tw-gauge-equations{padding:10px 12px;background:#f2f6fa;border-radius:5px;line-height:1.8}'
+              '.tw-inspect-summary li{margin:5px 0}'
               '.tw-inspect-warning{padding:8px;background:#fff4dc;border-left:3px solid #d97706}</style>',
               '<div class="tw-inspect-summary">',
               '<p><b>' + escape(payload['group'] + ' · ' + payload['sample']) + '</b> · ' +
@@ -177,7 +220,8 @@ def inspection_summary(payload):
                 ('Tensile toughness (MJ/m³)', 'Toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)')):
             result.append('<tr><td>' + label + '</td><td>' + number(p[raw_key]) + '</td><td>' + number(audit[estimated_key]) + '</td></tr>')
         result.append('</table><p>Derived localisation model, not a standards-compliant measurement. '
-                      'Pre-peak strain and stress values are unchanged.</p>')
+                      'Pre-peak strain is unchanged; stress values are unchanged throughout.</p>')
+        result.append(gauge_model_help())
         if audit['Gauge correction status'] != 'Applied':
             result.append('<p class="tw-inspect-warning"><b>Overlay unavailable:</b> ' + escape(audit['Gauge correction status']) +
                           '. Set and save a target under Gauge reconstruction · per sample group.</p>')
