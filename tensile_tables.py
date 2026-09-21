@@ -7,6 +7,7 @@ import uuid
 import json
 from tensile_selection import specimen_id, selection_state
 from tensile_specimens import SpecimenTable
+from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
 
@@ -16,7 +17,7 @@ def _display_cell(value):
     if pd.isna(value):
         return '—'
     if isinstance(value, (float, np.floating)):
-        return f'{value:.3f}'
+        return f'{value:.2f}'
     return escape(str(value))
 
 
@@ -50,14 +51,14 @@ def _override_cell(value):
                 '<div class="tw-fit-body"><pre>' + escape(raw) + '</pre></div></details>')
     low, high = saved['strain_bounds']
     method = 'Manual range' if saved['mode'] == 'range' else 'Manual line'
-    rows = [('Start strain (%)', f'{low:.8g}'), ('End strain (%)', f'{high:.8g}')]
+    rows = [('Start strain (%)', f'{low:.2f}'), ('End strain (%)', f'{high:.2f}')]
     if saved['mode'] == 'line':
-        rows.extend([('Start stress (MPa)', f'{saved["endpoints"][0][1]:.8g}'),
-                     ('End stress (MPa)', f'{saved["endpoints"][1][1]:.8g}')])
+        rows.extend([('Start stress (MPa)', f'{saved["endpoints"][0][1]:.2f}'),
+                     ('End stress (MPa)', f'{saved["endpoints"][1][1]:.2f}')])
     fractions = saved.get('automatic_fit_fractions')
     if (isinstance(fractions, list) and len(fractions) == 2 and
             all(isinstance(v, (int, float)) and np.isfinite(v) for v in fractions)):
-        rows.append(('Automatic fit window', f'{fractions[0]*100:g}–{fractions[1]*100:g}% UTS'))
+        rows.append(('Automatic fit window', f'{fractions[0]*100:.2f}–{fractions[1]*100:.2f}% UTS'))
     original = saved.get('automatic_snapshot', {})
     if isinstance(original, dict):
         for key, label in [('Yield (MPa)', 'Original automatic YS (MPa)'),
@@ -65,9 +66,9 @@ def _override_cell(value):
                            ('Elastic fit R2', 'Original automatic R²')]:
             value = original.get(key)
             if isinstance(value, (int, float)) and np.isfinite(value):
-                rows.append((label, f'{value:.5f}' if key == 'Elastic fit R2' else f'{value:.3f}'))
+                rows.append((label, f'{value:.2f}'))
     return ('<details class="tw-fit"><summary title="Click to view the saved fit details">'
-            + method + f'<span>{low:.4f}–{high:.4f}% strain</span></summary>'
+            + method + f'<span>{low:.2f}–{high:.2f}% strain</span></summary>'
             '<div class="tw-fit-body"><dl>' + ''.join('<dt>' + escape(label) + '</dt><dd>' +
                 escape(text) + '</dd>' for label, text in rows) + '</dl></div></details>')
 
@@ -104,39 +105,91 @@ SPECIMEN_DETAIL_FIELDS = [
     ('Fit method', 'Fit method'), ('Elastic fit R²', 'Elastic Fit R2'),
     ('Width (mm)', 'Width (mm)'), ('Thickness (mm)', 'Thickness (mm)'),
     ('AVE gauge (mm)', 'AVE dot spacing (mm)'), ('Target gauge (mm)', 'Target gauge length (mm)'),
+    ('EL source for plots', 'EL plot source'),
 ]
 
 
+def property_table_sources(label):
+    if label == 'Failure elongation':
+        return tuple((label, label) for label, _ in EL_SOURCE_FIELDS)
+    return (('Calculated', 'Calc'), ('Instron', 'Instron'))
+
+
+def property_title(label):
+    return {'0.2% yield strength': '0.2% YS', 'Failure elongation': 'Elongation'}.get(label, label)
+
+
+def property_column(label, unit, source):
+    """Flat numeric export header matching the viewer's grouped headers."""
+    return f'{property_title(label)} ({unit}) · {source}'
+
+
+def specimen_label(row):
+    label = row.get('Instron Specimen Label', '')
+    return str(label) if pd.notna(label) and str(label).strip() else str(row['Sample'])
+
+
+def specimen_display_frame(samples, comparisons):
+    """One numeric column definition shared by the specimen UI and Excel."""
+    columns = ['Checks']
+    for label, unit, _, _ in METRICS:
+        columns.extend(property_column(label, unit, short) for _, short in property_table_sources(label))
+    columns.extend(label for label, _ in SPECIMEN_DETAIL_FIELDS)
+    reported = {(row['Specimen ID'], row['Property']): row['Instron']
+                for _, row in comparisons.iterrows()}
+    rows = []
+    for _, row in samples.iterrows():
+        values = [row['Checks']]
+        for label, _, field, _ in METRICS:
+            if label == 'Failure elongation':
+                values.extend(row.get(field, np.nan) for _, field in EL_SOURCE_FIELDS)
+            else:
+                calculated = row.get(SPECIMEN_METRIC_FIELDS.get(field, field), np.nan)
+                instron = reported.get((row['Specimen ID'], label), np.nan)
+                values.extend(calculated if source == 'Calculated' else instron
+                              for source, _ in property_table_sources(label))
+        values.extend(row.get(field, np.nan) for _, field in SPECIMEN_DETAIL_FIELDS)
+        rows.append(values)
+    return pd.DataFrame(rows, columns=columns, index=samples.index)
+
+
+def specimen_export_frame(samples, comparisons):
+    """Keep screen order and full numeric precision; append the stable audit key."""
+    identity = pd.DataFrame([
+        {'Include': bool(row['Included']), 'Group': row['Group'], 'Specimen': specimen_label(row),
+         'Applies to': 'This graph only' if row['Inclusion Scope'] == 'graph' else 'Global default',
+         'Exclusion reason': row['Exclusion Reason']}
+        for _, row in samples.iterrows()
+    ], columns=['Include', 'Group', 'Specimen', 'Applies to', 'Exclusion reason'], index=samples.index)
+    result = pd.concat([identity, specimen_display_frame(samples, comparisons)], axis=1)
+    result['Specimen ID'] = samples.get('Specimen ID', pd.Series(index=samples.index, dtype=object))
+    return result
+
+
 def specimen_table_data(samples, comparisons):
-    """Grouped Calc/Instron presentation without changing the shared numeric data."""
+    """Shared property/source columns; reconstructed EL is blank unless available."""
     columns, groups = ['Checks'], [{'label': 'Checks', 'span': 1}]
     for label, unit, _, _ in METRICS:
-        title = '0.2% YS' if label == '0.2% yield strength' else label
-        groups.append({'label': f'{title} ({unit})', 'span': 2})
-        columns.extend(['Calc', 'Instron'])
+        title = property_title(label)
+        groups.append({'label': f'{title} ({unit})', 'span': len(property_table_sources(label))})
+        columns.extend(short for _, short in property_table_sources(label))
     for label, _ in SPECIMEN_DETAIL_FIELDS:
         groups.append({'label': label, 'span': 1})
         columns.append(label)
-    # Use the complete comparison frame, not the separate Instron tab's chosen
-    # metric/filter. Join by stable specimen identity, never row position.
-    reported = {(row['Specimen ID'], row['Property']): row['Instron']
-                for _, row in comparisons.iterrows()}
+    display = specimen_display_frame(samples, comparisons)
 
-    def text_value(value, places=3):
+    def text_value(value, places=2):
         if pd.isna(value):
             return '—'
         return f'{value:.{places}f}' if isinstance(value, (float, np.floating)) else str(value)
 
     rows = []
-    for _, row in samples.iterrows():
-        values = [row['Checks']]
-        for label, _, field, _ in METRICS:
-            values.extend([text_value(row.get(SPECIMEN_METRIC_FIELDS.get(field, field), np.nan)),
-                           text_value(reported.get((row['Specimen ID'], label), np.nan))])
-        values.extend(text_value(row.get(field, np.nan), 5 if field == 'Elastic Fit R2' else 3)
-                      for _, field in SPECIMEN_DETAIL_FIELDS)
+    for position, (_, row) in enumerate(samples.iterrows()):
+        values = [('' if name == property_column('Failure elongation', '%', 'Reconstruct') and pd.isna(value) else
+                   text_value(value))
+                  for name, value in display.iloc[position].items()]
         rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
-                     'sample': str(row['Instron Specimen Label'] or row['Sample']), 'reason': row['Exclusion Reason'],
+                     'sample': specimen_label(row), 'reason': row['Exclusion Reason'],
                      'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
                      'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
                      'values': values})
@@ -163,10 +216,13 @@ def specimen_check_failures(properties, reference, gauge=None):
         if not np.isfinite(r2):
             failures.append('Elastic fit: R² unavailable.')
         elif r2 < threshold:
-            failures.append(f'Elastic fit: R² {r2:.5f} below threshold {threshold:g}.')
+            failures.append(f'Elastic fit: R² {r2:.2f} below threshold {threshold:.2f} (checked before rounding).')
         if str(properties.get('Override status', '')).startswith('Stale'):
             failures.append('Fit override: source changed; saved override was not applied.')
     gauge = gauge or {}
+    if properties.get('Fracture detection status') == 'Not detected':
+        failures.append('CSV fracture not detected: ' + properties.get('Fracture detection reason', '') +
+                        '. Fracture EL/toughness unavailable; inspect the full curve.')
     if gauge.get('Elongation basis') == 'Estimated standard gauge':
         if gauge.get('Gauge correction status') != 'Applied':
             failures.append('Gauge reconstruction: ' + gauge.get('Gauge correction status', 'unavailable'))
@@ -181,15 +237,18 @@ def property_tables(records, spec, engine, instron, project=None):
     fractions = spec.get('landmark_yield_fit_fractions', engine.LANDMARK_YIELD_FIT_FRACTIONS)
     for group, rows in records.items():
         properties, references = [], []
+        elongations = []
         for row in rows:
             p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING)
             measured = engine.specimen_properties(row.get('_measured_record', row), fractions, engine.LANDMARK_YIELD_R2_WARNING)
             reference = instron.match(group, row)
             selection = selection_state(row, spec, project)
             included = selection['included']
+            el_report = elongation_report(row, reference, measured)
             if included:
                 properties.append(p)
                 references.append(reference)
+                elongations.append(el_report)
             identity = {'Included': included, 'Group': group, 'Sample': row['sample'],
                         'Specimen ID': specimen_id(row),
                         'Exclusion Reason': selection['reason'], 'Inclusion Scope': selection['scope'],
@@ -205,6 +264,8 @@ def property_tables(records, spec, engine, instron, project=None):
                             'Yield Strain (%)': p['Yield strain (%)'], 'Elastic Fit R2': p['Elastic fit R2'],
                             'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'], 'Source File': row['source_file']})
             samples[-1].update(row.get('_gauge', {}))
+            samples[-1].pop('Estimated failure elongation (%)', None)
+            samples[-1].update(el_report)
             samples[-1].update({'Measured failure elongation (%)': measured['Failure elongation (%)'],
                                'Measured toughness (MJ/m^3)': measured['Toughness (MJ/m^3)'],
                                'Width (mm)': reference['values'].get('width', np.nan),
@@ -230,7 +291,8 @@ def property_tables(records, spec, engine, instron, project=None):
                                 'Instron Width (mm)': reference['values'].get('width', np.nan),
                                 'Instron Gauge Length (mm)': reference['values'].get('gauge', np.nan)})
             for label, unit, field, ref_key in METRICS:
-                if ref_key is None:
+                if (ref_key is None or label == 'Failure elongation' or
+                        not any(source == 'Instron' for source, _ in property_table_sources(label))):
                     continue
                 calculated, reported = measured[field], reference['values'].get(ref_key, np.nan)
                 paired = bool(np.isfinite(calculated) and np.isfinite(reported))
@@ -244,8 +306,12 @@ def property_tables(records, spec, engine, instron, project=None):
                                    'Notes': ' '.join(filter(None, [p['Notes'] if ref_key in ('ys', 'e') else '', reference['notes']])),
                                    'Source File': row['source_file'], 'Instron Summary CSV': reference['source']})
         for label, unit, field, ref_key in METRICS:
-            for source, values in [('Calculated', [p[field] for p in properties]),
-                                   ('Instron', [r['values'].get(ref_key, np.nan) for r in references])]:
+            sources = ([(source, [report[key] for report in elongations]) for source, key in EL_SOURCE_FIELDS]
+                       if label == 'Failure elongation' else
+                       [(source, [p[field] for p in properties] if source == 'Calculated' else
+                         [r['values'].get(ref_key, np.nan) for r in references])
+                        for source, _ in property_table_sources(label)])
+            for source, values in sources:
                 summaries.append({'Group': group, 'Property': label, 'Unit': unit, 'Source': source,
                                   'Selected Specimens': len(properties), 'Available Specimens': len(rows), **_stats(values)})
         stats = _stats([p['Uniform elongation (%)'] for p in properties])
@@ -270,8 +336,7 @@ def property_tables(records, spec, engine, instron, project=None):
             mask = summary['Group'] == group
             summary.loc[mask, 'Elongation basis'] = frame['Elongation basis'].iloc[0]
             summary.loc[mask, 'Target gauge length (mm)'] = frame['Target gauge length (mm)'].iloc[0]
-            for field in ('Measured failure elongation (%)', 'Estimated failure elongation (%)',
-                          'Measured toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)'):
+            for field in ('Measured toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)'):
                 for stat, value in _stats(frame.loc[frame['Included'], field]).items():
                     if stat in ('Mean', 'SD', 'n'):
                         summary.loc[mask, field + ' · ' + stat] = value
@@ -290,10 +355,11 @@ def summary_wide(details):
         row = {'Group': group, 'Included n': int(data.iloc[0]['Selected Specimens']),
                'Available n': int(data.iloc[0]['Available Specimens'])}
         for label, unit, _, _ in METRICS:
-            for source, short in [('Calculated', 'Calc'), ('Instron', 'Instron')]:
+            for source, short in property_table_sources(label):
                 item = data[(data.Property == label) & (data.Source == source)].iloc[0]
                 for statistic in ('Mean', 'SD', 'n'):
-                    row[f'{label} ({unit}) · {short} {statistic}'] = item[statistic]
+                    column = f'{property_column(label, unit, short)} · {statistic}'
+                    row[column] = item[statistic]
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -316,22 +382,30 @@ def summary_html(details):
       </style><div class="tw-summary"><table><thead><tr>
       <th rowspan="2" scope="col">Group</th><th rowspan="2" scope="col">Included n</th>''']
     for label, unit, _, _ in METRICS:
-        result.append(f'<th colspan="2" scope="colgroup" class="property-start">{escape(label)} ({escape(unit)})</th>')
-    result.append('</tr><tr>' + '<th class="property-start" scope="col">Calc</th><th scope="col">Instron</th>' * len(METRICS) + '</tr></thead><tbody>')
+        result.append(f'<th colspan="{len(property_table_sources(label))}" scope="colgroup" class="property-start">{escape(property_title(label))} ({escape(unit)})</th>')
+    result.append('</tr><tr>')
+    for label, _, _, _ in METRICS:
+        for index, (_, short) in enumerate(property_table_sources(label)):
+            css = ' class="property-start"' if index == 0 else ''
+            result.append(f'<th{css} scope="col">{escape(short)}</th>')
+    result.append('</tr></thead><tbody>')
     for group, data in details.groupby('Group', sort=False):
         included = int(data.iloc[0]['Selected Specimens'])
         available = int(data.iloc[0]['Available Specimens'])
         result.append(f'<tr><td>{escape(str(group))}</td><td>{included}<small>of {available}</small></td>')
         for label, unit, _, _ in METRICS:
-            for source in ('Calculated', 'Instron'):
+            for index, (source, _) in enumerate(property_table_sources(label)):
                 item = data[(data.Property == label) & (data.Source == source)].iloc[0]
                 n = int(item['n'])
+                css = ' class="property-start"' if index == 0 else ''
+                if source == 'Reconstruct' and n == 0:
+                    result.append(f'<td{css}></td>')
+                    continue
                 value = _display_cell(item['Mean'])
                 if n > 1:
                     value += ' ± ' + _display_cell(item['SD'])
                 if n != included:
                     value += f'<small>n = {n}</small>'
-                css = ' class="property-start"' if source == 'Calculated' else ''
                 result.append(f'<td{css}>{value}</td>')
         result.append('</tr>')
     return ''.join(result) + '</tbody></table></div>'
@@ -354,28 +428,26 @@ class PropertyTablesView:
         self.review_only = w.Checkbox(value=False, description='Only fits needing review', indent=False,
                                      layout=w.Layout(width='auto'))
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
-        self.metric = w.Dropdown(description='Compare:', options=[m[0] for m in METRICS if m[3]], value=METRICS[0][0],
-                                 layout=w.Layout(width='330px'))
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
-                              'UTS (MPa)', 'Difference (calc - Instron)', 'Difference (%)'], layout=w.Layout(width='300px'))
+                              'UTS (MPa)'], layout=w.Layout(width='300px'))
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
-        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(4)]
+        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
         self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply)
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
         specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
-        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, *self.panels[2:], self.inspector.ui],
+        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, self.inspector.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
-        for i, name in enumerate(['Summary', 'Specimens', 'Instron', 'Checks', 'Calculation inspector']):
+        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector']):
             self.tabs.set_title(i, name)
         self.status = w.HTML('Select sample groups to load property tables.')
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
                           w.HBox([self.filter, self.sort, self.descending, self.review_only], layout=w.Layout(flex_flow='row wrap')),
-                          self.metric, self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
-        for control in (self.filter, self.sort, self.descending, self.metric, self.review_only):
+                          self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
+        for control in (self.filter, self.sort, self.descending, self.review_only):
             control.observe(lambda _: self.render(), names='value')
 
     def set_threshold(self, value):
@@ -400,8 +472,11 @@ class PropertyTablesView:
         self.render()
 
     def open_inspector(self, ident):
-        self.tabs.selected_index = 4
+        self.show_inspector()
         self.inspector.select(ident)
+
+    def show_inspector(self):
+        self.tabs.selected_index = 2
 
     def clear(self, message='Select sample groups to load property tables.'):
         self.frames = {}
@@ -486,22 +561,26 @@ class PropertyTablesView:
             return
         samples = self._filtered(self.frames['tensile_samples'])
         summary = self._filtered(self.frames['tensile_summary_details'])
-        comparison = self._filtered(self.frames['instron_comparison'])
-        diagnostic = self._filtered(self.frames['specimen_diagnostics'])
-        comparison = comparison[comparison['Property'] == self.metric.value] if not comparison.empty else comparison
         basis_note = ''
         if not samples.empty and 'Elongation basis' in samples:
             labels = []
             for group, frame in samples.groupby('Group', sort=False):
-                basis = str(frame['Elongation basis'].iloc[0])
+                basis = str(frame['EL plot source'].iloc[0])
                 target = frame['Target gauge length (mm)'].iloc[0]
-                if basis == 'Estimated standard gauge' and np.isfinite(target):
-                    basis += f' ({target:g} mm)'
+                if frame['Elongation basis'].iloc[0] == 'Estimated standard gauge':
+                    if np.isfinite(target):
+                        basis += f' ({target:.2f} mm)'
                 labels.append(escape(str(group)) + ': ' + escape(basis))
-            basis_note = '<p><b>Elongation/toughness basis by group:</b> ' + '; '.join(labels) + '. Instron values and agreement checks remain measured.</p>'
+            basis_note = '<p><b>EL source used for plots by group:</b> ' + '; '.join(labels) + '. Instron EL is reported separately, never used for identity verification.</p>'
         self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
-                               'SD requires at least two values. “—” means unavailable.</p>' + basis_note + summary_html(summary))
+                               'SD requires at least two values. “—” means unavailable. '
+                               'Elongation: Instron = reported break result; Calc = detected CSV fracture EL; '
+                               'Reconstruct = its gauge reconstruction, blank unless enabled and available. '
+                               'Instron columns remain available for uniform elongation and tensile toughness. Missing fracture detection is '
+                               'flagged in Checks; no final-reading fallback is used. '
+                               'Values display two decimals; calculations and checks retain full precision.</p>'
+                               + basis_note + summary_html(summary))
         self.panels[1].value = ('<p><b>Include</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This graph only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
                                'Other graphs’ explicit overrides are preserved. '
@@ -509,9 +588,14 @@ class PropertyTablesView:
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '
                                'Click a specimen name to inspect calculations and exact comparison values.</p>'
-                               '<p><b>Calc</b> uses the selected analysis basis, including gauge reconstruction when enabled. '
-                               '<b>Instron</b> is the original reported value. “—” means unavailable; '
-                               'Instron toughness is not imported.</p>' + basis_note)
+                               '<p>For elongation, <b>Instron</b> is the reported break result, <b>Calc</b> is the '
+                               'detected CSV drop onset before any landmark shape setback, and <b>Reconstruct</b> '
+                               'is its gauge reconstruction, blank unless enabled and available. '
+                               'Uniform elongation and tensile toughness retain <b>Calc / Instron</b> columns; '
+                               'Calc toughness uses the selected measured/reconstructed basis. “—” means unavailable. '
+                               'Instron uniform elongation is imported when supplied; toughness import is not yet supported. '
+                               'Not-detected endpoints are flagged, not replaced with the last reading. '
+                               'EL differences do not generate specimen-matching failures.</p>' + basis_note)
         columns, groups, rows = specimen_table_data(samples, self.frames['instron_comparison'])
         with self.specimens.hold_sync():
             self.specimens.columns = columns
@@ -519,21 +603,7 @@ class PropertyTablesView:
             self.specimens.rows = rows
             self.specimens.context = uuid.uuid4().hex
         self.inspector.set_rows(rows)
-        unit = next(('pp' if m[1] == '%' else m[1]) for m in METRICS if m[0] == self.metric.value)
-        shown = comparison.drop(columns=['Source File', 'Instron Summary CSV', 'Specimen ID', 'Paired', 'Property', 'Unit',
-                                          'Difference Unit', 'Instron Specimen Label', 'Instron Row', 'Instron Match', 'Notes',
-                                          'Inclusion Scope', 'Global Included', 'Global Exclusion Reason'], errors='ignore')
-        shown = shown.rename(columns={'Difference (calc - Instron)': f'Δ ({unit})', 'Difference (%)': 'Δ (%)', 'Instron Match': 'Match'})
-        self.panels[2].value = ('<p>Δ = calculated − Instron; Δ (%) is relative to Instron. Calculated YS is not used to verify identity. '
-                               'Candidate Instron values remain visible when checks fail; review flagged rows before relying on them. '
-                               'See Checks for identity, elastic-fit details and source files.</p>' + self._html(shown))
-        audit_columns = [c for c in diagnostic if any(c.startswith(prefix) for prefix in
-            ('UTS raw CSV', 'EL raw CSV', 'UTS Instron value', 'EL Instron value',
-             'UTS check ', 'EL check '))]
-        self.panels[3].value = self._html(diagnostic.drop(columns=[*audit_columns, 'Specimen ID', 'Source SHA256', 'Instron Summary SHA256',
-            'Instron Match', 'Instron Notes', 'Instron Excluded', 'Fit review required', 'Yield Status', 'Yield Notes',
-            'Override status', 'Inclusion Scope', 'Global Included', 'Global Exclusion Reason'], errors='ignore'))
-        matched = int((comparison['Paired'] & comparison['Included']).sum()) if not comparison.empty else 0
         included = int(samples['Included'].sum()) if not samples.empty else 0
-        self.status.value = (f'{len(samples)} displayed specimens · {included} included · {matched} included paired comparisons '
-                             f'for {self.metric.value}. Search/sort only change the view; Include changes the analysis.')
+        flagged = int(samples['Checks'].fillna('').ne('').sum()) if not samples.empty else 0
+        self.status.value = (f'{len(samples)} displayed specimens · {included} included · {flagged} needing review. '
+                             'Search/sort only change the view; Include changes the analysis.')

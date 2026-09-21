@@ -92,20 +92,21 @@ def _verify_reference(result, record, name_ok, name_failures=()):
     if not name_ok and not failures:
         failures.append('Name: no unambiguous dataset/export-row or exact-label match.')
     audit = {}
-    for key, array, title, unit in (('uts', 'stress', 'UTS', 'MPa'), ('el', 'strain', 'EL', '%')):
+    # EL is not an identity check: Instron's break result and the CSV endpoint
+    # represent different endpoint definitions, even for the correct specimen.
+    for key, array, title, unit in (('uts', 'stress', 'UTS', 'MPa'),):
         values = np.asarray(meta.get(array, []), dtype=float)
         finite = values[np.isfinite(values)]
         raw = float(np.max(finite)) if len(finite) else np.nan
         reported = result['values'].get(key, np.nan)
         resolution = result.get('resolution', {}).get(key, np.nan)
         raw_resolution = meta.get('check_resolution', {}).get(key, np.nan)
-        # Half a printed unit from each CSV, plus a floating-point floor. This
-        # is a rounding tolerance, not an adjustable percentage-of-strength fit.
+        # UTS uses printed-digit rounding, not a fitted curve or EL agreement.
         tolerance = (resolution / 2 + (raw_resolution / 2 if np.isfinite(raw_resolution) else 0)
                      + 1e-9 * max(1, abs(raw), abs(reported))) if np.isfinite(resolution) else np.nan
         difference = raw - reported
         passed = bool(np.isfinite(raw) and np.isfinite(reported) and np.isfinite(tolerance)
-                      and abs(difference) <= tolerance)
+                      and abs(difference) <= tolerance + 1e-12)
         audit.update({f'{title} raw CSV maximum ({unit})': raw,
                       f'{title} Instron value ({unit})': reported,
                       f'{title} check difference ({unit})': difference,
@@ -115,10 +116,8 @@ def _verify_reference(result, record, name_ok, name_failures=()):
         elif not np.isfinite(reported) or not np.isfinite(tolerance):
             failures.append(f'{title}: summary value missing, conflicting or unreadable; cannot verify.')
         elif not passed:
-            detail = (f'{title}: CSV maximum {raw:.6g} {unit} vs Instron {reported:.6g} {unit} '
-                      f'(Δ {difference:+.6g}; tolerance ±{tolerance:.3g}).')
-            if key == 'el':
-                detail += ' Review endpoint: maximum recorded strain is not necessarily Instron strain at break.'
+            detail = (f'{title}: CSV maximum {raw:.2f} {unit} vs Instron {reported:.2f} {unit} '
+                      f'(Δ {difference:+.2f}; tolerance ±{tolerance:.2f}; checked before display rounding).')
             failures.append(detail)
     for note in result.get('notes', '').split('\n'):
         if note and note not in failures:

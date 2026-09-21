@@ -32,11 +32,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
+from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve
 from tensile_selection import csv_files
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
-EXCEL_DECIMAL_PLACES = 3
+EXCEL_DECIMAL_PLACES = 2
 
 LANDMARK_ERROR_BARS = True
 
@@ -259,7 +260,7 @@ def summarize_toughness_stats(models, plot_spec):
             "Pointwise Difference (%)": difference(pointwise_area, complete),
             "Pointwise Measured Area (MJ/m^3)": compute_toughness_safe(pointwise["measured_x"], pointwise["measured_y"]) if pointwise else np.nan,
             "Pointwise Fitted Tail Area (MJ/m^3)": (compute_toughness_safe(pointwise["predicted_x"], pointwise["predicted_y"]) if len(pointwise["predicted_x"]) else 0.0) if pointwise else np.nan,
-            "Pointwise Coverage": "complete to mean terminal strain" if complete else ("partial" if pointwise else "unavailable"),
+            "Pointwise Coverage": "complete to mean detected fracture EL" if complete else ("partial" if pointwise else "unavailable"),
             "Pointwise Start Strain (%)": float(pointwise["x"][0]) if pointwise else np.nan,
             "Pointwise End Strain (%)": float(pointwise["x"][-1]) if pointwise else np.nan,
             "Pointwise Diagnostic": model["pointwise_diagnostic"],
@@ -267,7 +268,7 @@ def summarize_toughness_stats(models, plot_spec):
             "Landmark Difference (%)": difference(landmark_area),
             "Landmark Start Strain (%)": float(landmark["x"][0]) if landmark else np.nan,
             "Landmark End Strain (%)": float(landmark["x"][-1]) if landmark else np.nan,
-            "Landmark Diagnostic": model["landmark_diagnostic"] or "stage-aligned; pre-break endpoint mapped to mean terminal strain",
+            "Landmark Diagnostic": model["landmark_diagnostic"] or "stage-aligned; pre-break shape endpoint mapped to mean detected fracture EL",
             "Mean Failure Elongation (%)": model["mean_failure"],
         })
     return rows
@@ -766,44 +767,10 @@ def average_group_curves(curves, num_points=600):
     return grid, mean, std, counts
 
 def tensile_fracture_onset(strain, stress, slope_fraction=0.30):
-    """Locate an abrupt terminal drop, not the ordinary post-UTS decline.
+    """Compatibility wrapper: unresolved onset is NaN, never terminal strain."""
+    return detect_drop_onset(strain, stress, slope_fraction)['strain_pct']
 
-    A uniform strain grid makes detection independent of acquisition frequency.
-    If no abrupt drop is found, use the recorded terminal strain. This is a
-    plotting heuristic, not a replacement for the instrument's break metric.
-    """
-    strain, stress = np.asarray(strain), np.asarray(stress)
-    valid = np.isfinite(strain) & np.isfinite(stress)
-    x, idx = np.unique(strain[valid], return_index=True)
-    y = stress[valid][idx]
-    if len(x) < 20 or x[-1] <= x[0]:
-        return float(x[-1]) if len(x) else np.nan
-    grid = np.linspace(x[0], x[-1], min(5000, max(100, int((x[-1]-x[0])/0.01)+1)))
-    values = np.interp(grid, x, y)
-    slope = np.diff(values) / np.diff(grid)
-    peak = int(np.argmax(values))
-    end_region = max(peak + 1, int(0.65 * len(slope)))
-    baseline = slope[peak:end_region]
-    if len(baseline) < 10:
-        if slope_fraction >= 0.30:
-            return float(x[-1])
-        # Abrupt failures close to UTS have too little post-peak baseline.
-        median, mad = 0.0, 0.0
-    else:
-        median = float(np.median(baseline))
-        mad = float(1.4826*np.median(np.abs(baseline-median)))
-    limit = max(8*abs(median), 8*mad, slope_fraction*float(np.max(values)))
-    drops = np.flatnonzero(slope[end_region:] < median-limit)
-    # Ignore isolated signal pings that recover shortly after the sharp drop.
-    lookahead = max(2, int(np.ceil(0.15/(grid[1]-grid[0]))))
-    for drop in drops:
-        i = end_region+drop
-        later = values[i+1:min(len(values), i+1+lookahead)]
-        if len(later) and later[-1] < values[i]-0.01*np.max(values):
-            return float(grid[i])
-    return float(x[-1])
-
-def build_tensile_mean_tail(curves, points, settings):
+def build_tensile_mean_tail(curves, points, settings, fracture_ends=None):
     """Return measured x/y, predicted x/y, and diagnostic for plots/area checks."""
     order = settings["polynomial_order"]
     window = float(settings["fit_window_percent"])
@@ -830,8 +797,12 @@ def build_tensile_mean_tail(curves, points, settings):
         x, y = clean[0]
         return x, y, empty, empty, "one specimen; no mean-tail estimate"
     start = max(x[0] for x, _ in clean)
-    end = min(tensile_fracture_onset(x, y, slope_fraction) for x, y in clean)-setback
-    target = float(np.mean([x[-1] for x, _ in clean]))
+    ends = (list(fracture_ends) if fracture_ends is not None else
+            [tensile_fracture_onset(x, y, slope_fraction) for x, y in clean])
+    if len(ends) != len(clean) or not np.isfinite(ends).all():
+        return empty, empty, empty, empty, 'CSV fracture not detected; no terminal-strain substitution'
+    end = min(ends)-setback
+    target = float(np.mean(ends))
     if end <= start:
         return empty, empty, empty, empty, "no common pre-fracture interval"
     x = np.linspace(start, end, max(30, points))
@@ -999,7 +970,7 @@ def choose_representative_curve(group_name, records, override=None):
     Select one specimen from a group for the representative-curves plot.
 
     The automatic choice minimizes absolute distance from the group's mean
-    terminal strain. An override may match a CSV stem, filename, or full path.
+    detected fracture EL. An override may match a CSV stem, filename, or full path.
     """
     valid_records = [
         record for record in records
@@ -1253,7 +1224,7 @@ def render_strength_elongation_plot(
 ):
     """Measured specimen properties and paired group means; no mean-curve fits.
 
-    EL is terminal recorded engineering strain, as in the specimen tables.
+    EL is CSV-derived drop onset (or its reconstruction), as in the specimen tables.
     A point requires both EL and strength. Means and sample SDs use exactly
     those paired specimens; unresolved yield must never be replaced by zero.
     """
@@ -1304,8 +1275,8 @@ def render_strength_elongation_plot(
             ax.plot([np.mean(xs)], [np.mean(ys)], linestyle='None', marker='D',
                     markersize=7, color=color, label=label)
         plotted = True
-        print(f'[STRENGTH–EL] {group}: {family}; n={n}; mean EL={np.mean(xs):.3f}%; '
-              f'mean strength={np.mean(ys):.3f} MPa. Statistics from paired specimen properties.')
+        print(f'[STRENGTH–EL] {group}: {family}; n={n}; mean EL={np.mean(xs):.2f}%; '
+              f'mean strength={np.mean(ys):.2f} MPa. Statistics from paired specimen properties.')
     if not plotted:
         plt.close(figure)
         print(f'[WARN] No valid paired strength/elongation values for {family}.')
@@ -1324,7 +1295,7 @@ def render_strength_elongation_plot(
         note += ' Bars: ±1 sample SD (n ≥ 2).'
     if show_individual:
         note += ' Faint circles: individual specimens.'
-    note += '\nEL = terminal recorded engineering strain; properties calculated per specimen.'
+    note += '\nEL = detected CSV drop onset or its reconstruction; properties calculated per specimen.'
     print('[PLOT INFO] ' + note.replace('\n', ' '))
     figure.tight_layout()
     return finish_plot(figure, out_path, preview)
@@ -1408,9 +1379,9 @@ def render_landmark_work_hardening_plot(
         x_max = max(x_max, float(x[-1]))
         plotted = True
         print(f"[WH LANDMARK] {Path(out_path).stem} / {group}: derivative of aligned mean; "
-              f"mean uniform elongation={landmark['knots'][2]:.3f}%; "
-              f"ends at true plastic strain={x[-1]:.3f}%; "
-              f"E={settings['youngs_modulus_mpa']:.1f} MPa.")
+              f"mean uniform elongation={landmark['knots'][2]:.2f}%; "
+              f"ends at true plastic strain={x[-1]:.2f}%; "
+              f"E={settings['youngs_modulus_mpa']:.2f} MPa.")
     if not plotted:
         plt.close(figure)
         print(f"[WARN] No valid landmark-derived work-hardening curves for {out_path}")
@@ -1469,41 +1440,51 @@ def safe_filename(text):
     return cleaned or "plot_set"
 
 def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
-                      points_per_stage=None):
+                      points_per_stage=None, prepeak_only=False):
     """Three measured sections, each mapped to progress 0..1 (no extrapolation)."""
     x, y = prepared_curve(record)
     if len(x) < 20:
         raise ValueError("fewer than 20 valid strain points")
     peak = int(np.argmax(y))
     raw_uts, peak_x = float(y[peak]), float(x[peak])
-    if raw_uts <= 0 or peak < 3 or peak >= len(x)-2:
-        raise ValueError("missing resolved loading or post-UTS segment")
-    uts,end_x=raw_uts,float(x[-1])
+    if raw_uts <= 0 or peak < 3:
+        raise ValueError("missing resolved loading segment")
+    uts = raw_uts
     details = specimen_properties(record, fit_fractions, LANDMARK_YIELD_R2_WARNING)
     if details['Yield status'] != 'resolved':
         raise ValueError(details['Notes'])
     yield_x, ys = details['Yield strain (%)'], details['Yield (MPa)']
-    # Remove terminal fracture unloading from shape, but retain the raw terminal
-    # failure strain as the destination landmark. The end stress is pre-break.
-    onset=tensile_fracture_onset(x,y,slope_fraction=0.10)
-    clean_end=min(end_x,onset-LANDMARK_PREBREAK_MARGIN_PERCENT)
-    if clean_end <= peak_x:
-        # A very short post-peak segment still needs two measured positions.
-        clean_end=min(end_x,float(x[peak+1]))
-    if not x[0]<yield_x<peak_x<clean_end:
-        raise ValueError("landmarks are not ordered start < yield < UTS < pre-break")
-    source_knots=np.array([x[0],yield_x,peak_x,clean_end])
-    target_knots=np.array([x[0],yield_x,peak_x,end_x])
+    if not x[0] < yield_x < peak_x:
+        raise ValueError('landmarks are not ordered start < yield < UTS')
+    source_knots = target_knots = np.array([x[0], yield_x, peak_x])
+    if not prepeak_only:
+        endpoint = fracture_endpoint(record)
+        if endpoint['status'] != 'Detected':
+            raise ValueError('CSV fracture not detected: ' + endpoint['reason'])
+        end_x = endpoint['strain_pct']
+        # The detected onset sets reported EL. Only the shape endpoint retreats.
+        # Re-use measured detection; a reconstructed curve has no unloading drop.
+        clean_end = end_x - LANDMARK_PREBREAK_MARGIN_PERCENT
+        if clean_end <= peak_x:
+            clean_end = min(end_x, float(x[peak + 1])) if peak + 1 < len(x) else peak_x
+        if not peak_x < clean_end <= end_x:
+            raise ValueError('No resolved post-UTS segment before detected fracture')
+        source_knots = np.r_[source_knots, clean_end]
+        target_knots = np.r_[target_knots, end_x]
     count = LANDMARK_POINTS_PER_STAGE if points_per_stage is None else points_per_stage
     if isinstance(count, bool) or not isinstance(count, (int, np.integer)) or count < 3:
         raise ValueError("Landmark points per stage must be an integer of at least 3")
     progress=np.linspace(0,1,count)
     stages=[np.interp(a+progress*(b-a),x,y) for a,b in zip(source_knots[:-1],source_knots[1:])]
     stages[0][-1]=stages[1][0]=ys
-    stages[1][-1]=stages[2][0]=uts
+    stages[1][-1] = uts
+    if not prepeak_only:
+        stages[2][0] = uts
     details.update({"Yield (MPa)":ys,"Yield strain (%)":yield_x,"UTS (MPa)":uts,
-                    "Uniform elongation (%)":peak_x,"Failure elongation (%)":end_x,
-                    "Pre-break source strain (%)":clean_end,"Pre-break stress (MPa)":float(stages[2][-1])})
+                    "Uniform elongation (%)":peak_x})
+    if not prepeak_only:
+        details.update({"Failure elongation (%)": end_x,
+                        "Pre-break source strain (%)": clean_end, "Pre-break stress (MPa)": float(stages[2][-1])})
     return target_knots,np.array(stages),details
 
 def average_landmark_shapes(items):
@@ -1512,14 +1493,14 @@ def average_landmark_shapes(items):
     stages=np.mean([item[1] for item in items],axis=0)
     progress=np.linspace(0,1,stages.shape[1])
     xs=[];ys=[]
-    for j in range(3):
+    for j in range(len(stages)):
         cut=slice(None) if j==0 else slice(1,None)
         xs.extend((knots[j]+progress*(knots[j+1]-knots[j]))[cut])
         ys.extend(stages[j][cut])
     return np.array(xs),np.array(ys),knots
 
 def prepare_average_curves(plot_spec, selected_records, *,
-                           landmark_points_per_stage=None, pointwise_points=None):
+                           landmark_points_per_stage=None, pointwise_points=None, prepeak_only=False):
     """Compute each mean once for plots, comparisons, exports, and integration."""
     landmark_points = (LANDMARK_POINTS_PER_STAGE if landmark_points_per_stage is None
                        else landmark_points_per_stage)
@@ -1534,11 +1515,15 @@ def prepare_average_curves(plot_spec, selected_records, *,
     for group,records in sorted(selected_records.items()):
         if not records:
             continue
-        curves = [(r["strain_pct"], r["stress_mpa"]) for r in records]
-        target = float(np.mean([failure_elongation_percent(x) for x, _ in curves]))
+        curves = ([(r['strain_pct'], r['stress_mpa']) for r in records] if prepeak_only else
+                  [fracture_curve(r)[:2] for r in records])
+        ends = [fracture_endpoint(r)['strain_pct'] for r in records]
+        target = float(np.mean(ends)) if not prepeak_only else np.nan
         empty = np.array([], dtype=float)
-        if tail_settings["enabled"]:
-            mx, my, px, py, diagnostic = build_tensile_mean_tail(curves, points, tail_settings)
+        if prepeak_only:
+            mx, my, px, py, diagnostic = empty, empty, empty, empty, 'WH: only start-to-UTS stages needed'
+        elif tail_settings["enabled"]:
+            mx, my, px, py, diagnostic = build_tensile_mean_tail(curves, points, tail_settings, fracture_ends=ends)
         else:
             result = average_group_curves(curves, points)
             mx, my = (result[0], result[1]) if result[0] is not None else (empty, empty)
@@ -1560,7 +1545,7 @@ def prepare_average_curves(plot_spec, selected_records, *,
         items=[];rejected=[]
         for record in records:
             try:
-                item=landmark_specimen(record,fit_fractions,points_per_stage=landmark_points)
+                item=landmark_specimen(record,fit_fractions,points_per_stage=landmark_points, prepeak_only=prepeak_only)
                 if item[2]["Notes"]:
                     print(f"[LANDMARK WARNING] {group}/{record['sample']}: {item[2]['Notes']}")
                 items.append(item); audit.append({"Group":group,"Status":"included",**item[2]})
@@ -1577,6 +1562,10 @@ def prepare_average_curves(plot_spec, selected_records, *,
         models[group]["landmark"] = {"x": x, "y": y, "knots": knots,
                                       "mean_yield": float(np.mean([i[2]["Yield (MPa)"] for i in items])),
                                       "mean_uts": float(np.mean([i[2]["UTS (MPa)"] for i in items]))}
+        models[group]['landmark']['n'] = len(items)
+        if prepeak_only:
+            print(f'[LANDMARK WH] {group}: n={len(items)}, pre-peak stages only; fracture detection not required')
+            continue
         summary={"Group":group,"n":len(items)}
         for key in ("Yield (MPa)","Yield strain (%)","UTS (MPa)","Uniform elongation (%)","Failure elongation (%)","Pre-break stress (MPa)"):
             summary["Mean "+key]=float(np.mean([i[2][key] for i in items]))

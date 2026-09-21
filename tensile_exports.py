@@ -19,7 +19,7 @@ def write_workbook(path, sheets):
     for name, frame in sheets.items():
         sheet = workbook.create_sheet(name[:31])
         sheet.sheet_view.showGridLines = False
-        sheet.freeze_panes = 'B2' if name in ('Summary', 'Specimens', 'Checks') else 'A2'
+        sheet.freeze_panes = 'B2' if name in ('Summary', 'Specimens', 'Audit') else 'A2'
         if frame.empty and not len(frame.columns):
             sheet.append(['No data available'])
             continue
@@ -49,7 +49,7 @@ def write_workbook(path, sheets):
                         cell.alignment = Alignment(wrap_text=True, vertical='top')
                 if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
                     header = headers[cell.column - 1].lower()
-                    cell.number_format = '0' if (header.endswith(' n') or header in ('n', 'included n', 'available n') or 'row (1-based)' in header) else '0.000'
+                    cell.number_format = '0' if (header.endswith(' n') or header in ('n', 'included n', 'available n') or 'row (1-based)' in header) else '0.00'
         for cell in sheet[1]:
             cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
             cell.fill = PatternFill('solid', fgColor='24445C')
@@ -89,19 +89,45 @@ def flatten_info(metadata):
 
 
 def export_results(frames, path, metadata):
-    specimens = frames['tensile_samples'].copy()
+    from tensile_tables import specimen_export_frame, summary_wide, SPECIMEN_DETAIL_FIELDS
+    from tensile_properties import EL_SOURCE_FIELDS
+    samples = frames['tensile_samples']
     checks = frames['specimen_diagnostics'].copy()
     comparison = frames['instron_comparison']
-    # Move Instron results next to the corresponding calculated property.
+    # Use exactly the UI's numeric schema, not its formatted strings or the
+    # internal acquisition dictionaries. Search filters never change exports.
+    specimens = specimen_export_frame(samples, comparison)
+    summary = summary_wide(frames['tensile_summary_details'])
+    # Provenance and acquisition bookkeeping belong only in the audit sheet.
+    # Keep stable specimen IDs for joins; never depend on display row order.
+    visible_fields = {'Included', 'Exclusion Reason', 'Inclusion Scope', 'Checks',
+                      '0.2% Offset Yield Strength (MPa)', 'UTS (MPa)', 'Uniform Elongation (%)',
+                      'Failure Elongation (%)', 'Measured failure elongation (%)', 'Reconstructed EL (%)',
+                      'Toughness (MJ/m^3)', 'Fitted E (GPa)',
+                      *(field for _, field in EL_SOURCE_FIELDS),
+                      *(field for _, field in SPECIMEN_DETAIL_FIELDS)}
+    if not samples.empty:
+        source = samples.set_index('Specimen ID')
+        for field in samples:
+            if field not in visible_fields and field not in checks:
+                checks[field] = checks['Specimen ID'].map(source[field])
+        # These lengths are useful for auditing the gauge calculation even
+        # though the corresponding display columns remain in Specimens.
+        for field in ('AVE dot spacing (mm)', 'Target gauge length (mm)'):
+            checks[field] = checks['Specimen ID'].map(source[field]) if field in source else np.nan
+    if 'Estimated toughness (MJ/m^3)' in checks:
+        applied = checks['Gauge correction status'].eq('Applied') & checks['Elongation basis'].eq('Estimated standard gauge')
+        checks['Estimated toughness (MJ/m^3)'] = checks['Estimated toughness (MJ/m^3)'].where(applied)
+        checks = checks.rename(columns={'Estimated toughness (MJ/m^3)': 'Reconstructed toughness (MJ/m^3)'})
+    if 'Elongation basis' in checks:
+        checks['Elongation basis'] = checks['Elongation basis'].replace({'Estimated standard gauge': 'Reconstructed gauge'})
     lookup = {'0.2% yield strength': '0.2% Offset Yield Strength (MPa)',
               'UTS': 'UTS (MPa)', 'Uniform elongation': 'Uniform Elongation (%)',
-              'Failure elongation': 'Failure Elongation (%)', 'Fitted elastic modulus': 'Fitted E (GPa)'}
+              'Fitted elastic modulus': 'Fitted E (GPa)'}
     for label, field in lookup.items():
-        if comparison.empty or field not in specimens:
+        if comparison.empty or field not in samples:
             continue
         match = comparison[comparison['Property'].str.casefold() == label.casefold()].drop_duplicates('Specimen ID').set_index('Specimen ID')
-        ref = specimens['Specimen ID'].map(match['Instron'])
-        specimens.insert(specimens.columns.get_loc(field) + 1, field + ' · Instron', ref)
         for key in ('Difference (calc - Instron)', 'Difference (%)'):
             checks[label + ' · ' + key] = checks['Specimen ID'].map(match[key])
     if 'Override Definition' in checks:
@@ -113,20 +139,21 @@ def export_results(frames, path, metadata):
                 return str(value)
         checks['Override Definition'] = checks['Override Definition'].map(description)
     # Shared IDs are join keys; avoid repeating the main property values here.
-    checks = checks.drop(columns=[c for c in ('Fitted E (GPa)', 'Yield Status', 'Yield Notes',
-        'Included', 'Exclusion Reason', 'Fit method', 'Override status') if c in checks])
+    checks = checks.drop(columns=[c for c in (visible_fields | {'Elastic fit R2'}) if c in checks
+                                 and c not in ('AVE dot spacing (mm)', 'Target gauge length (mm)')])
     metadata = {**metadata, 'definitions': {
-        'calculated_basis': 'Failure elongation/toughness use each group\'s selected basis within this graph; measured and estimated values are also retained separately.',
+        'calculated_basis': 'Tensile plots/statistics use detected CSV drop onset, or its gauge reconstruction when enabled. Toughness integrates only through that endpoint. Pre-peak properties and WH use measured data. No terminal-reading or Instron fallback when fracture is not detected.',
+        'elongation_columns': 'Elongation columns are Instron (imported Strain 1 at break), Calc (detected CSV terminal-drop onset, before any shape-trimming setback), and Reconstruct (its gauge reconstruction, blank unless enabled and available). Last valid CSV strain and maximum retained strain are audit-only, with original rows, interpolation fraction, detector settings and status.',
         'instron_comparison': 'Differences compare measured calculations with original Instron values, never reconstructed values.',
-        'checks': 'Failure/review messages only. Identity must match by name/export row and values must agree with original CSV maxima within printed-digit rounding tolerances. EL endpoint differences require review. No automatic exclusion or numerical rematching.',
+        'checks': 'Failure/review messages appear in the Specimens Checks column. Identity is verified by name/export row and original CSV UTS agreement within printed-digit rounding tolerance. EL is not an identity check and differences from Instron break EL are not matching failures. No automatic exclusion or numerical rematching.',
+        'table_layout': 'Summary and Specimens share the viewer\'s property names, order, analysis basis and blank-value rules. Uniform elongation and tensile toughness retain Calc and Instron columns; unsupported or missing imports remain blank. Elongation has Instron, Calc and Reconstruct columns. Summary mean, SD and n are separate numeric columns. Specimens adds a stable Specimen ID to join Audit. Audit contains source, fit, gauge and comparison details, not an additional user table.',
         'selection': 'Global specimen exclusions apply unless this graph contains an explicit inclusion override. Hard-ignored ! files never load.',
         'gauge': 'Strain 1 gauge length is the AVE-measured initial dot spacing. Target and enabled state are per sample group within this graph.',
         'estimate': 'Post-peak reconstruction assumes both gauge intervals capture the localisation. Longer targets are allowed with warnings. Not a standards-compliant measurement.',
         'gauge_formula': 'r = L_dots / L_target; pre-peak strain unchanged; post-peak strain_est = strain_u + r * (strain_measured - strain_u). Failure EL_est = EL_u + r * (EL_measured - EL_u). All strains are total engineering strain in percent; stress unchanged throughout.',
-        'failure_endpoint': 'Maximum retained recorded strain (legacy endpoint), not independently detected fracture.',
-        'precision': 'Full numeric precision stored; three decimal places displayed.'}}
-    write_workbook(path, {'Summary': frames['tensile_summary'], 'Specimens': specimens,
-                         'Checks': checks, 'Instron comparison': frames['instron_comparison_summary'],
+        'failure_endpoint': 'Interpolated CSV terminal-drop onset using the existing landmark detector sensitivity (0.10). No terminal fallback. Heuristic estimate, not Instron break EL or a standards-compliant post-fracture measurement.',
+        'precision': 'Full numeric precision stored; two decimal places displayed (counts and row identifiers remain integers).'}}
+    write_workbook(path, {'Summary': summary, 'Specimens': specimens, 'Audit': checks,
                          'Export info': flatten_info(metadata)})
 
 

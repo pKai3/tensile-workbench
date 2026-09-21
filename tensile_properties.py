@@ -2,20 +2,53 @@
 import numpy as np
 import json
 from tensile_fit import validate_override, validate_threshold
+from tensile_fracture import prepared_points, fracture_endpoint, fracture_curve, fracture_audit
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
 
+EL_SOURCE_FIELDS = (
+    ('Instron', 'Instron summary EL (%)'),
+    ('Calc', 'CSV-derived fracture EL (%)'),
+    ('Reconstruct', 'Reconstructed EL (%)'),
+)
+
+
+def elongation_report(record, reference, measured_properties):
+    """Report distinct endpoint sources without substituting one for another.
+
+    Analysis uses the detected drop onset, not the earlier shape-trimming point.
+    """
+    measured = record.get('_measured_record', record)
+    meta = measured.get('_acquisition', {})
+    strain = np.asarray(meta.get('strain', []), dtype=float)
+    finite = np.flatnonzero(np.isfinite(strain))
+    last = int(finite[-1]) if len(finite) else None
+    times = np.asarray(meta.get('time', []), dtype=float)
+    gauge = record.get('_gauge', {})
+    enabled = gauge.get('Elongation basis') == 'Estimated standard gauge'
+    reconstructed = (gauge.get('Estimated failure elongation (%)', np.nan)
+                     if enabled and gauge.get('Gauge correction status') == 'Applied' else np.nan)
+    prepared_x, _ = prepared_curve(measured)
+    end = fracture_endpoint(measured)
+    return {
+        'Instron summary EL (%)': reference.get('values', {}).get('el', np.nan),
+        'Last valid CSV strain (%)': float(strain[last]) if last is not None else np.nan,
+        'CSV endpoint EL (%)': float(prepared_x[-1]) if len(prepared_x) else np.nan,
+        'Reconstructed EL (%)': reconstructed,
+        'EL plot source': 'Reconstruct' if enabled else 'Calc',
+        'EL analysis source': ('Reconstructed CSV-derived fracture EL' if enabled else
+                               'CSV-derived fracture EL (detected drop onset)'),
+        'Reconstructed EL endpoint source': 'Detected CSV drop onset' if enabled else '',
+        'Last valid strain measurement row (1-based)': last + 1 if last is not None else np.nan,
+        'Last valid strain time (s)': float(times[last]) if last is not None and last < len(times) else np.nan,
+        'CSV-derived fracture EL (%)': end['strain_pct'],
+        **fracture_audit(measured),
+    }
+
 
 def prepared_curve(record):
-    x = np.asarray(record.get('raw_strain_pct', record['strain_pct']), dtype=float)
-    y = np.asarray(record.get('raw_stress_mpa', record['stress_mpa']), dtype=float)
-    valid = np.isfinite(x) & np.isfinite(y)
-    x, y = x[valid], y[valid]
-    order = np.argsort(x, kind='stable')
-    x, y = x[order], y[order]
-    x, ix = np.unique(x, return_index=True)
-    y = np.maximum.reduceat(y, ix) if len(ix) else y
+    x, y, _ = prepared_points(record)
     return x, y
 
 
@@ -83,15 +116,17 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
                    'uts_index': None, 'yield_bracket': None,
                    'fit_fractions': (low, high), 'override': active, 'saved_override': saved,
                    'r2_threshold': r2_warning}
+    endpoint = fracture_endpoint(record)
+    calculation['fracture'] = endpoint
+    p.update(fracture_audit(record))
     if len(x):
         peak = int(np.argmax(y))
         calculation['uts_index'] = peak
         p.update({'UTS (MPa)': float(y[peak]), 'Uniform elongation (%)': float(x[peak]),
-                  'Failure elongation (%)': float(x[-1])})
-        raw_x, raw_y = np.asarray(record['strain_pct']), np.asarray(record['stress_mpa'])
-        valid = np.isfinite(raw_x) & np.isfinite(raw_y)
-        if valid.sum() >= 2:
-            p['Toughness (MJ/m^3)'] = float(np.trapezoid(raw_y[valid], raw_x[valid] / 100))
+                  'Failure elongation (%)': endpoint['strain_pct']})
+        if endpoint['status'] == 'Detected':
+            end_x, end_y, _ = fracture_curve(record)
+            p['Toughness (MJ/m^3)'] = float(np.trapezoid(end_y, end_x / 100))
     try:
         if len(x) < 20:
             raise ValueError('fewer than 20 valid strain points')

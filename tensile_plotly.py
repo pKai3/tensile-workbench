@@ -154,8 +154,8 @@ def figure_to_plotly(figure, *, width=640):
             opacity=1 if line.get_alpha() is None else float(line.get_alpha()),
             line=dict(color=color, width=float(line.get_linewidth()) * 1.3, dash=dashes.get(line.get_linestyle(), 'solid')),
             marker=dict(color=color, size=float(line.get_markersize()) * 1.3, symbol=markers.get(marker, 'circle')),
-            hovertemplate=(escape(plain(name)) + '<br>' + escape(plain(ax.get_xlabel())) + ': %{x:.4f}<br>'
-                           + escape(plain(ax.get_ylabel())) + ': %{y:.3f}<extra></extra>'),
+            hovertemplate=(escape(plain(name)) + '<br>' + escape(plain(ax.get_xlabel())) + ': %{x:.2f}<br>'
+                           + escape(plain(ax.get_ylabel())) + ': %{y:.2f}<extra></extra>'),
             **error_by_line.get(id(line), {}))
         traces.append(trace)
     if not traces:

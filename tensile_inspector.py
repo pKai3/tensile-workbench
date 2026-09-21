@@ -3,7 +3,46 @@ from copy import deepcopy
 from html import escape
 
 import numpy as np
-from tensile_properties import specimen_calculation
+from tensile_properties import specimen_calculation, elongation_report
+
+# Stable display-layer IDs: visibility never changes measurements/calculations.
+INSPECTOR_LAYERS = {
+    'measured': ('Curves', True),
+    'reconstructed': ('Curves', True),
+    'yield_calc': ('Yield & fit', True),
+    'yield_instron': ('Yield & fit', True),
+    'fit_points': ('Yield & fit', 'yield'),
+    'elastic_fit': ('Yield & fit', 'yield'),
+    'offset': ('Yield & fit', 'yield'),
+    'automatic_fit': ('Yield & fit', False),
+    'manual_fit': ('Yield & fit', True),
+    'uts': ('Peak', True),
+    'fracture_calc': ('Fracture', True),
+    'fracture_instron': ('Fracture', True),
+    'fracture_reconstructed': ('Fracture', True),
+    'peak_raw': ('Diagnostics', True),
+    'csv_end': ('Diagnostics', False),
+    'instron_ys_level': ('Diagnostics', False),
+    'fracture_guide': ('Diagnostics', False),
+}
+
+
+def shape_layer(shape):
+    name = shape.name or ''
+    if name in ('fit-line', 'fit-range'):
+        return 'manual_fit'
+    return name.removeprefix('inspector:') if name.startswith('inspector:') else None
+
+
+def layer_swatch(color, symbol=None, dash=None):
+    """Small text/CSS key outside the Plotly canvas; no image assets needed."""
+    color = escape(str(color or '#334155'), quote=True)
+    if symbol:
+        glyph = {'diamond-open': '◇', 'diamond': '◆', 'triangle-up-open': '△',
+                 'circle-open': '○', 'circle': '●', 'x': '×'}.get(str(symbol), '●')
+        return f'<span aria-hidden="true" style="color:{color};font:22px/24px Arial">{glyph}</span>'
+    style = 'dotted' if dash == 'dot' else 'dashed' if dash and dash != 'solid' else 'solid'
+    return f'<span aria-hidden="true" style="display:inline-block;width:25px;border-top:2px {style} {color}"></span>'
 
 
 def inspection_ranges(calculation, mode='yield'):
@@ -27,6 +66,10 @@ def inspection_ranges(calculation, mode='yield'):
 
 def overlay_ranges(payload, mode='yield', show_gauge=False):
     xrange, yrange = inspection_ranges(payload['calculation'], mode)
+    reported_el = payload['reference'].get('values', {}).get('el', np.nan)
+    if mode == 'full' and np.isfinite(reported_el):
+        padding = .04 * max(xrange[1] - xrange[0], .1)
+        xrange = [min(xrange[0], reported_el - padding), max(xrange[1], reported_el + padding)]
     preview = payload.get('gauge_preview')
     if show_gauge and mode == 'full' and preview and preview['_gauge']['Gauge correction status'] == 'Applied':
         x = np.asarray(preview['strain_pct'])
@@ -47,37 +90,32 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     p = calculation['properties']
     fig = go.Figure()
 
-    def line(name, xs, ys, color, **kwargs):
+    def line(name, xs, ys, color, *, layer, **kwargs):
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
-            name=name, mode='lines', line=dict(color=color, **kwargs),
-            hovertemplate=escape(name) + '<br>Strain: %{x:.4f}%<br>Stress: %{y:.3f} MPa<extra></extra>'))
+            name=name, mode='lines', line=dict(color=color, **kwargs), meta={'inspector_layer': layer},
+            hovertemplate=escape(name) + '<br>Strain: %{x:.2f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
-    def points(name, xs, ys, color, symbol='circle', size=9):
+    def points(name, xs, ys, color, symbol='circle', size=9, *, layer):
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
-            name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size),
-            hovertemplate=escape(name) + '<br>Strain: %{x:.4f}%<br>Stress: %{y:.3f} MPa<extra></extra>'))
+            name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size), meta={'inspector_layer': layer},
+            hovertemplate=escape(name) + '<br>Strain: %{x:.2f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
     if show_gauge:
         measured = payload['record']
-        line('Measured AVE curve', measured['strain_pct'], measured['stress_mpa'], '#334155', width=2)
+        line('Measured CSV', measured['strain_pct'], measured['stress_mpa'], '#334155', layer='measured', width=2)
         preview = payload.get('gauge_preview')
         if preview and preview['_gauge']['Gauge correction status'] == 'Applied':
             target = preview['_gauge']['Target gauge length (mm)']
-            line(f'Estimated curve · target {target:g} mm', preview['strain_pct'], preview['stress_mpa'], '#e76f00', dash='dash', width=2)
-            endpoint = int(preview['_gauge']['Failure measurement row (1-based)']) - 1
-            points('Estimated failure endpoint', [preview['_gauge']['Estimated failure elongation (%)']],
-                   [measured['_acquisition']['stress'][endpoint]], '#e76f00', 'x', 12)
-        acquisition = measured.get('_acquisition', {})
-        peak = acquisition.get('peak')
-        if peak is not None and np.isfinite(acquisition['strain'][peak]) and np.isfinite(acquisition['stress'][peak]):
-            points(acquisition['peak_basis'] + ' · original row ' + str(peak + 1),
-                   [acquisition['strain'][peak]], [acquisition['stress'][peak]], '#dc2626', 'diamond-open', 13)
+            line(f'Reconstruct ({target:.2f} mm)', preview['strain_pct'], preview['stress_mpa'], '#e76f00',
+                 layer='reconstructed', dash='dash', width=2)
+            points('Reconstruct EL', [preview['_gauge']['Estimated failure elongation (%)']],
+                   [preview['_gauge']['Failure endpoint stress (MPa)']], '#e76f00', 'x', 12, layer='fracture_reconstructed')
     else:
-        line('Measured curve (prepared)', x, y, '#334155', width=2)
+        line('Measured CSV', x, y, '#334155', layer='measured', width=2)
     mask = calculation['elastic_mask']
     if mask.any():
-        points('Elastic-fit points', x[mask], y[mask], '#16a085', size=6)
-        fig.add_shape(type='rect', x0=float(x[mask].min()), x1=float(x[mask].max()),
+        points('Fit points', x[mask], y[mask], '#16a085', size=6, layer='fit_points')
+        fig.add_shape(type='rect', name='inspector:fit_points', x0=float(x[mask].min()), x1=float(x[mask].max()),
             y0=p['Fit lower stress (MPa)'], y1=p['Fit upper stress (MPa)'],
             fillcolor='rgba(22,160,133,0.10)', line_width=0, layer='below', editable=False)
     modulus = p['Fitted E (GPa)'] * 1000
@@ -85,24 +123,76 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
         # Define the lines over the visible stress range, not to full fracture strain.
         stresses = np.array([0., max(1., p['UTS (MPa)']) * 1.10])
         strains = (stresses - p['Elastic intercept (MPa)']) / modulus * 100
-        line('Elastic fit', strains, stresses, '#16a085', dash='dash', width=1.8)
-        line('0.2% offset line', strains + .2, stresses, '#d97706', dash='dash', width=1.8)
+        line('Elastic fit', strains, stresses, '#16a085', layer='elastic_fit', dash='dash', width=1.8)
+        line('0.2% offset', strains + .2, stresses, '#d97706', layer='offset', dash='dash', width=1.8)
     automatic = calculation.get('automatic_calculation')
     if automatic and np.isfinite(automatic['properties']['Fitted E (GPa)']):
         ap = automatic['properties']
         stresses = np.array([0., max(1., p['UTS (MPa)'])])
         strains = (stresses - ap['Elastic intercept (MPa)']) / (ap['Fitted E (GPa)'] * 1000) * 100
-        line('Automatic elastic fit', strains, stresses, '#94a3b8', dash='dot', width=1.3)
+        line('Automatic fit', strains, stresses, '#94a3b8', layer='automatic_fit', dash='dot', width=1.3)
     if p['Yield status'] == 'resolved':
-        points('Calculated 0.2% YS', [p['Yield strain (%)']], [p['Yield (MPa)']], '#d97706', 'diamond', 12)
+        points('Calc YS', [p['Yield strain (%)']], [p['Yield (MPa)']], '#d97706', 'diamond', 12, layer='yield_calc')
+    acquisition = payload['record'].get('_acquisition', {})
+    raw_peak = acquisition.get('peak')
+    raw_peak_valid = (raw_peak is not None and np.isfinite(acquisition['strain'][raw_peak])
+                      and np.isfinite(acquisition['stress'][raw_peak]))
+    same_peak = False
     if calculation['uts_index'] is not None:
         peak = calculation['uts_index']
-        points('UTS / uniform elongation', [x[peak]], [y[peak]], '#2563eb', 'circle', 11)
-        points('Terminal point / failure EL', [x[-1]], [y[-1]], '#9333ea', 'x', 11)
+        same_peak = bool(raw_peak_valid and
+            np.isclose(x[peak], acquisition['strain'][raw_peak], rtol=1e-9, atol=1e-9) and
+            np.isclose(y[peak], acquisition['stress'][raw_peak], rtol=1e-9, atol=1e-9))
+        peak_name = 'UTS / max force' if same_peak and acquisition.get('force_channel') else 'UTS / uniform EL'
+        points(peak_name, [x[peak]], [y[peak]], '#2563eb', 'circle', 11, layer='uts')
+        points('Max retained strain', [x[-1]], [y[-1]], '#94a3b8', 'circle-open', 8, layer='csv_end')
+    if raw_peak_valid and not same_peak:
+        name = 'Max force (original CSV)' if acquisition.get('force_channel') else 'Max stress (original CSV)'
+        points(name, [acquisition['strain'][raw_peak]], [acquisition['stress'][raw_peak]],
+               '#dc2626', 'triangle-up-open', 13, layer='peak_raw')
+    fracture = calculation['fracture']
+    if fracture['status'] == 'Detected':
+        points('Calc EL', [fracture['strain_pct']],
+               [fracture['stress_mpa']], '#9333ea', 'x', 12, layer='fracture_calc')
+        fig.add_vline(x=fracture['strain_pct'], name='inspector:fracture_guide',
+                      line_dash='dot', line_color='#9333ea', line_width=1)
+    elif mode == 'full':
+        fig.add_annotation(x=.02, y=.98, xref='paper', yref='paper', showarrow=False,
+                           text='CSV fracture not detected — no terminal-strain fallback',
+                           xanchor='left', font=dict(color='#b45309'))
     reported = payload['reference'].get('values', {}).get('ys', np.nan)
     if np.isfinite(reported) and len(x):
-        line('Instron YS (stress only)', [min(0., x[0]), x[-1]], [reported, reported],
-             '#be185d', dash='dot', width=1.8)
+        line('Instron YS level', [min(0., x[0]), x[-1]], [reported, reported],
+             '#be185d', layer='instron_ys_level', dash='dot', width=1.8)
+        # Instron supplies the yield stress here, not a yield strain. Locate
+        # the first ascending crossing on the measured pre-UTS loading curve.
+        peak = calculation['uts_index']
+        crossings = np.flatnonzero((y[:-1] <= reported) & (y[1:] >= reported) & (np.diff(y) > 0))
+        crossings = crossings[crossings < peak] if peak is not None else np.array([], dtype=int)
+        if len(crossings):
+            i = int(crossings[0])
+            fraction = (reported - y[i]) / (y[i + 1] - y[i])
+            strain_at_reported_ys = float(x[i] + fraction * (x[i + 1] - x[i]))
+            fig.add_trace(go.Scatter(x=[strain_at_reported_ys], y=[float(reported)],
+                name='Instron YS', mode='markers', meta={'inspector_layer': 'yield_instron'},
+                marker=dict(color='#be185d', symbol='diamond-open', size=13, line=dict(width=2)),
+                hovertemplate='Instron YS: %{y:.2f} MPa<br>CSV-interpolated strain: %{x:.2f}%'
+                              '<br>First ascending pre-UTS crossing; strain is not an Instron yield result<extra></extra>'))
+    reported_el = payload['reference'].get('values', {}).get('el', np.nan)
+    if np.isfinite(reported_el) and len(x):
+        # Only x is supplied by Instron. Place it on the measured CSV curve;
+        # do not call the interpolated y value an Instron fracture stress.
+        if x[0] <= reported_el <= x[-1]:
+            fig.add_trace(go.Scatter(x=[float(reported_el)],
+                y=[float(np.interp(reported_el, x, y))],
+                name='Instron EL', mode='markers', meta={'inspector_layer': 'fracture_instron'},
+                marker=dict(color='#be185d', symbol='diamond-open', size=14, line=dict(width=2)),
+                hovertemplate='Instron fracture EL: %{x:.2f}%<br>CSV-interpolated stress: %{y:.2f} MPa'
+                              '<br>Strain from Instron summary; stress is not an Instron break result<extra></extra>'))
+        elif mode == 'full':
+            fig.add_annotation(x=.02, y=.89, xref='paper', yref='paper', showarrow=False,
+                text='Instron fracture EL outside CSV range — no marker extrapolated',
+                xanchor='left', font=dict(color='#be185d'))
     if edit:
         if edit['mode'] == 'range':
             fig.add_shape(type='rect', name='fit-range', editable=True, x0=edit['strain_bounds'][0],
@@ -112,14 +202,13 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             (x0, y0), (x1, y1) = edit['endpoints']
             fig.add_shape(type='line', name='fit-line', editable=True, x0=x0, x1=x1, y0=y0, y1=y1,
                           line=dict(color='#7c3aed', width=4))
-            points('Manual line endpoints', [x0, x1], [y0, y1], '#7c3aed', 'circle-open', 12)
+            points('Fit edit handles', [x0, x1], [y0, y1], '#7c3aed', 'circle-open', 12, layer='manual_fit')
     xrange, yrange = overlay_ranges(payload, mode, show_gauge)
-    fig.update_layout(template='plotly_white', autosize=True, height=620,
-        margin=dict(l=72, r=25, t=22, b=190), font=dict(family='Arial, sans-serif', size=12),
-        xaxis=dict(title='Engineering strain (%)', range=xrange, automargin=True),
-        yaxis=dict(title='Engineering stress (MPa)', range=yrange, automargin=True),
-        legend=dict(orientation='h', x=0, xanchor='left', y=-.23, yanchor='top',
-                    entrywidth=240, font=dict(size=11)), hovermode='closest', dragmode='zoom',
+    fig.update_layout(template='plotly_white', autosize=True, height=530, showlegend=False,
+        margin=dict(l=82, r=25, t=22, b=88), font=dict(family='Arial, sans-serif', size=12),
+        xaxis=dict(title=dict(text='Engineering strain (%)', standoff=18), range=xrange, automargin=True),
+        yaxis=dict(title=dict(text='Engineering stress (MPa)', standoff=16), range=yrange, automargin=True),
+        hovermode='closest', dragmode='zoom',
         activeshape=dict(fillcolor='rgba(124,58,237,.12)', opacity=.9))
     return fig
 
@@ -155,8 +244,10 @@ def gauge_model_help(expanded=False):
         <li>Continued deformation and elastic unloading outside the target gauge cannot
           be separated from this single gauge history. For targets longer than the AVE
           spacing, additional post-peak extension outside the measured interval is not recovered.</li>
-        <li>The failure endpoint is the maximum retained recorded strain used by the
-          workbench, not an independently detected fracture onset or a post-fracture gauge measurement.</li>
+        <li>The failure endpoint is the detected onset of the terminal stress drop in
+          the measured CSV curve, before any shape-trimming setback. It is an interpolated
+          heuristic estimate, not Instron’s break result or a post-fracture gauge measurement.
+          If no drop is detected, fracture EL and reconstruction are unavailable.</li>
         <li>Stress values stay unchanged throughout. Reconstructed toughness is the area
           under the estimated engineering curve, not a newly measured material property.</li>
       </ul>
@@ -171,13 +262,15 @@ def inspection_summary(payload):
     calculation, reference = payload['calculation'], payload['reference']
     p, values = calculation['properties'], reference.get('values', {})
 
-    def number(value, places=3):
-        return f'{value:.{places}f}' if np.isfinite(value) else '—'
+    def number(value):
+        return f'{value:.2f}' if np.isfinite(value) else '—'
+
+    def row_number(value):
+        return str(int(value)) if np.isfinite(value) else '—'
 
     metrics = [('0.2% YS (MPa)', 'Yield (MPa)', 'ys'),
                ('UTS (MPa)', 'UTS (MPa)', 'uts'),
                ('Uniform elongation (%)', 'Uniform elongation (%)', 'uniform'),
-               ('Failure EL (%)', 'Failure elongation (%)', 'el'),
                ('Fitted E (GPa)', 'Fitted E (GPa)', 'e')]
     result = ['<style>.tw-inspect-summary{font:13px/1.5 Arial,sans-serif;white-space:normal;overflow-wrap:anywhere}'
               '.tw-inspect-summary table{border-collapse:collapse;width:100%;max-width:850px}'
@@ -210,7 +303,40 @@ def inspection_summary(payload):
                       ('<td>' + number(auto) + '</td>' if show_automatic else '') + '<td>' +
                       number(reported) + '</td><td>' + number(calculated - reported) + '</td></tr>')
     result.append('</tbody></table><p>Δ uses the displayed units; elongation differences are percentage points. '
-                  'Instron YS is drawn as a horizontal reference only; its yield strain is not inferred.</p>')
+                  'Instron YS has a hollow diamond at the first ascending pre-UTS '
+                  'CSV crossing of that stress. The marker strain is interpolated from CSV, not supplied by Instron. '
+                  'Its horizontal stress reference is available under Diagnostics and shown by default '
+                  'if no crossing exists.</p>')
+    active_record = (payload.get('gauge_preview') if payload.get('gauge_policy', {}).get('enabled') else None)
+    el = elongation_report(active_record or payload['record'], reference, p)
+    result.append('<h4>Elongation sources</h4><table><tr><th>Quantity</th><th>Strain (%)</th><th>Source</th></tr>')
+    for label, key, description in (
+            ('Instron summary EL', 'Instron summary EL (%)', 'Imported Instron Strain 1 at break result.'),
+            ('Last valid CSV strain', 'Last valid CSV strain (%)', 'Last finite strain in original acquisition order, not necessarily fracture.'),
+            ('Max retained CSV strain', 'CSV endpoint EL (%)', 'Maximum strain after preparation; audit only, not used as fracture EL.'),
+            ('CSV-derived fracture EL', 'CSV-derived fracture EL (%)', 'Detected terminal-drop onset, before the landmark setback; not detected if unavailable.'),
+            ('Reconstructed EL', 'Reconstructed EL (%)', 'Gauge reconstruction of detected CSV fracture EL; blank unless enabled and available.')):
+        result.append('<tr><td>' + escape(label) + '</td><td>' + number(el[key]) + '</td><td>' + escape(description) + '</td></tr>')
+    result.append('</table><p>These endpoint definitions are distinct. EL is not used to verify specimen identity, '
+                  'and differences from the Instron break result do not trigger a matching failure. '
+                  'The magenta hollow diamond shows Instron fracture EL on the measured CSV curve. Its strain is '
+                  'imported from Instron; its stress is interpolated from CSV, not an Instron fracture-stress result. '
+                  'No marker is extrapolated if that strain lies outside the CSV range.</p>')
+    result.append('<p><b>Fracture detection: ' + escape(el['Fracture detection status']) + '</b>' +
+                  (': ' + escape(el['Fracture detection reason']) if el['Fracture detection reason'] else '') +
+                  '. The purple cross marks detected onset on the full measured curve; review it against the drop. '
+                  'The detector selects the first qualifying decline and may mistake earlier necking for fracture. '
+                  'Its grid spacing is recorded below. The separate landmark shape setback is not '
+                  'subtracted from reported fracture EL.</p>')
+    result.append('<details><summary>Fracture detection details</summary><p>' + escape(el['Fracture EL method']) +
+                  '; grid spacing ' + number(el['Fracture detector grid spacing (%)']) + '% strain.</p>')
+    if el['Fracture detection status'] == 'Detected':
+        result.append('<p>Interpolated between original measurement rows ' +
+                      row_number(el['Fracture bracket first row (1-based)']) + ' and ' +
+                      row_number(el['Fracture bracket second row (1-based)']) +
+                      '; fraction ' + number(el['Fracture interpolation fraction']) +
+                      ', interpolated time ' + number(el['Fracture interpolated time (s)']) + ' s.</p>')
+    result.append('</details>')
     from tensile_tables import specimen_check_failures
     failures = specimen_check_failures(p, reference,
         payload.get('gauge_preview', {}).get('_gauge') if payload.get('gauge_policy', {}).get('enabled') else None)
@@ -219,11 +345,11 @@ def inspection_summary(payload):
     if reference.get('check_values'):
         result.append('<details><summary>Original CSV ↔ Instron verification values</summary><table>')
         for label, value in reference['check_values'].items():
-            result.append('<tr><td>' + escape(label) + '</td><td>' + number(value, 6) + '</td></tr>')
+            result.append('<tr><td>' + escape(label) + '</td><td>' + number(value) + '</td></tr>')
         result.append('</table><p>Name verification uses dataset/export row or an exact label, not numerical similarity. '
-                      'UTS uses maximum engineering stress from the original CSV. EL compares maximum recorded '
-                      'strain with Instron strain at break; an endpoint difference requires review, not automatic rematching. '
-                      'Tolerance is half the last printed unit from each CSV plus a floating-point allowance. '
+                      'UTS uses maximum engineering stress from the original CSV. EL is not checked for matching '
+                      'because Instron break EL and CSV endpoints have different definitions. '
+                      'UTS tolerance is half the last printed unit from each CSV plus a floating-point allowance. '
                       'No smoothing, yield fit or gauge reconstruction is used.</p></details>')
     acquisition_note = ''
     preview = payload.get('gauge_preview')
@@ -235,9 +361,10 @@ def inspection_summary(payload):
         result.append('<table><tr><th>AVE dot spacing (mm)</th><th>Group target (mm)</th><th>Ratio</th></tr>'
                       '<tr><td>' + number(audit['AVE dot spacing (mm)']) + '</td><td>' +
                       number(audit['Target gauge length (mm)']) + '</td><td>' + number(audit['Gauge ratio']) + '</td></tr></table>')
-        result.append('<table><tr><th>Property</th><th>Measured</th><th>Estimated</th></tr>')
+        result.append('<table><tr><th>Property</th><th>Measured</th><th>Reconstructed' +
+                      ('' if enabled else ' (preview only)') + '</th></tr>')
         for label, raw_key, estimated_key in (
-                ('Failure EL (%)', 'Failure elongation (%)', 'Estimated failure elongation (%)'),
+                ('CSV-derived fracture EL (%)', 'Failure elongation (%)', 'Estimated failure elongation (%)'),
                 ('Tensile toughness (MJ/m³)', 'Toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)')):
             result.append('<tr><td>' + label + '</td><td>' + number(p[raw_key]) + '</td><td>' + number(audit[estimated_key]) + '</td></tr>')
         result.append('</table><p>Derived localisation model, not a standards-compliant measurement. '
@@ -259,15 +386,16 @@ def inspection_summary(payload):
         result.append('<p class="tw-inspect-warning"><b>Yield ' + escape(p['Yield status']) + ':</b> ' +
                       escape(p['Notes']) + '</p>')
     low, high = calculation['fit_fractions']
-    description = (f'Automatic elastic fit: {100 * low:g}–{100 * high:g}% of this specimen’s UTS'
+    description = (f'Automatic elastic fit: {100 * low:.2f}–{100 * high:.2f}% of this specimen’s UTS'
                    if p.get('Fit method', 'Automatic') == 'Automatic' else
-                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"], 5)}–{number(p["Fit upper strain (%)"], 5)}% strain')
+                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"])}–{number(p["Fit upper strain (%)"])}% strain')
     result.append(f'<p>{description}, before the first UTS point '
                   f'({number(p["Fit lower stress (MPa)"])}–{number(p["Fit upper stress (MPa)"])} MPa); '
                   f'<b>{int(calculation["elastic_mask"].sum())} selected points</b>. '
-                  f'R² = {number(p["Elastic fit R2"], 5)}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
+                  f'R² = {number(p["Elastic fit R2"])}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
                   'This fitted E is independent of the WH modulus.</p>')
-    result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):g}. '
+    result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.2f}. '
+                  'Checks use full precision, before display rounding. '
                   'A high R² alone does not establish that a region is elastic.</p>')
     if p.get('Fit method') == 'Manual line':
         result.append('<p>Manual line is not a least-squares fit. R² measures residual agreement with the selected '
@@ -277,15 +405,17 @@ def inspection_summary(payload):
         result.append('<p>Override saved: ' + escape(saved['saved_at']) + ' · ' + escape(saved.get('reason', '')) + '</p>')
         original = saved.get('automatic_snapshot', {})
         result.append('<details><summary>Automatic result when this override was applied</summary><p>' +
-                      '<br>'.join(escape(str(k)) + ': ' + escape(str(v) if v is not None else 'Unavailable')
+                      '<br>'.join(escape(str(k)) + ': ' + escape(number(v) if isinstance(v, (int, float))
+                                  else str(v) if v is not None else 'Unavailable')
                                   for k, v in original.items()) + '</p></details>')
     bracket = calculation['yield_bracket']
     if bracket is not None:
         xs = calculation['strain_pct'][list(bracket)]
-        result.append(f'<p>0.2% YS is interpolated between {xs[0]:.5f}% and {xs[1]:.5f}% strain, '
+        result.append(f'<p>0.2% YS is interpolated between {xs[0]:.2f}% and {xs[1]:.2f}% strain, '
                       'at the first eligible crossing after the elastic-fit region and before UTS.</p>')
-    result.append('<p>Uniform elongation uses the first maximum engineering stress. Failure EL is the terminal '
-                  'recorded strain—not an independently detected fracture onset or a post-fracture gauge measurement.</p>')
+    result.append('<p>Uniform elongation uses the first maximum engineering stress. Tensile plots, fracture EL and '
+                  'toughness use the detected CSV drop onset, or its reconstruction when enabled. Missing detection '
+                  'is not replaced by a final reading or an Instron result; pre-peak calculations remain available.</p>')
     result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
                   '</p><p>Curve uses the workbench’s existing CSV loading and property preparation: finite pairs, '
@@ -304,6 +434,7 @@ class SpecimenInspector:
         self.on_apply = on_apply
         self._painting, self._editing, self._draft = False, False, None
         self._updating, self._payload, self.chart, self._probe = False, None, None, None
+        self._layer_choices, self._layer_widgets = {}, []
         w = widgets
         self.choice = w.Dropdown(description='Specimen:', options=[('Choose a specimen…', '')],
                                  layout=w.Layout(width='min(100%, 720px)'))
@@ -317,6 +448,18 @@ class SpecimenInspector:
         self.status = w.HTML('Click a specimen name in the Specimens table, or choose one above.')
         self.summary = w.HTML(layout=w.Layout(width='100%', min_width='0'))
         self.chart_box = w.VBox(layout=w.Layout(width='100%', min_width='0'))
+        self.layer_groups = w.HBox(layout=w.Layout(width='100%', min_width='0',
+                                                  flex_flow='row wrap', grid_gap='10px', align_items='flex-start'))
+        self.reset_layers = w.Button(description='Reset shown items', layout=w.Layout(width='auto'),
+                                     tooltip='Restore the display defaults for this view; calculations are unchanged.')
+        layer_heading = w.HTML('<style>.tw-inspector-layer.widget-checkbox {height:auto;min-height:28px}'
+                               '.tw-inspector-layer.widget-checkbox label {white-space:normal;line-height:1.3;'
+                               'height:auto;min-width:0}</style>'
+                               '<b>Show on plot</b> · display only; tick items to show or hide them.')
+        self.layers_panel = w.VBox([
+            w.HBox([layer_heading, self.reset_layers], layout=w.Layout(flex_flow='row wrap', grid_gap='12px', align_items='center')),
+            self.layer_groups,
+        ], layout=w.Layout(width='100%', min_width='0', display='none', padding='8px 0 16px 0'))
         self.mode = w.Dropdown(description='Fit:', options=[('Inspect saved fit', 'inspect'),
             ('Manual range', 'range'), ('Manual line', 'line')], value='inspect', layout=w.Layout(width='300px'))
         self.x0 = w.FloatText(description='Start strain (%)', continuous_update=False, style={'description_width': 'initial'})
@@ -339,10 +482,11 @@ class SpecimenInspector:
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
                           self.status, self.editor, w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
-                          self.gauge_status, self.chart_box, self.summary], layout=w.Layout(width='100%', min_width='0'))
+                          self.gauge_status, self.chart_box, self.layers_panel, self.summary], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
-        self.view.observe(lambda _: self._reset_zoom(), names='value')
+        self.view.observe(self._view_changed, names='value')
         self.reset.on_click(lambda _: self._reset_zoom())
+        self.reset_layers.on_click(self._reset_layers)
         self.gauge_overlay.observe(self._overlay_changed, names='value')
         self.previous.on_click(lambda _: self._step(-1))
         self.next.on_click(lambda _: self._step(1))
@@ -357,6 +501,7 @@ class SpecimenInspector:
 
     def _dispose(self):
         self.chart_box.children = ()
+        self._clear_layers()
         if self.chart is not None:
             self.chart.close()
         if self._probe is not None:
@@ -366,6 +511,98 @@ class SpecimenInspector:
         self._draft = None
         self.summary.value = ''
         self.gauge_status.value = ''
+
+    def _clear_layers(self):
+        self.layer_groups.children = ()
+        for widget in reversed(self._layer_widgets):
+            widget.close()
+        self._layer_widgets = []
+        self.layers_panel.layout.display = 'none'
+
+    def _set_layer_visible(self, key, visible):
+        if self.chart is None:
+            return
+        # Changing shape visibility must not trigger an elastic-fit edit.
+        painting = self._painting
+        self._painting = True
+        try:
+            with self.chart.batch_update():
+                for trace in self.chart.data:
+                    if (trace.meta or {}).get('inspector_layer') == key:
+                        trace.visible = bool(visible)
+                for shape in self.chart.layout.shapes:
+                    if shape_layer(shape) == key:
+                        shape.visible = bool(visible)
+        finally:
+            self._painting = painting
+
+    def _layer_changed(self, key, change):
+        if self._painting or self.chart is None or key == 'manual_fit':
+            return
+        self._layer_choices[(self.view.value, key)] = bool(change['new'])
+        self._set_layer_visible(key, change['new'])
+
+    def _sync_layers(self):
+        """Separate normal-flow legend, so labels can never collide with axes."""
+        self._clear_layers()
+        if self.chart is None:
+            return
+        entries = {}
+        for trace in self.chart.data:
+            key = (trace.meta or {}).get('inspector_layer')
+            if key not in INSPECTOR_LAYERS or key in entries:
+                continue
+            marker = 'markers' in (trace.mode or '')
+            swatch = layer_swatch(trace.marker.color if marker else trace.line.color,
+                                  trace.marker.symbol if marker else None,
+                                  trace.line.dash if not marker else None)
+            entries[key] = (trace.name, swatch)
+        for shape in self.chart.layout.shapes:
+            key = shape_layer(shape)
+            if key in INSPECTOR_LAYERS and key not in entries:
+                name = 'Fit edit handles' if key == 'manual_fit' else 'Calc EL vertical guide'
+                entries[key] = (name, layer_swatch(shape.line.color, dash=shape.line.dash))
+
+        groups = {}
+        w = self.w
+        for key, (group, default) in INSPECTOR_LAYERS.items():
+            if key not in entries:
+                continue
+            name, swatch = entries[key]
+            if key == 'instron_ys_level' and 'yield_instron' not in entries:
+                default = True
+            visible = self._layer_choices.get((self.view.value, key), default is True or default == self.view.value)
+            if key == 'manual_fit':
+                visible = True  # Never hide handles while editing a fit.
+            self._set_layer_visible(key, visible)
+            check = w.Checkbox(description=name, value=bool(visible), indent=False,
+                disabled=key == 'manual_fit', layout=w.Layout(width='auto', flex='1 1 auto', min_width='0'),
+                tooltip='Fit handles stay visible while editing.' if key == 'manual_fit' else
+                        'Show or hide this item without changing calculations.')
+            check.add_class('tw-inspector-layer')
+            check.observe(lambda change, layer=key: self._layer_changed(layer, change), names='value')
+            icon = w.HTML(swatch, layout=w.Layout(width='30px', flex='0 0 30px', margin='0'))
+            row = w.HBox([icon, check], layout=w.Layout(width='100%', min_width='0', align_items='center'))
+            groups.setdefault(group, []).append(row)
+            self._layer_widgets.extend([icon, check, row])
+        cards = []
+        for group, rows in groups.items():
+            title = w.HTML('<b>' + escape(group) + '</b>', layout=w.Layout(margin='0 0 3px 0'))
+            card = w.VBox([title, *rows], layout=w.Layout(flex='1 1 240px', min_width='0', max_width='100%',
+                padding='8px 10px', border='1px solid #dce3e9'))
+            cards.append(card)
+            self._layer_widgets.extend([title, card])
+        self.layer_groups.children = tuple(cards)
+        self.layers_panel.layout.display = '' if cards else 'none'
+
+    def _reset_layers(self, _=None):
+        self._layer_choices = {key: value for key, value in self._layer_choices.items() if key[0] != self.view.value}
+        self._sync_layers()
+
+    def _view_changed(self, _=None):
+        if self._painting or self._updating or self._payload is None:
+            return
+        self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
 
     def clear(self):
         self._updating = True
@@ -527,7 +764,11 @@ class SpecimenInspector:
         if self._painting or self._updating or self._payload is None:
             return
         if self.gauge_overlay.value:
-            self.view.value = 'full'
+            self._painting = True
+            try:
+                self.view.value = 'full'
+            finally:
+                self._painting = False
         self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
 
     def _paint(self, payload, edit=None, keep_zoom=False):
@@ -549,9 +790,11 @@ class SpecimenInspector:
                     self.chart.data = []
                     self.chart.add_traces(fig.data)
                     self.chart.layout.shapes = fig.layout.shapes
+                    self.chart.layout.annotations = fig.layout.annotations
                     self.chart.update_xaxes(range=fig.layout.xaxis.range)
                     self.chart.update_yaxes(range=fig.layout.yaxis.range)
             self._payload = payload
+            self._sync_layers()
             self.summary.value = inspection_summary(payload)
             preview = payload.get('gauge_preview')
             audit = preview['_gauge'] if preview else {}
@@ -561,7 +804,7 @@ class SpecimenInspector:
                     self.gauge_status.value = '<b>Measured curve only — reconstruction unavailable:</b> ' + escape(
                         audit.get('Gauge correction status', 'No gauge preview available'))
                 else:
-                    self.gauge_status.value = 'Display-only overlay: solid measured; dashed estimated. No settings or measurements changed.'
+                    self.gauge_status.value = 'Display-only overlay: solid measured; dashed reconstructed. No settings or measurements changed.'
                     if audit.get('Gauge model warning'):
                         self.gauge_status.value += '<br><b>Model warning:</b> ' + escape(audit['Gauge model warning'])
             if self._probe and self._probe.pixels:
@@ -599,14 +842,11 @@ class SpecimenInspector:
         if self.chart is None:
             return
         width = max(240, int(width))
-        columns = max(1, (width - 100) // 255)
-        rows = int(np.ceil(len(self.chart.data) / columns))
         plot_height = 420
-        bottom = 85 + 28 * rows
+        bottom = 88
         with self.chart.batch_update():
             self.chart.update_layout(width=width, height=plot_height + 22 + bottom,
-                margin=dict(l=72, r=25, t=22, b=bottom),
-                legend=dict(entrywidth=min(240, max(130, width - 100)), y=-70 / plot_height))
+                margin=dict(l=82, r=25, t=22, b=bottom), showlegend=False)
 
     def _reset_zoom(self):
         if self.chart is None or self._payload is None:

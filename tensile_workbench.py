@@ -234,12 +234,12 @@ class PreviewSession:
                     "strain_pct": strain, "stress_mpa": stress,
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
                     "_acquisition": acquisition, "_measurement_indices": indices,
-                    "failure_elongation_pct": self.engine.failure_elongation_percent(strain),
                     "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                 })
             for record in records:
                 self._bind_fit_context(record)
-                self.engine.specimen_properties(record)
+                properties = self.engine.specimen_properties(record)
+                record['failure_elongation_pct'] = properties['Failure elongation (%)']
             self._records[group] = records
         return self._records[group]
 
@@ -274,12 +274,15 @@ class PreviewSession:
             errors = [f"{g}/{r['sample']}: {r['_gauge']['Gauge correction status']}"
                       for g, rows in result.items() for r in rows
                       if group_policy(state, spec, g)['enabled'] and r['_gauge']['Gauge correction status'] != 'Applied']
+            errors.extend(f"{g}/{r['sample']}: CSV fracture not detected — {r['_fracture']['reason']}"
+                          for g, rows in result.items() for r in rows
+                          if not group_policy(state, spec, g)['enabled'] and r['_fracture']['status'] != 'Detected')
             if errors:
                 raise ValueError('Specimen review required; none have been automatically excluded. ' + '; '.join(errors))
             for g, rows in result.items():
                 if group_policy(state, spec, g)['enabled']:
                     target = group_policy(state, spec, g)['target_gauge_mm']
-                    print(f'[GAUGE] {g}: estimated post-peak strain at target gauge {target:g} mm; '
+                    print(f'[GAUGE] {g}: reconstructed post-peak strain at target gauge {target:.2f} mm; '
                           f'{len(rows)} specimens, each using its own AVE dot spacing.')
                     for r in rows:
                         if r['_gauge']['Gauge model warning']:
@@ -302,7 +305,7 @@ class PreviewSession:
             'specimen_fit_policy': self.fit_provenance(state),
             'specimen_selection': self.selection_provenance(state, spec),
             'engine_sha256_at_load': self.engine_sha256,
-            'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Checks sheet for source hashes.'}, indent=2))
+            'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Audit sheet for source hashes.'}, indent=2))
         return destination
 
     def specimen_inspection(self, state, spec, ident):
@@ -447,7 +450,8 @@ class PreviewSession:
                         with redirect_stdout(model_log):
                             result = e.prepare_average_curves(spec, records,
                                 landmark_points_per_stage=state["landmark_points"],
-                                pointwise_points=state["pointwise_points"])
+                                pointwise_points=state["pointwise_points"],
+                                prepeak_only=family.startswith('work_hardening'))
                         self._models[key] = (result, model_log.getvalue())
                         if len(self._models) > 8:
                             self._models.popitem(last=False)
@@ -722,7 +726,7 @@ class TensileWorkbench:
         self.properties_panel = w.Accordion(children=[w.VBox([
             self.tables.ui, self._row([self.tables_update_button, self.table_export_button])
         ])], selected_index=None, layout=w.Layout(width='100%'))
-        self.properties_panel.set_title(0, 'Specimen properties · tables, calculation inspector and Instron comparison')
+        self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
         general = w.Accordion(children=[w.VBox([self.override_group, self.override_name,
                              self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
         general.set_title(0, "Labels and colours · this graph, all plot types")
@@ -739,7 +743,7 @@ class TensileWorkbench:
             local.append(axes)
             if property_plot:
                 local += [self.controls['property_error_bars'],
-                          w.HTML('EL is elongation at failure (terminal recorded strain). '
+                          w.HTML('EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
                                  'Group means use calculated specimen properties, not an average curve. '
                                  'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.')]
             if family in ("landmark", "comparison", "work_hardening_landmark", "work_hardening_comparison"):
@@ -1407,7 +1411,7 @@ class TensileWorkbench:
         self.properties_panel.selected_index = 0
         self.tables.filter.value = ''
         self.tables.review_only.value = True
-        self.tables.tabs.selected_index = 4
+        self.tables.show_inspector()
         ids = [ident for _, ident in self.tables.inspector.choice.options if ident]
         if ids:
             self.tables.inspector.select(ids[0])
@@ -1426,8 +1430,8 @@ class TensileWorkbench:
         self.fit_warning.value = (
             f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
             f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} fit review</b> · {included} included; {excluded} excluded. '
-            f'R² below {threshold:g}, unresolved fit, or stale override. No automatic exclusion.</div>'
-            if len(flagged) else f'Elastic-fit checks: no warnings at R² threshold {threshold:g}.')
+            f'R² below {threshold:.2f}, unresolved fit, or stale override. Checks use full precision. No automatic exclusion.</div>'
+            if len(flagged) else f'Elastic-fit checks: no warnings at R² threshold {threshold:.2f}.')
 
     def _inspect_specimen(self, ident):
         with redirect_stdout(io.StringIO()):

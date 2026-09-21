@@ -21,14 +21,13 @@ Select sample groups using the exact-name checkboxes. There is no numbered-range
 
 ## Property tables
 
-Expand **Specimen properties · tables and Instron comparison** above the plot controls to see the tables and their update/export buttons. This section starts collapsed and can be folded away without clearing or recalculating its data. The tables work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
+Expand **Specimen properties · tables and calculation inspector** above the plot controls to see the tables and their update/export buttons. This section starts collapsed and can be folded away without clearing or recalculating its data. The tables work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
 
-- **Summary:** one row per group, with properties as columns and adjacent **Calc / Instron** cells showing mean ± sample SD. Included n is shown beside the group; each cell shows its own valid n when different. These are statistics of individual included specimens, not properties measured from an average curve. Missing Instron values show “—”. The wide Excel summary keeps numeric means, SDs and counts in separate columns; `tensile_summary_details.xlsx` retains the long-form statistics including min/max.
-- **Specimens:** **Include** checkboxes at the far left and an **Applies to** selector, followed by properties grouped under shared headers with **Calc / Instron** subcolumns, in the same order as Summary. Calc uses the group's selected analysis basis; Instron remains the original reported value. Missing Instron values (including toughness, which is not imported) show “—”. Separate measured/estimated duplicate columns are not displayed. Peak-force row numbers, timestamps, endpoint bookkeeping and plotting-grid diagnostics remain in the internal/audit data, not this table. Useful fit and geometry fields remain at the right. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
-- **Instron:** select YS, UTS, elongation or modulus. Absolute and relative differences are calculated minus Instron. Elongation differences are percentage points. Comparison is not an automatic pass/fail assessment.
-- **Checks:** raw CSV and summary provenance, specimen identity, fit range/intercept, Instron dimensions, flags and missing/conflicting values. Source-path cells show the end of each path within a compact column. Click a path (or focus it and press Enter) to reveal a selectable full path; click again to collapse. Excel exports retain complete paths and source hashes.
+- **Summary:** one row per group, with properties as columns and adjacent **Calc / Instron** cells showing mean ± sample SD. **Uniform Elongation** and **Tensile Toughness** retain both columns; missing/unsupported Instron imports remain placeholders. The parser supports uniform elongation from Strain 1 at maximum force; Instron toughness import is not yet implemented. Elongation has **Instron / Calc / Reconstruct**: the reported break result, calculated CSV drop onset, and its gauge reconstruction. Reconstruct is blank unless enabled for that group and available. Last valid CSV strain is not a main-table column. Included n is shown beside the group; each cell shows its own valid n when different. These are statistics of individual included specimens, not properties measured from an average curve. Missing values show “—”. Excel keeps means, SDs and counts in separate numeric columns, with the same property order and basis.
+- **Specimens:** **Include** checkboxes at the far left and an **Applies to** selector, followed by the same properties and source-specific EL columns as Summary. Calc elongation always shows the unreconstructed detected endpoint; Reconstruct shows its correction separately. Calc toughness uses the group's selected measured/reconstructed basis. Instron remains the original reported value where provided. Peak-force row numbers, timestamps, final-reading bookkeeping and plotting-grid diagnostics remain in the inspector/audit data. Useful fit, geometry and **EL source for plots** fields remain at the right. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
+- **Calculation inspector:** click a specimen name to see its measured values, original Instron values and exact differences, plus fit and gauge details. **Original CSV ↔ Instron verification values** gives the values and tolerances used for matching checks. **Source and preparation details** contains full source paths and acquisition provenance. Separate Instron and Checks tabs are no longer needed; detailed diagnostic records remain available on the exported **Audit** sheet.
 
-Filtering and sorting affect only the displayed tables, not graph selection or exported populations. Excel numeric values retain full precision and display three decimals. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
+Filtering and sorting affect only the displayed tables, not graph selection or exported populations. Tables, inspector readouts, plot tooltips and Excel quantities display two decimals; calculations, comparisons and Excel cell values retain full precision. Counts and row identifiers remain integers. Editable settings retain their entered precision. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
 
 ### Include/exclude specimens
 
@@ -48,15 +47,31 @@ Per-specimen properties are calculated independently of landmark alignment. A sp
 
 The existing YS calculation is preserved: fit an elastic line to the pre-UTS points between 20% and 50% of specimen UTS (or the graph's saved fit-fraction override), shift by 0.2% strain, and interpolate the first eligible crossing before UTS. Fit quality and fitted modulus are reported for review. This fitted modulus is not the fixed/group-specific modulus used in work-hardening calculations. Landmark plots consume the same specimen-property calculation.
 
-Uniform elongation is engineering strain at the first maximum engineering stress. Failure elongation is the terminal recorded engineering strain, not a post-fracture gauge-length measurement. Toughness is the engineering stress–strain integral of the recorded curve. Instron may use different elastic fitting, break detection, filtering or reported precision; differences must be interpreted with those settings in mind. No calculation is replaced by an Instron summary value.
+Uniform elongation is engineering strain at the first maximum engineering stress. Analysis EL is **CSV-derived fracture EL**, the detected onset of the terminal stress drop. Toughness is the engineering stress–strain integral through that endpoint, including an interpolated endpoint where necessary. With gauge reconstruction enabled, EL and toughness use the reconstructed curve through the corresponding transformed endpoint. No calculation is replaced by an Instron summary value.
+
+EL provenance is explicit:
+
+- **Instron:** the imported Strain 1 at break result.
+- **Calc:** CSV-derived fracture EL at detected terminal-drop onset, before any landmark shape setback.
+- **Reconstruct:** the gauge model applied to that same detected endpoint, only when enabled and available.
+- **Last valid CSV strain:** the final finite strain reading in original acquisition order. Retained only in the inspector and Audit, along with its row/time.
+- **Max retained CSV strain:** preserved in the inspector and Audit only. It is not a substitute for fracture EL.
+
+Detection reuses the existing landmark heuristic at slope fraction 0.10 on the full measured, prepared curve. It selects the first sufficiently steep decline that passes its subsequent stress-loss check, using a uniform strain grid and the existing post-UTS baseline/noise thresholds. It does not verify that this is the final fracture collapse, so it can misidentify earlier necking. The grid interval's start is the reported onset. Audit records the method, sensitivity, grid spacing, slope threshold, bracketing original rows, interpolation fraction and interpolated time where available. This remains a heuristic estimate for review, not Instron's break result or a standards-compliant post-fracture measurement. It is computed before reconstruction and is not re-detected on transformed curves.
+
+In the landmark calculation, the pre-break **shape** endpoint is normally detected onset minus 0.05 percentage points; its post-UTS shape is mapped to the detected onset landmark. The setback does not reduce reported EL. **Not detected** is explicit: fracture EL/toughness and reconstruction are unavailable rather than replaced by terminal strain. Tensile plots require review of unresolved included specimens, without automatically excluding them. YS, UTS, uniform elongation and both WH methods remain available when their own pre-peak requirements are satisfied. Landmark WH now builds only the start-to-yield and yield-to-UTS stages, so it needs no fracture endpoint.
 
 ### Calculation inspector
 
 Expand **Specimen properties**, open **Specimens**, and click a specimen name. The **Calculation inspector** tab shows the exact prepared curve and elastic-fit points used by the shared property calculation. You can also choose a specimen directly in that tab, or use **Previous / Next** to follow the current table's filtered/sorted order. Excluded specimens can be inspected without re-including them; hard-ignored files cannot.
 
-**Yield detail** zooms to the elastic fit and 0.2% offset crossing. **Full curve** also shows the UTS/uniform-elongation point and terminal point used for failure EL. Drag to zoom; **Reset zoom** returns to the chosen view. The green points are the actual points used for fitting, not a representative average. The elastic and offset lines use the same specimen-specific modulus and intercept as the tables. An unresolved yield shows the available curve/fit and its reason instead of inventing a yield marker.
+**Yield detail** zooms to the elastic fit and 0.2% offset crossing. **Full curve** shows the entire prepared measurement, UTS/uniform elongation and a purple cross at detected fracture onset. Missing detection is stated explicitly. The reconstruction overlay ends at the transformed detected endpoint. Drag to zoom; **Reset zoom** returns to the chosen view. The green points are the actual points used for fitting, not a representative average. The elastic and offset lines use the same specimen-specific modulus and intercept as the tables. An unresolved yield shows the available curve/fit and its reason instead of inventing a yield marker.
 
-Calculated and available matched Instron properties are listed side by side. Instron YS is shown as a horizontal stress reference only: no Instron yield strain is inferred. Fit fractions, selected-point count, R², intercept, crossing bracket, source identity and preparation details are available below the chart. Failure EL remains the terminal recorded strain, not automatic fracture-onset detection. The inspector does not use WH filters or the WH modulus.
+**Show on plot** is a grouped checkbox legend below the chart, outside the axis-label area: **Curves**, **Yield & fit**, **Peak**, **Fracture** and **Diagnostics**. Fit lines/points default to visible in Yield detail and hidden in Full curve. Maximum retained strain, the fracture vertical guide and the Instron YS reference line are optional diagnostic layers. **Reset shown items** restores the current view's defaults. Visibility choices are remembered separately for each view during the session and never change calculations. Manual-fit edit handles remain visible while editing.
+
+Calculated and available matched Instron properties are listed side by side. EL has a separate **Elongation sources** table rather than a calculated-minus-Instron comparison of different endpoint definitions. **Instron EL** is a magenta hollow diamond: its strain is imported from the summary and its stress is interpolated from the measured CSV curve, not an Instron fracture-stress result. No marker is extrapolated when reported strain lies outside the prepared CSV range. UTS and maximum force share one marker when their coordinates agree; otherwise the original maximum-force point is a separate red open triangle under Diagnostics. It marks the reconstruction breakpoint, not fracture. Compare the Instron diamond against the purple Calc EL marker: the detector can select an earlier decline instead of the final collapse. This is distinct from the landmark shape setback. **Instron YS** has a magenta hollow diamond at the first ascending pre-UTS CSV crossing of the reported stress. Its strain is CSV-interpolated, not an Instron yield-strain result. Its horizontal stress reference is available under Diagnostics and shown by default if no crossing is available. Fit fractions, selected-point count, R², intercept, crossing bracket, source identity and preparation details are available below the chart. The inspector does not use WH filters or the WH modulus.
+
+**EL source for plots** uses **Calc** or **Reconstruct** in the specimen table and Excel export. Detailed endpoint provenance remains in the audit data.
 
 Changing the selected specimen or zoom does not change calculations. No specimen chart is generated until selected, and inspecting or adjusting a preview writes nothing to the output folder.
 
@@ -101,9 +116,9 @@ compared field by field; conflicting fields remain blank rather than choosing
 the newest file or the closest result. Renamed or mixed datasets can break this
 name-based identity convention; numerical agreement does not prove identity.
 
-**Verification** compares the summary UTS with the maximum finite engineering stress in the untouched CSV acquisition, including rows removed from the plotting grid. No elastic fit, smoothing, average curve or gauge reconstruction is used. Summary EL is compared with maximum finite original strain, but a difference is explicitly an **endpoint review**: Instron's strain-at-break and the maximum recorded strain need not be the same quantity.
+**Verification** compares the summary UTS with the maximum finite engineering stress in the untouched CSV acquisition, including rows removed from the plotting grid. No elastic fit, smoothing, average curve or gauge reconstruction is used. **EL is not used for matching or numerical identity verification.** Instron's strain-at-break and a CSV endpoint need not be the same quantity; an EL difference does not trigger a matching failure.
 
-Each check allows half the least significant printed digit from each CSV, after unit conversion, plus `1e-9 × max(1, |raw|, |summary|)` for floating-point arithmetic. Trailing zeros and scientific notation are preserved when reading precision. Missing summary properties, unsupported values, unverified/ambiguous names, conflicting labels, numerical mismatches and Instron X flags are listed in the single **Checks** column. No pass messages or separate pass/fail columns are shown. Exact comparison values and tolerances are available under **Original CSV ↔ Instron verification values** in the inspector and in the exported audit data.
+UTS allows half the least significant printed digit from each CSV, after unit conversion, plus `1e-9 × max(1, |raw|, |summary|)` for floating-point arithmetic. Trailing zeros and scientific notation are preserved when reading precision. Missing/conflicting source values, unverified/ambiguous names, conflicting labels, UTS mismatches and Instron X flags remain in the single **Checks** column. No pass messages or separate pass/fail columns are shown. Exact UTS comparison values and tolerance are available under **Original CSV ↔ Instron verification values** in the inspector and in Audit. The former EL tolerance is no longer used.
 
 Flagging does not automatically exclude a specimen, replace its data, select a different summary or suppress available candidate values. Review flagged rows before relying on their Instron comparisons or dimensions; use the inclusion controls if you decide to exclude them. Calculated YS differences are not used to establish identity.
 
@@ -125,8 +140,8 @@ the configured group names and sample counts, without gauge-estimation suffixes.
 
 To inspect before applying, save a target with reconstruction switched off.
 Open a specimen's **Calculation inspector** and enable **Overlay measured /
-reconstructed**. The measured curve is solid and the estimated curve dashed;
-Full curve/Reset zoom includes both. The comparison shows measured and estimated
+reconstructed**. The measured curve is solid and the reconstructed curve dashed;
+Full curve/Reset zoom includes both. The comparison shows measured and reconstructed
 elongation/toughness, both lengths, the ratio and model warnings. The original
 force-peak row/time is retained under the collapsed **Source and preparation details**.
 This toggle changes the display only, not the group's
@@ -160,8 +175,8 @@ gauges capture the relevant localisation and cannot recover additional
 post-peak extension outside the measured interval. Inspect gauge status,
 ratio, original measurement row/time and strain at peak in Specimens. When no
 force channel is supplied, maximum engineering stress is an explicitly recorded
-proxy. The failure endpoint retains the existing maximum recorded retained
-strain definition rather than claiming an independently detected fracture.
+proxy. The failure endpoint is detected CSV drop onset, not the final recorded
+strain or the deliberately earlier landmark shape-trimming point.
 Peak strain is read from the original acquisition, even if the plotting cleanup
 dropped that row. Local ordering changes after reconstruction are handled by
 re-sorting intact strain/stress pairs for interpolation, without clipping strain
@@ -186,10 +201,18 @@ use in publication captions and methods sections.
 
 ## Consolidated Excel exports
 
-**Export tables only** writes `{graph_name}_results.xlsx`: Summary, Specimens,
-Checks, Instron comparison and Export info. Properties are available without
-selecting any plot. Measured and estimated elongation/toughness remain separate,
-and inclusion, source and override information is retained.
+**Export tables only** writes `{graph_name}_results.xlsx` with **Summary**, **Specimens**,
+**Audit** and **Export info** sheets. Properties are available without selecting any plot.
+The first two sheets use the same property definitions, ordering and analysis basis as
+the on-screen tables. Summary mean, SD and n remain separate numeric columns; grouped
+screen headers are flattened into unique Excel headers for filtering and plotting.
+Specimens uses the same operator labels and inclusion scope, with a stable Specimen ID
+at the end to join audit records. The four source-specific EL columns match the UI;
+Reconstructed EL cells stay blank for disabled groups or unavailable results.
+Source paths/hashes, original CSV–Instron differences, fit overrides, dimensions and gauge
+endpoint metadata are retained on Audit rather than mixed into the main property sheets.
+The old duplicate Instron comparison sheet is no longer exported. Export info records
+the endpoint-source definitions, UTS-only identity check and reconstruction assumptions.
 
 **Export plot set**, with Excel tables enabled, additionally writes
 `{graph_name}_curves.xlsx` when curve plots are present. Only the exported plot
@@ -201,13 +224,13 @@ methods; scatter plots reuse the results workbook. Curve checks retain coverage,
 area comparisons and landmark error-bar values. Different numerical curve
 variants are distinguished, with their view settings in Export info.
 
-Numeric cells retain full precision and display three decimals. Counts are
+Numeric cells retain full precision and display two decimals. Counts are
 integers. Historical exports are not rewritten. Restart the running app to load
 code changes before creating a new export.
 
 ## Strength versus elongation plots
 
-Select **0.2% YS vs elongation** and/or **UTS vs elongation** under Plot views for any graph definition. Both use elongation at failure on the x-axis and strength in MPa on the y-axis. EL is the terminal recorded engineering strain used in the Specimens table, not uniform elongation or a post-fracture gauge-length measurement.
+Select **0.2% YS vs elongation** and/or **UTS vs elongation** under Plot views for any graph definition. Both use the current analysis EL on the x-axis and strength in MPa on the y-axis. EL is CSV-derived fracture EL at detected drop onset, or its gauge reconstruction when enabled—not Instron's break result, uniform elongation or a post-fracture gauge-length measurement.
 
 Diamonds show group means of calculated per-specimen properties. **Show individual specimens** adds faint circles for the individual specimens; the paired with/without-individuals option works too. Optional horizontal and vertical **±1 sample SD** bars show scatter in EL and strength, not confidence intervals. A single specimen has a mean point but no SD bars. Groups are not joined by lines or fitted to a trend.
 
