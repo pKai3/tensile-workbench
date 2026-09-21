@@ -225,6 +225,7 @@ def inspection_summary(payload):
                       'strain with Instron strain at break; an endpoint difference requires review, not automatic rematching. '
                       'Tolerance is half the last printed unit from each CSV plus a floating-point allowance. '
                       'No smoothing, yield fit or gauge reconstruction is used.</p></details>')
+    acquisition_note = ''
     preview = payload.get('gauge_preview')
     if preview:
         audit = preview['_gauge']
@@ -251,7 +252,7 @@ def inspection_summary(payload):
         acquisition = payload['record'].get('_acquisition', {})
         peak = acquisition.get('peak')
         if peak is not None:
-            result.append('<p>' + escape(acquisition['peak_basis']) + f': original measurement row {peak + 1}, '
+            acquisition_note = ('<p>' + escape(acquisition['peak_basis']) + f': original measurement row {peak + 1}, '
                           + 'time ' + number(acquisition['time'][peak]) + ' s, strain ' + number(acquisition['strain'][peak]) + '%. '
                           'Peak comes from the original acquisition, independently of plotting cleanup.</p>')
     if p['Yield status'] != 'resolved' or p['Notes']:
@@ -285,7 +286,7 @@ def inspection_summary(payload):
                       'at the first eligible crossing after the elastic-fit region and before UTS.</p>')
     result.append('<p>Uniform elongation uses the first maximum engineering stress. Failure EL is the terminal '
                   'recorded strain—not an independently detected fracture onset or a post-fracture gauge measurement.</p>')
-    result.append('<details><summary>Source and preparation details</summary><p>Source: ' +
+    result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
                   '</p><p>Curve uses the workbench’s existing CSV loading and property preparation: finite pairs, '
                   'sorted by strain, with the maximum stress retained for repeated strain values. '

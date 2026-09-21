@@ -24,7 +24,7 @@ Select sample groups using the exact-name checkboxes. There is no numbered-range
 Expand **Specimen properties · tables and Instron comparison** above the plot controls to see the tables and their update/export buttons. This section starts collapsed and can be folded away without clearing or recalculating its data. The tables work with **all plots switched off**. Changing selected sample groups updates the tables. **Update tables** refreshes the view without making plots; **Reload data** rereads files after source data or summaries change. **Export tables only** writes Excel tables without constructing any average curves or plots.
 
 - **Summary:** one row per group, with properties as columns and adjacent **Calc / Instron** cells showing mean ± sample SD. Included n is shown beside the group; each cell shows its own valid n when different. These are statistics of individual included specimens, not properties measured from an average curve. Missing Instron values show “—”. The wide Excel summary keeps numeric means, SDs and counts in separate columns; `tensile_summary_details.xlsx` retains the long-form statistics including min/max.
-- **Specimens:** **Include** checkboxes at the far left, an **Applies to** selector, then per-specimen properties. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
+- **Specimens:** **Include** checkboxes at the far left and an **Applies to** selector, followed by properties grouped under shared headers with **Calc / Instron** subcolumns, in the same order as Summary. Calc uses the group's selected analysis basis; Instron remains the original reported value. Missing Instron values (including toughness, which is not imported) show “—”. Separate measured/estimated duplicate columns are not displayed. Peak-force row numbers, timestamps, endpoint bookkeeping and plotting-grid diagnostics remain in the internal/audit data, not this table. Useful fit and geometry fields remain at the right. Operator **Specimen text input** is displayed when available; the underlying CSV identity remains in the tooltip and export. A single **Checks** column contains only failures/review items, one per line; it is blank when nothing is flagged. Unchecked rows stay visible, dimmed, with an optional exclusion reason.
 - **Instron:** select YS, UTS, elongation or modulus. Absolute and relative differences are calculated minus Instron. Elongation differences are percentage points. Comparison is not an automatic pass/fail assessment.
 - **Checks:** raw CSV and summary provenance, specimen identity, fit range/intercept, Instron dimensions, flags and missing/conflicting values. Source-path cells show the end of each path within a compact column. Click a path (or focus it and press Enter) to reveal a selectable full path; click again to collapse. Excel exports retain complete paths and source hashes.
 
@@ -127,8 +127,9 @@ To inspect before applying, save a target with reconstruction switched off.
 Open a specimen's **Calculation inspector** and enable **Overlay measured /
 reconstructed**. The measured curve is solid and the estimated curve dashed;
 Full curve/Reset zoom includes both. The comparison shows measured and estimated
-elongation/toughness, both lengths, the ratio, model warnings and the original
-force-peak row/time. This toggle changes the display only, not the group's
+elongation/toughness, both lengths, the ratio and model warnings. The original
+force-peak row/time is retained under the collapsed **Source and preparation details**.
+This toggle changes the display only, not the group's
 calculation basis or any elastic-fit override.
 
 Immediately below the derived-model notice, **Gauge reconstruction:

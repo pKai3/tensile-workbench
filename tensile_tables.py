@@ -93,6 +93,55 @@ METRICS = [
     ('Fitted elastic modulus', 'GPa', 'Fitted E (GPa)', 'e'),
 ]
 
+# The specimen view shares the summary's property order, not the internal
+# acquisition/audit dictionary. New diagnostic fields must not leak into it.
+SPECIMEN_METRIC_FIELDS = {
+    'Yield (MPa)': '0.2% Offset Yield Strength (MPa)',
+    'Uniform elongation (%)': 'Uniform Elongation (%)',
+    'Failure elongation (%)': 'Failure Elongation (%)',
+}
+SPECIMEN_DETAIL_FIELDS = [
+    ('Fit method', 'Fit method'), ('Elastic fit R²', 'Elastic Fit R2'),
+    ('Width (mm)', 'Width (mm)'), ('Thickness (mm)', 'Thickness (mm)'),
+    ('AVE gauge (mm)', 'AVE dot spacing (mm)'), ('Target gauge (mm)', 'Target gauge length (mm)'),
+]
+
+
+def specimen_table_data(samples, comparisons):
+    """Grouped Calc/Instron presentation without changing the shared numeric data."""
+    columns, groups = ['Checks'], [{'label': 'Checks', 'span': 1}]
+    for label, unit, _, _ in METRICS:
+        title = '0.2% YS' if label == '0.2% yield strength' else label
+        groups.append({'label': f'{title} ({unit})', 'span': 2})
+        columns.extend(['Calc', 'Instron'])
+    for label, _ in SPECIMEN_DETAIL_FIELDS:
+        groups.append({'label': label, 'span': 1})
+        columns.append(label)
+    # Use the complete comparison frame, not the separate Instron tab's chosen
+    # metric/filter. Join by stable specimen identity, never row position.
+    reported = {(row['Specimen ID'], row['Property']): row['Instron']
+                for _, row in comparisons.iterrows()}
+
+    def text_value(value, places=3):
+        if pd.isna(value):
+            return '—'
+        return f'{value:.{places}f}' if isinstance(value, (float, np.floating)) else str(value)
+
+    rows = []
+    for _, row in samples.iterrows():
+        values = [row['Checks']]
+        for label, _, field, _ in METRICS:
+            values.extend([text_value(row.get(SPECIMEN_METRIC_FIELDS.get(field, field), np.nan)),
+                           text_value(reported.get((row['Specimen ID'], label), np.nan))])
+        values.extend(text_value(row.get(field, np.nan), 5 if field == 'Elastic Fit R2' else 3)
+                      for _, field in SPECIMEN_DETAIL_FIELDS)
+        rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
+                     'sample': str(row['Instron Specimen Label'] or row['Sample']), 'reason': row['Exclusion Reason'],
+                     'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
+                     'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
+                     'values': values})
+    return columns, groups, rows
+
 
 def _stats(values):
     values = np.asarray(values, dtype=float)
@@ -459,26 +508,14 @@ class PropertyTablesView:
                                'Unchecked specimens stay here for review and in the specimen export. '
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '
-                               'Click a specimen name to inspect calculations and exact comparison values.</p>' + basis_note)
-        hidden = {'Included', 'Group', 'Sample', 'Specimen ID', 'Exclusion Reason', 'Source File', 'Fit review required', 'Gauge source',
-                  'Inclusion Scope', 'Global Included', 'Global Exclusion Reason', 'Instron Specimen Label',
-                  'Yield Status', 'Yield Notes', 'Override status', 'Gauge correction status',
-                  'Gauge model warning', 'Gauge reconstruction notes', 'Peak retained in plotting grid',
-                  'Reconstructed grid order reversals', 'Post-peak points below peak strain'}
-        columns = [column for column in samples.columns if column not in hidden]
-        def text_value(value):
-            if pd.isna(value):
-                return '—'
-            return f'{value:.3f}' if isinstance(value, (float, np.floating)) else str(value)
-        rows = [{'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
-                 'sample': str(row['Instron Specimen Label'] or row['Sample']), 'reason': row['Exclusion Reason'],
-                 'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
-                 'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
-                 'values': [f'{row[column]:.5f}' if column == 'Elastic Fit R2' and np.isfinite(row[column])
-                            else text_value(row[column]) for column in columns]} for _, row in samples.iterrows()]
+                               'Click a specimen name to inspect calculations and exact comparison values.</p>'
+                               '<p><b>Calc</b> uses the selected analysis basis, including gauge reconstruction when enabled. '
+                               '<b>Instron</b> is the original reported value. “—” means unavailable; '
+                               'Instron toughness is not imported.</p>' + basis_note)
+        columns, groups, rows = specimen_table_data(samples, self.frames['instron_comparison'])
         with self.specimens.hold_sync():
-            self.specimens.columns = ['0.2% YS (MPa)' if column == '0.2% Offset Yield Strength (MPa)' else column
-                                      for column in columns]
+            self.specimens.columns = columns
+            self.specimens.column_groups = groups
             self.specimens.rows = rows
             self.specimens.context = uuid.uuid4().hex
         self.inspector.set_rows(rows)

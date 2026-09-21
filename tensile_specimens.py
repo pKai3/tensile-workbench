@@ -5,6 +5,7 @@ import traitlets
 
 class SpecimenTable(anywidget.AnyWidget):
     columns = traitlets.List(traitlets.Unicode()).tag(sync=True)
+    column_groups = traitlets.List(traitlets.Dict()).tag(sync=True)
     rows = traitlets.List(traitlets.Dict()).tag(sync=True)
     context = traitlets.Unicode('').tag(sync=True)
 
@@ -13,13 +14,16 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens table {border-collapse:separate; border-spacing:0; width:100%; font:12px/1.4 Arial,sans-serif;}
     .tw-specimens th,.tw-specimens td {padding:7px 9px; border-bottom:1px solid #dce3e9; text-align:right; min-width:100px;}
     .tw-specimens th {position:sticky; top:0; z-index:2; background:#e8eef4; color:#152c3f; text-align:left;}
+    .tw-specimens thead tr:nth-child(2) th {top:var(--tw-specimen-header-height,34px);text-align:center;}
+    .tw-specimens th[scope=colgroup] {text-align:center;}
+    .tw-specimens .property-start {border-left:1px solid #cbd5e1;}
     .tw-specimens td {background:#fff;}
     .tw-specimens tr:nth-child(even) td {background:#f6f8fa;}
     .tw-specimens tr.excluded td {background:#eef0f3; color:#737b86;}
     .tw-specimens tr.fit-warning td:first-child {border-left:4px solid #d97706;}
     .tw-specimens .fit-override {color:#175ca5;font-weight:bold;}
-    .tw-specimens th:first-child,.tw-specimens td:first-child {position:sticky; left:0; min-width:62px; text-align:center; z-index:1;}
-    .tw-specimens th:first-child {z-index:3;}
+    .tw-specimens thead tr:first-child th:first-child,.tw-specimens tbody td:first-child {position:sticky; left:0; min-width:62px; text-align:center; z-index:1;}
+    .tw-specimens thead tr:first-child th:first-child {z-index:3;}
     .tw-specimens td:nth-child(2),.tw-specimens td:nth-child(3) {text-align:left; min-width:130px; max-width:220px; overflow-wrap:anywhere;}
     .tw-specimens input[type=checkbox] {width:17px; height:17px; cursor:pointer; accent-color:#1767a5;}
     .tw-specimens input[type=text] {box-sizing:border-box; width:215px; padding:5px; border:1px solid #b6c1cd; border-radius:3px; font:inherit; color:#24354a; background:#fff;}
@@ -40,13 +44,37 @@ class SpecimenTable(anywidget.AnyWidget):
       container.setAttribute('role','region');
       container.setAttribute('aria-label','Specimen inclusion and properties');
       el.append(container);
+      let headerObserver;
       function render() {
+        headerObserver?.disconnect();
         const left = container.scrollLeft, top = container.scrollTop;
         const context = model.get('context');
+        const columns = model.get('columns');
+        const groups = model.get('column_groups');
         const table = document.createElement('table');
-        const header = table.createTHead().insertRow();
-        ['Include','Group','Specimen','Applies to','Exclusion reason (optional)',...model.get('columns')].forEach(label => {
-          const th = document.createElement('th'); th.textContent = label; th.scope='col'; header.append(th);
+        const head = table.createTHead(), header = head.insertRow();
+        const grouped = groups.some(group => group.span > 1);
+        const subheader = grouped ? head.insertRow() : null;
+        ['Include','Group','Specimen','Applies to','Exclusion reason (optional)'].forEach(label => {
+          const th = document.createElement('th'); th.textContent = label; th.scope='col';
+          th.rowSpan=grouped ? 2 : 1; header.append(th);
+        });
+        const propertyStarts = new Set();
+        let offset=0;
+        (groups.length ? groups : columns.map(label => ({label,span:1}))).forEach(group => {
+          const th=document.createElement('th'); th.textContent=group.label;
+          if (group.span > 1) {
+            th.colSpan=group.span; th.scope='colgroup'; th.className='property-start';
+            propertyStarts.add(offset);
+            columns.slice(offset,offset+group.span).forEach((label,index) => {
+              const child=document.createElement('th'); child.textContent=label; child.scope='col';
+              if (index===0) child.className='property-start';
+              child.title=label==='Calc' ? 'Calculated using this group’s selected analysis basis' :
+                          label==='Instron' ? 'Original Instron-reported value; never gauge reconstructed' : label;
+              subheader.append(child);
+            });
+          } else {th.scope='col'; th.rowSpan=grouped ? 2 : 1;}
+          header.append(th); offset+=group.span;
         });
         const body = table.createTBody();
         let pending = false;
@@ -81,8 +109,9 @@ class SpecimenTable(anywidget.AnyWidget):
           tr.insertCell().append(reason);
           row.values.forEach((value, index) => {
             const cell=tr.insertCell(); cell.textContent=value;
-            if (model.get('columns')[index]==='Fit method' && value.startsWith('Manual')) cell.className='fit-override';
-            if (model.get('columns')[index]==='Checks') cell.className='checks';
+            if (propertyStarts.has(index)) cell.classList.add('property-start');
+            if (columns[index]==='Fit method' && value.startsWith('Manual')) cell.classList.add('fit-override');
+            if (columns[index]==='Checks') cell.classList.add('checks');
           });
           const submit = (action='selection') => {
             if (pending) return;
@@ -102,13 +131,20 @@ class SpecimenTable(anywidget.AnyWidget):
           reason.addEventListener('keydown', event => {if(event.key==='Enter') {event.preventDefault(); submit();}});
         }
         container.replaceChildren(table);
+        // Headers can wrap or become visible when their tab is opened. Measure
+        // the first row rather than assuming a fixed offset for the second.
+        const sizeHeader = () => {
+          const height=header.getBoundingClientRect().height;
+          if (height>0) container.style.setProperty('--tw-specimen-header-height',height+'px');
+        };
+        headerObserver=new ResizeObserver(sizeHeader); headerObserver.observe(header); sizeHeader();
         if (!model.get('rows').length) {
           const note=document.createElement('p'); note.textContent='No matching specimens.'; container.append(note);
         }
         container.scrollLeft=left; container.scrollTop=top;
       }
-      model.on('change:rows change:columns change:context', render); render();
-      return () => {model.off('change:rows change:columns change:context', render);};
+      model.on('change:rows change:columns change:column_groups change:context', render); render();
+      return () => {headerObserver?.disconnect(); model.off('change:rows change:columns change:column_groups change:context', render);};
     }};
     """
 
