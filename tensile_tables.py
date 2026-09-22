@@ -603,7 +603,7 @@ class PropertyTablesView:
                                'Elongation: Instron = reported break result; Calc = selected CSV endpoint; '
                                'Reconstruct = its gauge reconstruction, blank unless enabled and available. '
                                'Instron columns remain available for uniform elongation and tensile toughness. '
-                               'Missing endpoints and terminal estimates needing review are flagged in Checks. '
+                               'Missing endpoints and uncertain load-history selections are flagged in Checks. '
                                'Results display two decimals; elastic-fit R² and fit-strain details display five. '
                                'Calculations and checks retain full precision.</p>'
                                + basis_note + summary_html(summary))
@@ -621,12 +621,14 @@ class PropertyTablesView:
                                '<p>For elongation, <b>Instron</b> is the reported break result, <b>Calc</b> is the '
                                'selected CSV endpoint before any landmark shape setback, and <b>Reconstruct</b> '
                                'is its gauge reconstruction, blank unless enabled and available. '
-                               'Terminal estimates are flagged because separation is not resolved. '
+                               'The inspector explains the sudden-drop and 10%-of-peak rules and identifies the selected criterion. '
                                '<b>EL selection</b> identifies manual overrides; edit or restore them in the inspector. '
                                'Uniform elongation and tensile toughness retain <b>Calc / Instron</b> columns; '
                                'Calc toughness uses the selected measured/reconstructed basis. “—” means unavailable. '
                                'Instron uniform elongation is imported when supplied; toughness import is not yet supported. '
-                               'Not-detected endpoints are flagged, not replaced with the last reading. '
+                               'Clear load collapses remain usable without a recorded ISO confirmation; '
+                               'uncertain terminal estimates are flagged for review. '
+                               'the last reading is never used unconditionally. '
                                'EL differences do not generate specimen-matching failures.</p>' + basis_note)
         columns, groups, rows = specimen_table_data(samples, self.frames['instron_comparison'])
         with self.specimens.hold_sync():

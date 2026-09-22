@@ -2,16 +2,149 @@
 import numpy as np
 import re
 
-FRACTURE_METHOD = 'Acquisition-order endpoint selection (v3)'
-MIN_DROP_FRACTION = .05       # Minimum sustained loss relative to maximum load.
-DECLINE_CONTRAST = 6.0       # Collapse must be faster than preceding necking.
-ONSET_RATE_FRACTION = .05    # Refine locally, relative to the selected rapid drop.
-LOCAL_RATE_WINDOW = 8       # Local abruptness check, not a specimen-type selector.
-TERMINAL_LOAD_FRACTION = .50  # Support a terminal estimate only after substantial unloading.
+FRACTURE_METHOD = 'Acquisition-order endpoint selection (v8)'
+ISO_DROP_RATIO = 5.0
+ISO_CONFIRM_FRACTION = .02
+ASTM_END_FRACTION = .10
+# Implementation safeguards, not thresholds specified by ASTM or ISO.
+NOISE_MULTIPLIER = 6.0
+MAX_TIME_GAP_RATIO = 10.0
+PARTIAL_DROP_MIN_FRACTION = .05
+TERMINAL_LOAD_FRACTION = .50
+TERMINAL_DECLINE_WINDOW = 8
+RAPID_RATE_CONTRAST = 6.0
+RAPID_BACKGROUND_READINGS = 8
+
+
+def _strain_collapse_evidence(x, z, onset, end, noise):
+    """Corroborate a time-rate jump with load loss per additional strain.
+
+    Localised stretching can accelerate both strain and force loss in time
+    without creating a sharp load/strain break. Compare the same original
+    increments in strain space; a force fall at fixed/receding strain passes.
+    Missing/flat pre-event strain cannot establish a background comparison.
+    """
+    before = max(0, onset - RAPID_BACKGROUND_READINGS)
+    previous_x = x[before:onset + 1]
+    event_x = x[onset:end + 1]
+    evidence = {'checked': False, 'contrast': np.nan, 'supported': True}
+    if (len(previous_x) < 2 or len(event_x) < 2
+            or not np.isfinite(previous_x).all() or not np.isfinite(event_x).all()):
+        return evidence
+    tolerance = 64 * np.finfo(float).eps * max(1., np.max(np.abs(x[before:end + 1])))
+    previous_extension = float(x[onset] - x[before])
+    if previous_extension <= tolerance:
+        return evidence
+    event_extension = max(0., float(np.max(event_x) - x[onset]))
+    previous_loss = max(abs(float(z[before] - z[onset])), NOISE_MULTIPLIER * noise,
+                        64 * np.finfo(float).eps)
+    if event_extension <= tolerance:
+        contrast = np.inf
+    else:
+        contrast = (max(0., float(z[onset] - z[end])) / event_extension
+                    / (previous_loss / previous_extension))
+    return {'checked': True, 'contrast': contrast, 'supported': contrast > RAPID_RATE_CONTRAST}
+
+
+def _multi_reading_drop(z, t, peak, noise, last_start, strain):
+    """Find rapid loss spread over multiple readings, not a 5% single jump.
+
+    Input is one uninterrupted acquisition segment. Windows establish sustained
+    event magnitude; a local change in load/time rate locates the leading edge.
+    Additional strain must also support a sharp load/strain transition, when
+    a finite advancing pre-event strain baseline is available. This is a
+    heuristic, separate from ISO's adjacent-reading comparison.
+    """
+    n = len(z)
+    if n - peak < 3:
+        return None
+    dt = np.diff(t)
+    rates = -np.diff(z) / dt
+    minimum_loss = max(PARTIAL_DROP_MIN_FRACTION, 12 * noise)
+    background = np.zeros_like(rates)
+    for i in range(1, min(RAPID_BACKGROUND_READINGS, len(rates))):
+        background[i] = float(np.median(np.abs(rates[:i])))
+    if len(rates) > RAPID_BACKGROUND_READINGS:
+        preceding = np.lib.stride_tricks.sliding_window_view(rates, RAPID_BACKGROUND_READINGS)
+        background[RAPID_BACKGROUND_READINGS:] = np.median(np.abs(preceding[:-1]), axis=1)
+    abrupt = rates > RAPID_RATE_CONTRAST * background + NOISE_MULTIPLIER * noise / dt
+    # Several successive increments can remain above the old background. They
+    # are one leading edge, not competing later onsets inside the same fall.
+    leading_edges = abrupt & ~np.r_[False, abrupt[:-1]]
+    edge_counts = np.r_[0, np.cumsum(leading_edges)]
+    # Three recovered readings reject an excursion; an isolated noisy rebound
+    # does not erase an otherwise sustained collapse.
+    min3 = np.minimum(np.minimum(z[:-2], z[1:-1]), z[2:])
+    recovered = np.r_[np.maximum.accumulate(min3[::-1])[::-1], -np.inf, -np.inf]
+    sums = np.r_[0., np.cumsum(z)]
+    largest = min(512, n - peak - 1, max(4, int(np.ceil(.02 * n))))
+    widths = [1]
+    while widths[-1] < largest:
+        widths.append(min(2 * widths[-1], largest))
+    candidates = []
+    for width in widths:
+        starts = np.arange(peak, min(last_start, n - width))
+        if not len(starts):
+            continue
+        stops = starts + width
+        previous = np.maximum(0, starts - max(RAPID_BACKGROUND_READINGS, width))
+        previous_span = t[starts] - t[previous]
+        previous_rate = np.divide(z[previous] - z[starts], previous_span,
+                                  out=np.zeros(len(starts)), where=previous_span > 0)
+        loss = z[starts] - z[stops]
+        rate = loss / (t[stops] - t[starts])
+        follow_end = np.minimum(n, stops + max(3, width))
+        following = (sums[follow_end] - sums[stops]) / (follow_end - stops)
+        eligible = ((loss >= minimum_loss)
+                    & (rate > RAPID_RATE_CONTRAST * np.maximum(0., previous_rate))
+                    & (edge_counts[stops] > edge_counts[starts])
+                    & (following < z[starts] - .6 * loss)
+                    & (recovered[stops] < z[starts] - .5 * loss))
+        choices = np.flatnonzero(eligible)
+        # Bounded work per window on long CSVs; favour the largest event losses.
+        if len(choices) > 32:
+            choices = choices[np.argpartition(loss[choices], -32)[-32:]]
+        for choice in choices:
+            left, right = int(starts[choice]), int(stops[choice])
+            seed = left + int(np.argmax(rates[left:right]))
+            # An accelerating collapse starts slower than its fastest later
+            # increment. The edge has already passed the local contrast/noise
+            # check; imposing a fraction of the later maximum discards valid
+            # onsets, especially when acquisition accelerates during the fall.
+            edges = np.flatnonzero(leading_edges[left:seed + 1])
+            if not len(edges):
+                continue
+            onset = left + int(edges[0])
+            # A gradual accelerating lead-in can keep the rolling-background
+            # test true through a later, distinct collapse. Look for a sharper
+            # change *within* that run using consecutive time-normalised rates.
+            # Keep the first increment of the final connected jump cluster,
+            # never the fastest increment inside the fall. This also tolerates
+            # an acquisition-rate change without treating it as a load event.
+            ids = np.arange(max(1, onset), seed + 1)
+            sharp = ((rates[ids] > RAPID_RATE_CONTRAST * np.abs(rates[ids - 1])
+                      + NOISE_MULTIPLIER * noise / dt[ids]) & abrupt[ids])
+            sharp_starts = ids[sharp & ~np.r_[False, sharp[:-1]]]
+            if len(sharp_starts):
+                onset = int(sharp_starts[-1])
+            if onset >= last_start:
+                continue
+            event_loss = float(z[onset] - following[choice])
+            if event_loss < minimum_loss or recovered[right] >= z[onset] - .5 * event_loss:
+                continue
+            strain_evidence = _strain_collapse_evidence(strain, z, onset, right, noise)
+            if not strain_evidence['supported']:
+                continue
+            candidates.append({'onset': onset, 'end': right, 'window': width,
+                               'loss': event_loss, 'rate': float(rates[seed]),
+                               'onset_rate': float(rates[onset]), 'background_rate': float(background[onset]),
+                               'strain_check': strain_evidence['checked'],
+                               'strain_rate_contrast': strain_evidence['contrast']})
+    return max(candidates, key=lambda c: (c['loss'], c['rate'], c['onset'])) if candidates else None
 
 
 def endpoint_available(endpoint):
-    """Estimated terminal endpoints are usable, but must remain review-flagged."""
+    """Detected onsets and review-flagged terminal estimates are both usable."""
     return endpoint['status'] in ('Detected', 'Estimated', 'Manual')
 
 
@@ -85,57 +218,6 @@ def manual_failure_endpoint(record, override):
             'override_status': 'Applied'}
 
 
-def _terminal_endpoint(result, x, y, z, ids, clock, clock_ok, peak, noise, gaps, recovered):
-    """Use a supported terminal reading, not maximum strain or a fitted onset.
-
-    No abrupt break was resolved. A substantial, ongoing, non-recovering load
-    loss can support a provisional endpoint. Remove a sustained near-zero-load
-    tail if present, but do not claim that this identifies physical separation.
-    """
-    n = len(z)
-    floor = max(.001, 12 * noise)
-    end = n - 1
-    kind = 'Progressive load loss; final recorded measurement'
-    # Three near-zero readings plus no sustained recovery: exclude the trailing
-    # unloaded acquisition, including later strain drift. Do not bridge gaps.
-    low3 = np.maximum(np.maximum(z[:-2], z[1:-1]), z[2:]) <= floor
-    zero_starts = np.flatnonzero(low3 & (recovered[:-2] <= floor))
-    for start in zero_starts:
-        if start > peak and gaps[start + 2] == gaps[start - 1]:
-            end = int(start - 1)
-            kind = 'Progressive load loss; before unloaded tail'
-            break
-    if end <= peak or end - peak < LOCAL_RATE_WINDOW:
-        return result
-    # A truncated plateau/ordinary necking trace does not get a terminal fallback.
-    # These conservative evidence checks are heuristics, not a fracture standard.
-    recent = end - LOCAL_RATE_WINDOW
-    if (z[end] > TERMINAL_LOAD_FRACTION or z[end] < -floor
-            or gaps[end] != gaps[peak]
-            or z[recent] - z[end] <= max(6 * noise, .0001)
-            or recovered[end] > z[end] + max(12 * noise, .02)):
-        return result
-    row = int(ids[end])
-    if not np.isfinite(x[row]) or not np.isfinite(y[row]):
-        result['reason'] = 'Terminal load loss found, but its strain/stress reading is missing'
-        return result
-    if np.isfinite(x[ids[peak]]) and x[row] <= x[ids[peak]]:
-        result['reason'] = 'Terminal strain does not extend beyond peak-load strain; review tracking'
-        return result
-    reason = 'EL uses a terminal-load endpoint; physical separation is not resolved. Review the full curve.'
-    result.update(status='Estimated', reason='', endpoint_kind=kind,
-                  review_required=True, review_reason=reason,
-                  strain_pct=float(x[row]), stress_mpa=float(y[row]), row_before=row + 1,
-                  row_after=int(ids[end + 1]) + 1 if end + 1 < n else np.nan, fraction=0.,
-                  time_s=float(clock[row]) if clock.shape == x.shape and np.isfinite(clock[row]) else np.nan,
-                  load_loss_fraction=float(1 - z[end]), terminal_load_fraction=float(z[end]),
-                  notes=('No distinct abrupt break; terminal estimate used. '
-                         + ('Unloaded trailing readings excluded.' if end < n - 1 else
-                            'Recording ends while carrying load; there may be no recorded separation.')
-                         + ('' if clock_ok else ' No complete increasing time channel; original row order used.')))
-    return result
-
-
 def prepared_points(record):
     """Finite, strain-sorted points; highest stress at duplicate strain; source IDs."""
     x = np.asarray(record.get('raw_strain_pct', record['strain_pct']), dtype=float)
@@ -156,21 +238,26 @@ def prepared_points(record):
 
 
 def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=None):
-    """Find a dominant, non-recovering rapid loss in the supplied row order.
+    """Select a measured endpoint, distinguishing evidence from confirmation.
 
-    Never sort by strain, merge repeated strain values, or resample the drop.
-    Multi-size windows locate the event; raw increments refine its onset.
-    An abrupt event selects its last pre-collapse reading. If none is resolved,
-    supported progressive terminal unloading can supply a review-flagged estimate.
-    The legacy slope_fraction argument is accepted for old callers only; the
-    old strain-slope threshold is no longer used. No Instron substitution.
+    ISO 6892-1:2019 informative A.3.6 supplies the >5x / <2% criterion;
+    ASTM E8/E8M-25 7.11.3.4 supplies the no-sudden-drop 10% criterion.
+    Exports may end before either threshold. Abrupt loss, including collapse
+    spread over several readings, can then supply a detected pre-drop
+    endpoint; progressive terminal unloading can supply a terminal estimate.
+    Algorithmic detection is separate from ISO confirmation. Missing 2%
+    confirmation alone is not an endpoint-review failure.
+    The combined policy and safeguards are not a standards-compliance claim.
+    No smoothing, resampling, strain sorting, interpolation or Instron EL input.
+    slope_fraction remains accepted for legacy callers but is not used.
     """
-    result = {'status': 'Not detected', 'reason': 'No distinct sustained load collapse found',
+    result = {'status': 'Not detected', 'reason': 'No supported load-history endpoint found',
               'method': FRACTURE_METHOD, 'strain_pct': np.nan, 'stress_mpa': np.nan,
               'row_before': np.nan, 'row_after': np.nan, 'fraction': np.nan, 'time_s': np.nan,
-              'minimum_drop_fraction': MIN_DROP_FRACTION, 'decline_contrast': DECLINE_CONTRAST,
-              'onset_rate_fraction': ONSET_RATE_FRACTION, 'notes': '',
-              'endpoint_kind': '', 'review_required': False, 'review_reason': ''}
+              'notes': '', 'criterion': '', 'iso_drop_ratio': ISO_DROP_RATIO,
+              'iso_confirm_fraction': ISO_CONFIRM_FRACTION, 'astm_end_fraction': ASTM_END_FRACTION,
+              'endpoint_kind': '', 'review_required': False, 'review_reason': '',
+              'iso_confirmation_observed': False}
     x, y = np.asarray(strain, float), np.asarray(stress, float)
     if x.ndim != 1 or y.shape != x.shape:
         result['reason'] = 'Strain and stress arrays are not aligned'
@@ -180,8 +267,8 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
         result['reason'] = 'Load channel is not aligned with strain/stress'
         return result
     ids = np.flatnonzero(np.isfinite(load))
-    if len(ids) < 8:
-        result['reason'] = 'Fewer than eight finite load readings'
+    if len(ids) < 3:
+        result['reason'] = 'Fewer than three finite load readings'
         return result
     z = load[ids]
     peak = int(np.argmax(z))
@@ -194,106 +281,146 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
     clock = np.asarray(time, float) if time is not None else np.array([])
     clock_ok = (clock.shape == x.shape and np.isfinite(clock[ids]).all()
                 and np.all(np.diff(clock[ids]) > 0))
-    t = clock[ids] if clock_ok else ids.astype(float)
-    result['rate_basis'] = 'Acquisition time (s)' if clock_ok else 'Original measurement row'
-    dt = np.diff(t)
+    result['rate_basis'] = 'Consecutive original readings (not a time derivative)'
     contiguous = np.diff(ids) == 1
     if clock_ok:
-        contiguous &= dt <= 10 * np.median(dt)
+        dt = np.diff(clock[ids])
+        contiguous &= dt <= MAX_TIME_GAP_RATIO * np.median(dt)
     gaps = np.r_[0, np.cumsum(~contiguous)]
-    rates = -np.diff(z) / dt  # Positive means unloading, not work-hardening rate.
-    second = np.diff(z, n=2)
-    noise = float(1.4826 * np.median(np.abs(second - np.median(second))) / np.sqrt(6))
-    minimum_loss = max(MIN_DROP_FRACTION, 12 * noise)
-    local_background = np.zeros_like(rates)
-    for count in range(1, min(LOCAL_RATE_WINDOW, len(rates))):
-        local_background[count] = max(0., float(np.median(rates[:count])))
-    if len(rates) > LOCAL_RATE_WINDOW:
-        preceding = np.lib.stride_tricks.sliding_window_view(rates, LOCAL_RATE_WINDOW)
-        local_background[LOCAL_RATE_WINDOW:] = np.maximum(0., np.median(preceding[:-1], axis=1))
-    abrupt_steps = rates > DECLINE_CONTRAST * local_background + 6 * noise / np.median(dt)
-    # A small spike within a broad decline is not itself the breaking event.
-    # Require substantial loss close to the sharp step, not only over a long window.
-    step_starts = np.arange(len(rates))
-    abrupt_steps &= z[step_starts] - z[np.minimum(step_starts + LOCAL_RATE_WINDOW, n - 1)] >= minimum_loss
-    # Three consecutive recovered readings reject transient pings. A single
-    # isolated rebound is not allowed to decide the whole detection result.
-    min3 = np.minimum(np.minimum(z[:-2], z[1:-1]), z[2:])
-    recovered = np.r_[np.maximum.accumulate(min3[::-1])[::-1], -np.inf, -np.inf]
-    sums = np.r_[0., np.cumsum(z)]
-    largest_window = min(512, n - peak - 1, max(4, int(np.ceil(.02 * n))))
-    windows = [1]
-    while windows[-1] < largest_window:
-        windows.append(min(2 * windows[-1], largest_window))
-    candidates = {}
-    for width in windows:
-        starts = np.arange(peak, n - width)
-        stops = starts + width
-        previous = np.maximum(0, starts - max(8, width))
-        previous_span = t[starts] - t[previous]
-        previous_rate = np.divide(z[previous] - z[starts], previous_span,
-                                  out=np.zeros(len(starts)), where=previous_span > 0)
-        loss = z[starts] - z[stops]
-        rate = loss / (t[stops] - t[starts])
-        follow_end = np.minimum(n, stops + max(3, width))
-        following = (sums[follow_end] - sums[stops]) / (follow_end - stops)
-        eligible = ((loss >= minimum_loss) & (gaps[stops] == gaps[starts])
-                    & (rate > DECLINE_CONTRAST * np.maximum(0., previous_rate))
-                    & (following < z[starts] - .6 * loss)
-                    & (recovered[stops] < z[starts] - .5 * loss))
-        choices = np.flatnonzero(eligible)
-        if len(choices) > 32:
-            choices = choices[np.argpartition(loss[choices], -32)[-32:]]
-        for choice in choices:
-            left, right = int(starts[choice]), int(stops[choice])
-            seed = left + int(np.argmax(rates[left:right]))
-            # A long window can make progressive necking look like a sudden
-            # break relative to a much earlier plateau. Demand local evidence
-            # of abruptness too, rather than returning that early bend as EL.
-            if not np.any(abrupt_steps[left:seed + 1] & (rates[left:seed + 1] >= .2 * rates[seed])):
-                continue
-            baseline = rates[max(0, left - max(8, width)):left]
-            background = float(np.median(baseline)) if len(baseline) else 0.
-            spread = float(1.4826 * np.median(np.abs(baseline - background))) if len(baseline) else 0.
-            threshold = max(max(0., background) + 6 * spread,
-                            max(0., background) + ONSET_RATE_FRACTION * max(0., rates[seed] - background))
-            if rates[seed] <= threshold:
-                continue
-            onset = seed
-            # Refine backwards only within the rapid decline, not all the way
-            # through ordinary necking. No constant strain setback is applied.
-            while onset > peak and contiguous[onset - 1] and rates[onset - 1] > threshold:
-                onset -= 1
-            actual_loss = float(z[onset] - following[choice])
-            if actual_loss < minimum_loss or recovered[right] >= z[onset] - .5 * actual_loss:
-                continue
-            candidate = {'onset': onset, 'end': right, 'loss': actual_loss,
-                         'rate': float(rates[seed]), 'threshold': float(threshold), 'window': width}
-            previous_candidate = candidates.get(onset)
-            if previous_candidate is None or actual_loss > previous_candidate['loss']:
-                candidates[onset] = candidate
-    if not candidates:
-        return _terminal_endpoint(result, x, y, z, ids, clock, clock_ok,
-                                  peak, noise, gaps, recovered)
-    # Prefer the substantial persistent collapse over smaller earlier changes.
-    # Later onset breaks equal-score ties, not the first qualifying bend.
-    chosen = max(candidates.values(), key=lambda c: (c['loss'], c['rate'], c['onset']))
-    onset = chosen['onset']
-    row, next_row = int(ids[onset]), int(ids[onset + 1])
-    if not np.isfinite(x[row]) or not np.isfinite(y[row]):
-        result['reason'] = 'Load collapse found, but its pre-collapse strain/stress reading is missing'
-        return result
+    # Do not silently skip missing load rows or a major time gap after peak.
+    interrupted = np.flatnonzero(gaps[peak:] != gaps[peak])
+    segment_end = peak + int(interrupted[0]) if len(interrupted) else n
+    crossing10 = np.flatnonzero(z[peak + 1:segment_end] < ASTM_END_FRACTION) + peak + 1
+    crossing2 = np.flatnonzero(z[peak + 1:segment_end] < ISO_CONFIRM_FRACTION) + peak + 1
+    first10 = int(crossing10[0]) if len(crossing10) else None
+    first2 = int(crossing2[0]) if len(crossing2) else None
+    # Robust noise estimate from contiguous three-reading differences only.
+    second = np.diff(z, n=2)[contiguous[:-1] & contiguous[1:]]
+    noise = (float(1.4826 * np.median(np.abs(second - np.median(second))) / np.sqrt(6))
+             if len(second) >= 5 else 0.)
+    floor = max(NOISE_MULTIPLIER * noise, 64 * np.finfo(float).eps)
+    drops = -np.diff(z)
+    # Stop at the first 10% crossing: later fluctuations in the unloaded tail
+    # must not replace the main event. Confirmation may occur later, at <2%.
+    starts = np.arange(max(peak, 1), first10 if first10 is not None else segment_end - 1)
+    previous = np.abs(drops[starts - 1])
+    eligible = ((gaps[starts - 1] == gaps[starts + 1])
+                & (drops[starts] > ISO_DROP_RATIO * previous) & (drops[starts] > floor))
+    possible = starts[eligible]
+    confirmation = first2 if first2 is not None else segment_end - 1
+    future_max = np.maximum.accumulate(z[:confirmation + 1][::-1])[::-1]
+    # Reject transient pings that subsequently recover more than half their
+    # loss, allowing three noise units. This safeguard is not an ISO clause.
+    possible = possible[future_max[possible + 1] <= z[possible] - .5 * drops[possible] + 3 * noise]
     notes = []
-    if n - chosen['end'] < 3:
-        notes.append('Recording ends during the drop; limited post-drop confirmation.')
     if not clock_ok:
-        notes.append('No complete increasing time channel; detection used original row order.')
-    result.update(status='Detected', reason='', strain_pct=float(x[row]), stress_mpa=float(y[row]),
-                  row_before=row + 1, row_after=next_row + 1, fraction=0.,
+        notes.append('No complete increasing time channel; original measurement order used.')
+    result.update(noise_floor_fraction=floor, candidate_count=int(len(possible)),
+                  ten_percent_row=int(ids[first10]) + 1 if first10 is not None else np.nan,
+                  confirmation_row=int(ids[first2]) + 1 if first2 is not None else np.nan)
+    # A standards confirmation threshold is not a prerequisite for every usable
+    # endpoint. A truncated sudden drop needs substantial loss, not just a large
+    # ratio caused by a nearly-zero preceding increment.
+    partial = possible[drops[possible] >= max(PARTIAL_DROP_MIN_FRACTION, 12 * noise)]
+    # Preserve a separate event-level detector: highly sampled collapses often
+    # have no individual decrement as large as 5% of peak. Never confuse that
+    # sampling artefact with evidence for a purely progressive terminal event.
+    rapid = None
+    if not ((len(possible) and first2 is not None) or len(partial)):
+        segment_time = clock[ids[:segment_end]] if clock_ok else ids[:segment_end].astype(float)
+        rapid = _multi_reading_drop(z[:segment_end], segment_time, peak, noise,
+                                    first10 if first10 is not None else segment_end - 1,
+                                    x[ids[:segment_end]])
+    selected_status = 'Detected'
+    if (len(possible) and first2 is not None) or len(partial):
+        # Largest supported consecutive loss, with the later reading breaking
+        # exact ties. Do not retreat backwards through ordinary necking.
+        confirmed = first2 is not None
+        candidates = possible if confirmed else partial
+        onset = max(map(int, candidates), key=lambda i: (drops[i], i))
+        prior = float(abs(drops[onset - 1]))
+        result.update(criterion=('ISO-style sudden drop (>5×; confirmed below 2%)' if confirmed else
+                                 'Substantial sudden drop; below-2% confirmation not recorded'),
+                      endpoint_kind='Before confirmed sudden drop' if confirmed else 'Before supported sudden drop',
+                      iso_confirmation_observed=confirmed,
+                      consecutive_drop_ratio=float(drops[onset] / prior) if prior else np.nan,
+                      previous_change_fraction=prior)
+        if not confirmed:
+            notes.append('Pre-drop measurement retained despite incomplete unloading record; not an ISO-confirmed endpoint.')
+        if prior == 0:
+            notes.append('The preceding force change is zero; the ratio is undefined. The positive drop exceeds the noise floor.')
+    elif rapid is not None:
+        onset = rapid['onset']
+        result.update(criterion='Rapid multi-reading load loss (heuristic)',
+                      endpoint_kind='Before rapid multi-reading collapse',
+                      event_loss_fraction=rapid['loss'], event_window_rows=rapid['window'],
+                      event_end_row=int(ids[rapid['end']]) + 1,
+                      event_onset_rate=rapid['onset_rate'], event_background_rate=rapid['background_rate'],
+                      event_strain_check=rapid['strain_check'],
+                      event_strain_rate_contrast=rapid['strain_rate_contrast'],
+                      event_rate_basis='Acquisition time (s)' if clock_ok else 'Original measurement row')
+        notes.append('Sustained load loss across multiple readings; selected its local rapid-change edge, '
+                     'not the final reading or an earlier necking setback. '
+                     'The event-level 5% loss check is not a single-reading requirement or an ISO clause. '
+                     'Algorithmically detected; this heuristic is not ISO confirmation.')
+        if rapid['strain_check']:
+            notes.append('Additional-strain check supports a sharp load/strain transition, '
+                         'not only faster progressive unloading in time.')
+        else:
+            result.update(review_required=True, review_reason=(
+                'EL collapse detected from load history; no usable advancing strain baseline '
+                'for the strain-shape check. Review Failure detail.'))
+    elif first10 is not None:
+        onset = first10 - 1
+        result.update(criterion='ASTM-style 10% of peak crossing',
+                      endpoint_kind='Before force falls below 10% of peak')
+        if len(possible):
+            result.update(review_required=True, review_reason=(
+                'EL uses the 10% crossing, but a sudden-drop candidate lacks below-2% confirmation. '
+                'Review the endpoint.'))
+        notes.append('No confirmed sudden drop; selected the reading immediately before the first below-10% reading.')
+    else:
+        # Preserve a supported terminal estimate for progressive failures whose
+        # export stops above 10%. Never use the end of a plateau/rising curve or
+        # stop at a gap and pretend that it was the end of the recorded test.
+        end = n - 1
+        recent = end - TERMINAL_DECLINE_WINDOW
+        terminal_supported = (
+            segment_end == n and recent >= peak
+            and 0 <= z[end] <= TERMINAL_LOAD_FRACTION
+            and z[recent] - z[end] > max(6 * noise, .0001)
+            and np.max(np.diff(z[recent:end + 1])) <= max(12 * noise, .02))
+        if not terminal_supported:
+            result['reason'] = 'No confirmed crossing, supported rapid collapse or terminal unloading'
+            if segment_end < n:
+                result['reason'] += '; acquisition gap prevents continuing the search'
+            result['notes'] = ' '.join(notes + ['No unconditional final-reading fallback. Review or set a manual EL endpoint.'])
+            return result
+        onset = end
+        selected_status = 'Estimated'
+        result.update(criterion='Progressive terminal unloading; unconfirmed estimate',
+                      endpoint_kind='Progressive load loss; final recorded measurement',
+                      review_required=True, review_reason=(
+                          'EL uses a terminal-unloading estimate; separation is not resolved in the export. '
+                          'Review Failure detail.'))
+        notes.append('Final recorded measurement used after substantial continuing unloading; neither 10% nor 2% was recorded.')
+    row = int(ids[onset])
+    next_row = int(ids[onset + 1]) if onset + 1 < n else None
+    if not np.isfinite(x[row]) or not np.isfinite(y[row]):
+        result['reason'] = 'Load criterion met, but the selected strain/stress reading is missing'
+        return result
+    if x[row] <= 0 or y[row] < 0 or (np.isfinite(x[ids[peak]]) and x[row] < x[ids[peak]]):
+        result['reason'] = 'Load criterion met, but endpoint strain/stress is inconsistent; review tracking'
+        return result
+    if first10 is not None and np.any(z[first10 + 1:segment_end] > ASTM_END_FRACTION + floor):
+        result.update(review_required=True, review_reason=(
+            'Load recovers above 10% of peak after the crossing; review the selected EL endpoint.'))
+    result.update(status=selected_status, reason='', strain_pct=float(x[row]), stress_mpa=float(y[row]),
+                  row_before=row + 1, row_after=next_row + 1 if next_row is not None else np.nan, fraction=0.,
                   time_s=float(clock[row]) if clock.shape == x.shape and np.isfinite(clock[row]) else np.nan,
-                  load_loss_fraction=chosen['loss'], rate_threshold=chosen['threshold'],
-                  candidate_window_rows=chosen['window'], notes=' '.join(notes),
-                  endpoint_kind='Abrupt load collapse; last pre-collapse measurement')
+                  load_loss_fraction=float(drops[onset]) if next_row is not None else np.nan,
+                  endpoint_load_fraction=float(z[onset]),
+                  notes=' '.join(notes))
     return result
 
 
@@ -393,21 +520,39 @@ def fracture_audit(record):
             'EL override measurement row': saved.get('row', np.nan),
             'Automatic EL (%)': automatic['strain_pct'], 'Automatic EL status': automatic['status'],
             'Automatic EL method': automatic['method'],
+            'Automatic EL criterion': automatic.get('criterion', ''),
             'Fracture EL method': end['method'],
+            'Fracture criterion': 'Manual measurement selection' if end['status'] == 'Manual' else end.get('criterion', ''),
             'Fracture endpoint kind': end.get('endpoint_kind', ''),
             'Fracture review required': end.get('review_required', False),
             'Fracture review reason': end.get('review_reason', ''),
-            'Fracture terminal load (% of peak)': 100 * end.get('terminal_load_fraction', np.nan),
+            'Fracture ISO-style confirmation observed': end.get('iso_confirmation_observed', False),
+            'Fracture endpoint load (% of peak)': 100 * end.get('endpoint_load_fraction', np.nan),
+            'Fracture sudden-drop ratio threshold': ISO_DROP_RATIO,
+            'Fracture sudden-drop confirmation threshold (% of peak)': 100 * ISO_CONFIRM_FRACTION,
+            'Fracture gradual threshold (% of peak)': 100 * ASTM_END_FRACTION,
+            'Fracture observed consecutive-drop ratio': end.get('consecutive_drop_ratio', np.nan),
+            'Fracture preceding force change (% of peak)': 100 * end.get('previous_change_fraction', np.nan),
+            'Fracture confirmation row (1-based)': end.get('confirmation_row', np.nan),
+            'Fracture below-10% row (1-based)': end.get('ten_percent_row', np.nan),
+            'Fracture qualifying sudden-drop candidates': end.get('candidate_count', np.nan),
+            'Fracture noise floor (% of peak)': 100 * end.get('noise_floor_fraction', np.nan),
+            'Fracture unconfirmed sudden-drop minimum (% of peak)': 100 * PARTIAL_DROP_MIN_FRACTION,
             'Fracture terminal estimate load ceiling (% of peak)': 100 * TERMINAL_LOAD_FRACTION,
-            'Fracture local abruptness window (rows)': LOCAL_RATE_WINDOW,
+            'Fracture terminal decline window (rows)': TERMINAL_DECLINE_WINDOW,
+            'Fracture multi-reading event loss (% of peak)': 100 * end.get('event_loss_fraction', np.nan),
+            'Fracture multi-reading event window (rows)': end.get('event_window_rows', np.nan),
+            'Fracture multi-reading event end row (1-based)': end.get('event_end_row', np.nan),
+            'Fracture event onset rate (fraction of peak / rate basis)': end.get('event_onset_rate', np.nan),
+            'Fracture event background rate (fraction of peak / rate basis)': end.get('event_background_rate', np.nan),
+            'Fracture event rate basis': end.get('event_rate_basis', ''),
+            'Fracture event rate contrast threshold': RAPID_RATE_CONTRAST,
+            'Fracture strain-shape check': ('Supported' if end['event_strain_check'] else 'Unavailable')
+                                           if 'event_strain_check' in end else 'Not applicable',
+            'Fracture load/strain rate contrast': end.get('event_strain_rate_contrast', np.nan),
             'Fracture load signal': end.get('load_basis', ''),
             'Fracture rate basis': end.get('rate_basis', ''),
-            'Fracture minimum load loss (%)': 100 * MIN_DROP_FRACTION,
             'Fracture detected load loss (%)': 100 * end.get('load_loss_fraction', np.nan),
-            'Fracture decline contrast': DECLINE_CONTRAST,
-            'Fracture onset rate fraction': ONSET_RATE_FRACTION,
-            'Fracture rate threshold (fraction of peak / rate basis)': end.get('rate_threshold', np.nan),
-            'Fracture candidate window (rows)': end.get('candidate_window_rows', np.nan),
             'Fracture detection notes': end.get('notes', ''),
             'Fracture endpoint stress (MPa)': end['stress_mpa'],
             'Fracture bracket first row (1-based)': end.get('row_before', np.nan),

@@ -7,7 +7,9 @@ import numpy as np
 from tensile_properties import specimen_calculation, elongation_report
 from tensile_fit import fit_display_places
 from tensile_fracture import (endpoint_available, automatic_fracture_endpoint, failure_measurements,
-                              failure_row_for_strain, manual_failure_endpoint, fracture_curve)
+                              failure_row_for_strain, manual_failure_endpoint, fracture_curve,
+                              ISO_DROP_RATIO, ISO_CONFIRM_FRACTION, ASTM_END_FRACTION,
+                              RAPID_RATE_CONTRAST)
 from tensile_gauge import gauge_record
 
 # Stable display-layer IDs: visibility never changes measurements/calculations.
@@ -130,6 +132,33 @@ def failure_detail_ranges(payload, show_gauge=False):
     return [left, right], [low - ypad, high + ypad]
 
 
+def instron_el_marker(payload):
+    """Keep the reported value; tolerate printed-digit rounding at CSV bounds only."""
+    reference = payload['reference']
+    reported = reference.get('values', {}).get('el', np.nan)
+    x = np.asarray(payload['calculation']['strain_pct'], float)
+    result = {'reported': reported, 'strain': np.nan, 'snapped': False, 'tolerance': 0.}
+    if not np.isfinite(reported) or not len(x):
+        return result
+    bound = float(np.clip(reported, x[0], x[-1]))
+    precision = reference.get('resolution', {}).get('el', np.nan)
+    tolerance = precision / 2 if np.isfinite(precision) and precision > 0 else 0.
+    measured = payload['record'].get('_measured_record', payload['record'])
+    acquisition = measured.get('_acquisition', {})
+    raw_x = np.asarray(acquisition.get('strain', []), float)
+    # check_resolution.el describes the original maximum strain, not a lower
+    # bound or a truncated analysis endpoint. Never apply it to another bound.
+    raw_precision = acquisition.get('check_resolution', {}).get('el', np.nan)
+    if (reported > x[-1] and np.isfinite(raw_x).any() and bound == np.nanmax(raw_x)
+            and np.isfinite(raw_precision) and raw_precision > 0):
+        tolerance += raw_precision / 2
+    tolerance += 64 * np.finfo(float).eps * max(1., abs(reported), abs(bound))
+    result['tolerance'] = tolerance
+    if abs(reported - bound) <= tolerance:
+        result.update(strain=bound, snapped=bool(reported != bound))
+    return result
+
+
 def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     """Plot original measurements and prepared fit points, never an averaged curve."""
     import plotly.graph_objects as go
@@ -211,7 +240,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             points('Automatic EL', [automatic['strain_pct']], [automatic['stress_mpa']],
                    '#64748b', 'circle-open', 12, layer='fracture_automatic')
     if endpoint_available(fracture):
-        label = {'Estimated': 'Calc EL (terminal estimate)', 'Manual': 'Calc EL (manual override)'}.get(fracture['status'], 'Calc EL')
+        label = {'Estimated': 'Calc EL (needs review)', 'Manual': 'Calc EL (manual override)'}.get(fracture['status'], 'Calc EL')
         points(label, [fracture['strain_pct']],
                [fracture['stress_mpa']], '#9333ea', 'x', 12, layer='fracture_calc')
         fig.add_vline(x=fracture['strain_pct'], name='inspector:fracture_guide',
@@ -238,20 +267,24 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
                 marker=dict(color='#be185d', symbol='diamond-open', size=13, line=dict(width=2)),
                 hovertemplate='Instron YS: %{y:.2f} MPa<br>CSV-interpolated strain: %{x:.5f}%'
                               '<br>First ascending pre-UTS crossing; strain is not an Instron yield result<extra></extra>'))
-    reported_el = payload['reference'].get('values', {}).get('el', np.nan)
+    el_marker = instron_el_marker(payload)
+    reported_el = el_marker['reported']
     if np.isfinite(reported_el) and len(x):
         # Only x is supplied by Instron. Place it on the measured CSV curve;
         # do not call the interpolated y value an Instron fracture stress.
-        if x[0] <= reported_el <= x[-1]:
-            fig.add_trace(go.Scatter(x=[float(reported_el)],
-                y=[float(np.interp(reported_el, x, y))],
+        if np.isfinite(el_marker['strain']):
+            rounding_note = ('<br>Marker snapped to CSV boundary within printed-digit rounding tolerance'
+                             '<br>Marker strain: %{x:.5f}%; imported EL is unchanged'
+                             if el_marker['snapped'] else '')
+            fig.add_trace(go.Scatter(x=[el_marker['strain']],
+                y=[float(np.interp(el_marker['strain'], x, y))], customdata=[[float(reported_el)]],
                 name='Instron EL', mode='markers', meta={'inspector_layer': 'fracture_instron'},
                 marker=dict(color='#be185d', symbol='diamond-open', size=14, line=dict(width=2)),
-                hovertemplate='Instron fracture EL: %{x:.2f}%<br>CSV-interpolated stress: %{y:.2f} MPa'
-                              '<br>Strain from Instron summary; stress is not an Instron break result<extra></extra>'))
+                hovertemplate='Instron fracture EL: %{customdata[0]:.5f}%<br>CSV-interpolated stress: %{y:.2f} MPa'
+                              + rounding_note + '<br>Stress is not an Instron break result<extra></extra>'))
         elif mode in ('full', 'failure'):
             fig.add_annotation(x=.02, y=.89, xref='paper', yref='paper', showarrow=False,
-                text='Instron fracture EL outside CSV range — no marker extrapolated',
+                text='Instron fracture EL outside CSV range beyond rounding tolerance — no marker extrapolated',
                 xanchor='left', font=dict(color='#be185d'))
     if edit:
         if edit['mode'] == 'range':
@@ -271,6 +304,67 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
         hovermode='closest', dragmode='zoom',
         activeshape=dict(fillcolor='rgba(124,58,237,.12)', opacity=.9))
     return fig
+
+
+def fracture_detection_help():
+    """Always accessible in the inspector, outside publication plots."""
+    return f'''<details style="font:13px/1.5 Arial,sans-serif;margin:8px 0;white-space:normal">
+      <summary style="cursor:pointer"><b>How failure elongation is selected</b></summary>
+      <p><b>Calc EL</b> comes from the original recorded load sequence, independently of Instron’s
+      reported EL. Force is preferred; engineering stress is a proxy when force is absent.
+      No smoothing, strain sorting or work-hardening filters are used for detection.</p>
+      <ol>
+        <li><b>Sudden drop:</b> look after peak load for a drop between consecutive readings greater
+          than {ISO_DROP_RATIO:g}× the preceding change in magnitude, confirmed by load subsequently
+          falling below {100 * ISO_CONFIRM_FRACTION:g}% of peak. Select the strain immediately before
+          the drop. This is based on ISO 6892-1:2019, informative Annex A.3.6.
+          If the export ends before confirmation, a substantial supported drop can still supply a
+          detected pre-drop endpoint. Missing 2% confirmation is recorded in the details, not treated
+          as an endpoint error by itself; it is not called ISO-confirmed.</li>
+        <li><b>Collapse spread over several readings:</b> a separate check looks for sustained rapid
+          load loss across a short window and a local unloading-rate increase of more than
+          {RAPID_RATE_CONTRAST:g}× its recent background. It selects the leading edge of the rapid fall,
+          not the final reading. The 5% event-loss check applies to the combined fall, not to each
+          individual step. An onset may initially be much slower than the fastest part of the fall.
+          If a gradual accelerating lead-in precedes a distinct sharp collapse, select the start of
+          that sharp transition. Also check that load loss per additional strain increases sharply:
+          faster continued stretching alone must not turn progressive unloading into sudden fracture.
+          This is an algorithmic detection, separate from ISO confirmation.</li>
+        <li><b>No supported sudden drop:</b> select the reading immediately before load first falls
+          below {100 * ASTM_END_FRACTION:g}% of peak, following the approach in ASTM E8/E8M-25 §7.11.3.4.
+          This means {100 * ASTM_END_FRACTION:g}% <i>remaining</i>, not a {100 * ASTM_END_FRACTION:g}% reduction.
+          A sudden-drop candidate without the {100 * ISO_CONFIRM_FRACTION:g}% confirmation is flagged for review.</li>
+        <li><b>Progressive unloading in a truncated export:</b> when neither threshold is captured,
+          substantial continuing load loss can support the final recorded measurement as a
+          <b>terminal estimate</b>. It remains usable for EL, toughness and reconstruction, but needs
+          review because actual separation is not established.</li>
+        <li><b>Insufficient evidence:</b> an ordinary rising curve/plateau, missing required measurements
+          or an acquisition gap does not justify using the final point. Review or override the endpoint.</li>
+        <li><b>Manual override:</b> a saved, valid specimen-wide override takes precedence. Calc EL,
+          toughness, tensile curves and gauge reconstruction all use that selected endpoint.</li>
+      </ol>
+      <p><b>Implementation safeguards:</b> reject noise-sized drops and substantial recovery before
+      confirmation. The adjacent-reading rule ranks consecutive losses; the multi-reading check ranks
+      sustained events and groups consecutive rapid increments into one leading edge.
+      It also checks for a sharper consecutive-rate transition within an accelerating lead-in.
+      When strain is available, the event's load loss per additional strain must exceed its local
+      pre-event value by more than {RAPID_RATE_CONTRAST:g}×. A force fall with no additional strain
+      supports a sharp collapse. An unusable pre-event strain baseline requires review.
+      Stop searching for sudden drops at the first 10% crossing, excluding the unloaded tail.
+      Post-crossing recovery requires review. See <i>Fracture detection details</i> below the chart for
+      this specimen’s criterion, selected row and evidence.</p>
+      <p><b>Review warnings</b> identify unresolved terminal estimates, unusable measurements or
+      conflicting evidence. A clearly detected load collapse is not flagged simply because the export
+      stopped before the standards confirmation threshold.</p>
+      <p>This combines standards-derived criteria with application safeguards; it is <b>not a claim
+      of full ASTM or ISO compliance</b>. Sampling, tracking errors and machine unloading can affect
+      selection. Use <b>Failure detail</b> to review questionable results and adjust EL if needed.</p>
+      <p>References: <a href="https://store.astm.org/e0008_e0008m-25.html" target="_blank" rel="noopener noreferrer">ASTM E8/E8M-25</a>,
+      <a href="https://www.iso.org/standard/78322.html" target="_blank" rel="noopener noreferrer">ISO 6892-1:2019</a>.</p>
+      <p>The <b>Instron EL</b> diamond is comparison-only. A value just outside the CSV range because
+      of printed-digit rounding is displayed at the boundary; hover retains the imported value.
+      Larger discrepancies are flagged, not extrapolated.</p>
+    </details>'''
 
 
 def gauge_model_help(expanded=False):
@@ -304,11 +398,13 @@ def gauge_model_help(expanded=False):
         <li>Continued deformation and elastic unloading outside the target gauge cannot
           be separated from this single gauge history. For targets longer than the AVE
           spacing, additional post-peak extension outside the measured interval is not recovered.</li>
-        <li>The endpoint is selected in acquisition order: immediately before a distinct abrupt
-          collapse, or a review-flagged terminal estimate after substantial progressive load loss.
-          Unloaded trailing readings are excluded when resolved. The terminal estimate does not
-          establish physical separation. It is not Instron’s break result or a post-fracture gauge
-          measurement. With neither endpoint supported, EL and reconstruction are unavailable.</li>
+        <li>The endpoint is selected in acquisition order: before a supported sudden load collapse,
+          otherwise immediately before load falls below 10% of peak. Clear collapses can be detected
+          without recorded ISO confirmation; truncated progressive unloading can use a review-flagged
+          terminal estimate. A valid manual selection takes
+          precedence. This is not Instron’s break result or a post-fracture gauge measurement.
+          With no supported endpoint, EL and reconstruction are unavailable. See the inspector’s
+          <i>How failure elongation is selected</i> explanation for criteria and limits.</li>
         <li>Stress values stay unchanged throughout. Reconstructed toughness is the area
           under the estimated engineering curve, not a newly measured material property.</li>
       </ul>
@@ -386,25 +482,46 @@ def inspection_summary(payload):
                   'and differences from the Instron break result do not trigger a matching failure. '
                   'The magenta hollow diamond shows Instron fracture EL on the measured CSV curve. Its strain is '
                   'imported from Instron; its stress is interpolated from CSV, not an Instron fracture-stress result. '
-                  'No marker is extrapolated if that strain lies outside the CSV range.</p>')
+                  'Only a boundary discrepancy within printed-digit rounding tolerance is snapped to the CSV boundary; '
+                  'the imported value is retained in the table and hover. Larger discrepancies are not extrapolated.</p>')
+    el_marker = instron_el_marker(payload)
+    if el_marker['snapped']:
+        result.append('<p>Instron EL marker snapped to ' + number(el_marker['strain'], 5) +
+                      '% for display (imported ' + number(el_marker['reported'], 5) + '%; rounding tolerance ±' +
+                      number(el_marker['tolerance'], 5) + ' percentage points). No measurement was changed.</p>')
     result.append('<p><b>Endpoint selection: ' + escape(el['Fracture detection status']) + '</b>' +
                   (': ' + escape(el['Fracture detection reason']) if el['Fracture detection reason'] else '') +
-                  '. The purple cross marks the selected measurement. A terminal estimate is flagged for review '
-                  'because separation is not resolved. No strain-grid interpolation or landmark shape setback '
+                  '. The purple cross marks the selected measurement. No strain-grid interpolation or landmark shape setback '
                   'is subtracted from reported EL.</p>')
     result.append('<details><summary>Fracture detection details</summary><p>' + escape(el['Fracture EL method']) +
-                  '.</p><p>Signal: ' + escape(el['Fracture load signal']) + '; rate basis: ' +
-                  escape(el['Fracture rate basis']) + '. Detected load loss: ' +
+                  '.</p><p><b>Criterion:</b> ' + escape(el['Fracture criterion'] or 'None met') +
+                  '<br>Signal: ' + escape(el['Fracture load signal']) + '; comparison: ' +
+                  escape(el['Fracture rate basis']) + '. Selected consecutive load loss: ' +
                   number(el['Fracture detected load loss (%)']) + '% of peak.</p>')
     if el['Fracture detection status'] in ('Detected', 'Estimated', 'Manual'):
         result.append('<p>Selected measurement row: ' +
                       row_number(el['Fracture bracket first row (1-based)']) + '; following row (if recorded): ' +
                       row_number(el['Fracture bracket second row (1-based)']) +
                       '; time: ' + number(el['Fracture endpoint time (s)']) + ' s.</p>')
+    if el['Fracture detection status'] != 'Manual':
+        result.append('<p>Below-10% reading: ' + row_number(el['Fracture below-10% row (1-based)']) +
+                      '; below-2% confirmation reading: ' + row_number(el['Fracture confirmation row (1-based)']) +
+                      '. Consecutive-drop ratio: ' + number(el['Fracture observed consecutive-drop ratio']) +
+                      '; noise floor: ' + number(el['Fracture noise floor (% of peak)'], 5) + '% of peak.</p>')
+    if np.isfinite(el['Fracture multi-reading event loss (% of peak)']):
+        result.append('<p><b>Multi-reading event:</b> sustained loss ' +
+                      number(el['Fracture multi-reading event loss (% of peak)']) + '% of peak; supporting window ' +
+                      row_number(el['Fracture multi-reading event window (rows)']) + ' readings. Rate basis: ' +
+                      escape(el['Fracture event rate basis']) + '. Leading edge selected from the original readings.</p>')
+        strain_contrast = el['Fracture load/strain rate contrast']
+        result.append('<p>Strain-shape check: ' + escape(el['Fracture strain-shape check']) + '. ' +
+                      ('No additional strain across the force-loss window.' if np.isinf(strain_contrast) else
+                       'Load loss per additional strain / local background: ' + number(strain_contrast) + '×.') + '</p>')
     if el['Fracture detection notes']:
         result.append('<p>' + escape(el['Fracture detection notes']) + '</p>')
     result.append('<p>EL selection: <b>' + escape(el['EL selection']) + '</b>. Automatic EL: ' +
-                  number(el['Automatic EL (%)']) + '% (' + escape(el['Automatic EL status']) + ').</p>')
+                  number(el['Automatic EL (%)']) + '% (' + escape(el['Automatic EL status']) + '). ' +
+                  escape(el['Automatic EL criterion']) + '.</p>')
     if el['EL override reason']:
         result.append('<p>Override reason: ' + escape(el['EL override reason']) +
                       '<br>Saved: ' + escape(el['EL override saved at']) + '</p>')
@@ -486,8 +603,9 @@ def inspection_summary(payload):
         result.append(f'<p>0.2% YS is interpolated between {xs[0]:.5f}% and {xs[1]:.5f}% strain, '
                       'at the first eligible crossing after the elastic-fit region and before UTS.</p>')
     result.append('<p>Uniform elongation uses the first maximum engineering stress. Tensile plots, fracture EL and '
-                  'toughness use the detected CSV drop onset, or its reconstruction when enabled. Missing detection '
-                  'is not replaced by a final reading or an Instron result; pre-peak calculations remain available.</p>')
+                  'toughness use the selected CSV endpoint, or its reconstruction when enabled. Missing detection '
+                  'is not replaced unconditionally by a final reading or an Instron result. Supported estimates '
+                  'remain review-flagged; pre-peak calculations remain available.</p>')
     result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
                   '</p><p>The measured line preserves original acquisition order. Elastic-fit points use the '
@@ -583,7 +701,8 @@ class SpecimenInspector:
         self.failure_editor.set_title(0, 'Adjust failure elongation · preview before applying')
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status, self.editor, self.failure_editor, w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
+                          self.status, w.HTML(fracture_detection_help()), self.editor, self.failure_editor,
+                          w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
                           self.gauge_status, self.chart_box, self.layers_panel, self.summary], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(self._view_changed, names='value')
