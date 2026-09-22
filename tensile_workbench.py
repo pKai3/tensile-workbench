@@ -648,7 +648,8 @@ class TensileWorkbench:
         self._check("show_both_versions", "Display both with/without-individuals versions")
         self._check("landmark_error_bars", "Landmark ±1 SD bars")
         self._check("property_error_bars", "Group mean ±1 SD bars · strength–EL plots")
-        self._check("live_update", "Live preview (on slider release)")
+        self._check("live_update", "Live preview (may be very slow)")
+        self.controls["live_update"].tooltip = "Automatically update plots when settings change, including on slider release."
         self._check("export_tables", "Include Excel tables when exporting")
         self.controls["columns"] = w.Dropdown(options=[("Stacked", 1), ("Up to 2 columns", 2), ("Up to 3 columns", 3), ("Automatic grid", 0)],
                                               description="Layout:", layout=w.Layout(width="270px"))
@@ -895,7 +896,7 @@ class TensileWorkbench:
                 return label if group in self.session.files else label + ' (unavailable)'
             self.controls["groups"].options = [(group_label(g), g) for g in choices]
             for key, control in self.controls.items():
-                value = state.get(key, {"export_tables": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS}.get(key, control.value))
+                value = state.get(key, {"export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS}.get(key, control.value))
                 if key == "groups":
                     value = tuple(self.session.visible_groups(value))
                 if isinstance(control, (self.w.IntSlider, self.w.FloatSlider)):

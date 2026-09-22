@@ -18,7 +18,7 @@ from tensile_startup import (DEFAULT_FOLDERS, DEFAULT_SAMPLE_DATA, SETTINGS_NAME
                              save_folders, save_sample_data_visibility, sample_data_settings)
 from tensile_selection import SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX, valid_specimen_id
 from tensile_workbench import FAMILIES, PreviewSession, TensileWorkbench, upgrade_legacy_demo_graph
-from workbench_project import validate_project
+from workbench_project import ProjectStore, validate_project
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +51,8 @@ class DemoDeploymentTests(unittest.TestCase):
         self.assertEqual(set(groups), set(defaults['display_names']))
         self.assertTrue(all(group.startswith(SAMPLE_GROUP_PREFIX) for group in groups))
         self.assertEqual(defaults['new_graph_defaults']['settings']['groups'], [])
+        self.assertFalse(defaults['graphs'][0]['settings']['live_update'])
+        self.assertFalse(defaults['new_graph_defaults']['settings']['live_update'])
         self.assertEqual({key: defaults[key] for key in DEFAULT_FOLDERS}, DEFAULT_FOLDERS)
         target = migrate(self.root)
         personal = deepcopy(json.loads(target.read_text()))
@@ -60,6 +62,20 @@ class DemoDeploymentTests(unittest.TestCase):
         before = target.read_bytes()
         migrate(self.root)
         self.assertEqual(target.read_bytes(), before)
+
+    def test_new_graph_disables_live_preview_even_with_old_personal_template(self):
+        target = migrate(self.root)
+        personal = json.loads(target.read_text())
+        personal['graphs'][0]['settings']['live_update'] = True
+        personal['new_graph_defaults']['settings']['live_update'] = True
+        target.write_text(json.dumps(personal))
+        store = ProjectStore(target, self.root / 'tensile_workbench_defaults.json')
+        original = deepcopy(store.data['graphs'][0])
+        project = store.add_graph()
+        self.assertFalse(project['graphs'][-1]['settings']['live_update'])
+        self.assertEqual(project['graphs'][0], original)
+        duplicate = store.add_graph(template=original)
+        self.assertTrue(duplicate['graphs'][-1]['settings']['live_update'])
 
     def test_folder_setup_keeps_primary_path_and_saves_hidden_sample_source(self):
         target = migrate(self.root)
@@ -104,7 +120,9 @@ class DemoDeploymentTests(unittest.TestCase):
         self.assertEqual(launcher.app.session.data_dir, self.root / 'data')
         self.assertTrue(launcher.app.sample_data_toggle.value)
         self.assertEqual(len(launcher.app.group_picker.boxes), 3)
-        self.assertEqual(len(launcher.app._results), 1)
+        self.assertFalse(launcher.app.controls['live_update'].value)
+        self.assertEqual(launcher.app.controls['live_update'].description, 'Live preview (may be very slow)')
+        self.assertEqual(len(launcher.app._results), 0)
         self.assertTrue(all(group.startswith(SAMPLE_GROUP_PREFIX) for group in launcher.app.state()['groups']))
         self.assertFalse(list((self.root / 'data').iterdir()))
         self.assertFalse(list((self.root / 'output').iterdir()))

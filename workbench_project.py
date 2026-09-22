@@ -197,6 +197,10 @@ class ProjectStore:
         if template is None:
             base['definition'].pop('specimen_exclusions', None)
             base['definition'].pop('specimen_inclusion_overrides', None)
+            # Older personal projects retain their own new-graph template.
+            # Apply the safe default to new graphs without changing saved ones
+            # or an explicitly duplicated graph's live-preview preference.
+            base['settings']['live_update'] = False
         existing = {g['name'].casefold() for g in project['graphs']}
         stem = base['name'] + ' copy' if template else 'New graph'
         name, number = stem, 2

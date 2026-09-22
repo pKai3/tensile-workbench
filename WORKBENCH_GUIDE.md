@@ -19,6 +19,8 @@ The Graph selector lists named graphs first, then unnamed drafts. **＋ Create n
 
 Select sample groups using the exact-name checkboxes. There is no numbered-range helper; any naming format is supported. The plot-display selector offers **Static plots** and **Interactive Plotly**.
 
+**Live preview (may be very slow)** defaults to off for fresh installations and newly created graphs. Click **Update plots** when ready. Existing graphs retain their saved preference, and duplicating a graph copies it. Enable live preview only if automatic recalculation is responsive enough on your computer.
+
 Individual hover labels across tensile, representative, scatter and both WH plots use the matched **operator specimen name**, as in the specimen table. Without that label they use the actual CSV stem, never an arbitrary curve number. WH labels stay attached to the original specimen even if another specimen has no valid WH curve. Source IDs and filenames are unchanged; publication legends remain group-only. The inspector selector also uses specimen names.
 
 ## Property tables
