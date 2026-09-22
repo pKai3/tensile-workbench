@@ -36,6 +36,11 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens .inspect {border:0;background:none;padding:0;color:#1767a5;text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere;}
     .tw-specimens .inspect:hover {text-decoration:underline;}
     .tw-specimens .inspect:focus-visible {outline:2px solid #1767a5;outline-offset:3px;}
+    .tw-specimens .source-file {margin-top:4px;font-size:11px;color:#526170;max-width:220px;}
+    .tw-specimens .source-file summary {cursor:pointer;overflow-wrap:anywhere;}
+    .tw-specimens .source-file textarea {box-sizing:border-box;width:100%;max-width:220px;resize:vertical;
+      font:11px/1.4 monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
+    .tw-specimens .assigned-row {display:block;font-size:11px;color:#526170;margin-top:3px;}
     """
     _esm = """
     export default {render({model, el}) {
@@ -90,7 +95,19 @@ class SpecimenTable(anywidget.AnyWidget):
           inspect.textContent=(row.check_warning || row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';
           inspect.setAttribute('aria-label','Inspect ' + row.group + ' / ' + row.sample);
           inspect.addEventListener('click', () => model.send({type:'inspect', context, id:row.id}));
-          tr.insertCell().append(inspect);
+          const specimenCell=tr.insertCell(); specimenCell.append(inspect);
+          if (row.csv_filename) {
+            const details=document.createElement('details'); details.className='source-file';
+            const filename=document.createElement('summary'); filename.textContent='CSV: ' + row.csv_filename;
+            filename.title='Click for the full source path';
+            const path=document.createElement('textarea'); path.readOnly=true; path.rows=4;
+            path.value=row.source_file || row.id;
+            path.setAttribute('aria-label','Source path for ' + row.csv_filename);
+            details.append(filename,path); specimenCell.append(details);
+          }
+          const assigned=document.createElement('small'); assigned.className='assigned-row';
+          assigned.textContent=row.instron_row ? 'Assigned Instron row: ' + row.instron_row : 'No assigned Instron row';
+          specimenCell.append(assigned);
           tr.title=row.id;
           const scope = document.createElement('select');
           [['global','Global default'],['graph','This graph only']].forEach(([value,label]) => {

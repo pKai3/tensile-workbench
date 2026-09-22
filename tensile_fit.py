@@ -48,5 +48,7 @@ def validate_override(override, *, saved=False):
 
 
 def fit_policy(project):
+    # Both specimen-level policies invalidate downstream calculation/plot caches.
     return {'yield_r2_warning': project.get('yield_r2_warning', DEFAULT_R2_WARNING),
-            'specimen_fit_overrides': project.get('specimen_fit_overrides', {})}
+            'specimen_fit_overrides': project.get('specimen_fit_overrides', {}),
+            'specimen_failure_overrides': project.get('specimen_failure_overrides', {})}

@@ -2,7 +2,7 @@
 import numpy as np
 import json
 from tensile_fit import validate_override, validate_threshold
-from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint, fracture_curve, fracture_audit
+from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint, fracture_curve, fracture_audit, endpoint_available
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
@@ -17,7 +17,7 @@ EL_SOURCE_FIELDS = (
 def elongation_report(record, reference, measured_properties):
     """Report distinct endpoint sources without substituting one for another.
 
-    Analysis uses the last pre-collapse measurement, not the shape-trimming point.
+    Analysis uses the selected endpoint, not the landmark shape-trimming point.
     """
     measured = record.get('_measured_record', record)
     meta = measured.get('_acquisition', {})
@@ -37,9 +37,9 @@ def elongation_report(record, reference, measured_properties):
         'CSV endpoint EL (%)': float(prepared_x[-1]) if len(prepared_x) else np.nan,
         'Reconstructed EL (%)': reconstructed,
         'EL plot source': 'Reconstruct' if enabled else 'Calc',
-        'EL analysis source': ('Reconstructed CSV-derived fracture EL' if enabled else
-                               'CSV-derived fracture EL (last pre-collapse measurement)'),
-        'Reconstructed EL endpoint source': 'Last pre-collapse CSV measurement' if enabled else '',
+        'EL analysis source': ('Reconstructed CSV-derived EL · ' if enabled else 'CSV-derived EL · ')
+                               + end.get('endpoint_kind', end['status']),
+        'Reconstructed EL endpoint source': end.get('endpoint_kind', end['status']) if enabled else '',
         'Last valid strain measurement row (1-based)': last + 1 if last is not None else np.nan,
         'Last valid strain time (s)': float(times[last]) if last is not None and last < len(times) else np.nan,
         'CSV-derived fracture EL (%)': end['strain_pct'],
@@ -73,6 +73,7 @@ def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=
         raise ValueError('yield fit fractions must satisfy 0 < low < high < 1')
     r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
     key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True),
+           json.dumps(record.get('_failure_override'), sort_keys=True),
            record.get('source_sha256'), FRACTURE_METHOD)
     cache = record.setdefault('_property_cache', {})
     if key in cache:
@@ -125,7 +126,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
         calculation['uts_index'] = peak
         p.update({'UTS (MPa)': float(y[peak]), 'Uniform elongation (%)': float(x[peak]),
                   'Failure elongation (%)': endpoint['strain_pct']})
-        if endpoint['status'] == 'Detected':
+        if endpoint_available(endpoint):
             end_x, end_y, _ = fracture_curve(record)
             p['Toughness (MJ/m^3)'] = float(np.trapezoid(end_y, end_x / 100))
     try:

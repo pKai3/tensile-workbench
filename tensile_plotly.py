@@ -115,7 +115,6 @@ def figure_to_plotly(figure, *, width=640):
     markers = {'o': 'circle', '^': 'triangle-up', 'v': 'triangle-down', 'x': 'x',
                '+': 'cross', 's': 'square', 'D': 'diamond', 'd': 'diamond', '*': 'star', '.': 'circle'}
     dashes = {'-': 'solid', '--': 'dash', ':': 'dot', '-.': 'dashdot'}
-    individual_count = {}
     for index, line in enumerate(ax.lines):
         if id(line) in caps:
             continue
@@ -135,8 +134,7 @@ def figure_to_plotly(figure, *, width=640):
         name = label if visible_label else parent[1]
         marker = str(line.get_marker())
         if faint:
-            individual_count[group] = individual_count.get(group, 0) + 1
-            name = getattr(line, '_tensile_hover_label', None) or name + f' · individual curve {individual_count[group]}'
+            name = getattr(line, '_tensile_hover_label', None) or name + ' · specimen (name unavailable)'
         elif not visible_label:
             if marker in ('o', '^', 'x'):
                 name += ' · ' + {'o': 'yield landmark', '^': 'UTS landmark', 'x': 'endpoint'}[marker]
@@ -148,13 +146,14 @@ def figure_to_plotly(figure, *, width=640):
         has_marker = marker not in ('None', '', ' ', 'none')
         mode = 'lines+markers' if has_line and has_marker else 'markers' if has_marker else 'lines'
         color = to_hex(line.get_color())
+        hover_name = getattr(line, '_tensile_hover_label', None) or name
         trace = go.Scatter(x=x.tolist(), y=y.tolist(), mode=mode, name=plain(name),
             meta=dict(legend_label=plain(name)),
             showlegend=visible_label, legendgroup=group, connectgaps=False,
             opacity=1 if line.get_alpha() is None else float(line.get_alpha()),
             line=dict(color=color, width=float(line.get_linewidth()) * 1.3, dash=dashes.get(line.get_linestyle(), 'solid')),
             marker=dict(color=color, size=float(line.get_markersize()) * 1.3, symbol=markers.get(marker, 'circle')),
-            hovertemplate=(escape(plain(name)) + '<br>' + escape(plain(ax.get_xlabel())) + ': %{x:.2f}<br>'
+            hovertemplate=(escape(plain(hover_name)) + '<br>' + escape(plain(ax.get_xlabel())) + ': %{x:.2f}<br>'
                            + escape(plain(ax.get_ylabel())) + ': %{y:.2f}<extra></extra>'),
             **error_by_line.get(id(line), {}))
         traces.append(trace)

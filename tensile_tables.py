@@ -1,6 +1,7 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
 from html import escape
 from datetime import datetime
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import uuid
@@ -103,6 +104,7 @@ SPECIMEN_METRIC_FIELDS = {
     'Failure elongation (%)': 'Failure Elongation (%)',
 }
 SPECIMEN_DETAIL_FIELDS = [
+    ('EL selection', 'EL selection'),
     ('Fit method', 'Fit method'), ('Elastic fit R²', 'Elastic Fit R2'),
     ('Width (mm)', 'Width (mm)'), ('Thickness (mm)', 'Thickness (mm)'),
     ('AVE gauge (mm)', 'AVE dot spacing (mm)'), ('Target gauge (mm)', 'Target gauge length (mm)'),
@@ -158,10 +160,11 @@ def specimen_export_frame(samples, comparisons):
     """Keep screen order and full numeric precision; append the stable audit key."""
     identity = pd.DataFrame([
         {'Include': bool(row['Included']), 'Group': row['Group'], 'Specimen': specimen_label(row),
+         'CSV file': Path(str(row['Source File'])).name, 'Instron row': row.get('Instron Row', np.nan),
          'Applies to': 'This graph only' if row['Inclusion Scope'] == 'graph' else 'Global default',
          'Exclusion reason': row['Exclusion Reason']}
         for _, row in samples.iterrows()
-    ], columns=['Include', 'Group', 'Specimen', 'Applies to', 'Exclusion reason'], index=samples.index)
+    ], columns=['Include', 'Group', 'Specimen', 'CSV file', 'Instron row', 'Applies to', 'Exclusion reason'], index=samples.index)
     result = pd.concat([identity, specimen_display_frame(samples, comparisons)], axis=1)
     result['Specimen ID'] = samples.get('Specimen ID', pd.Series(index=samples.index, dtype=object))
     return result
@@ -191,6 +194,8 @@ def specimen_table_data(samples, comparisons):
                   for name, value in display.iloc[position].items()]
         rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
                      'sample': specimen_label(row), 'reason': row['Exclusion Reason'],
+                     'csv_filename': Path(str(row['Source File'])).name, 'source_file': str(row['Source File']),
+                     'instron_row': str(int(row['Instron Row'])) if pd.notna(row.get('Instron Row')) else '',
                      'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
                      'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
                      'values': values})
@@ -204,6 +209,20 @@ def _stats(values):
             'SD': float(np.std(values, ddof=1)) if len(values) > 1 else np.nan,
             'Min': float(np.min(values)) if len(values) else np.nan,
             'Max': float(np.max(values)) if len(values) else np.nan}
+
+
+def specimen_review_mask(samples):
+    """Same review population for the banner, filter and inspector navigation.
+
+    Checks includes fracture/EL and enabled-reconstruction failures as well as
+    fit and reference problems. This is a display filter, not an exclusion.
+    """
+    flagged = pd.Series(False, index=samples.index, dtype=bool)
+    if 'Fit review required' in samples:
+        flagged |= samples['Fit review required'].fillna(False).astype(bool)
+    if 'Checks' in samples:
+        flagged |= samples['Checks'].fillna('').astype(str).str.strip().ne('')
+    return flagged
 
 
 def specimen_check_failures(properties, reference, gauge=None):
@@ -224,6 +243,8 @@ def specimen_check_failures(properties, reference, gauge=None):
     if properties.get('Fracture detection status') == 'Not detected':
         failures.append('CSV fracture not detected: ' + properties.get('Fracture detection reason', '') +
                         '. Fracture EL/toughness unavailable; inspect the full curve.')
+    if properties.get('Fracture review required'):
+        failures.append(properties.get('Fracture review reason') or 'EL endpoint needs review.')
     if gauge.get('Elongation basis') == 'Estimated standard gauge':
         if gauge.get('Gauge correction status') != 'Applied':
             failures.append('Gauge reconstruction: ' + gauge.get('Gauge correction status', 'unavailable'))
@@ -258,6 +279,7 @@ def property_tables(records, spec, engine, instron, project=None):
             fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
             saved_fit = row.get('_fit_override') or {}
             samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
+                            'Instron Row': reference['index'] if reference.get('source') else None,
                             **fit_fields, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
                             'UTS (MPa)': p['UTS (MPa)'], 'Uniform Elongation (%)': p['Uniform elongation (%)'],
                             'Failure Elongation (%)': p['Failure elongation (%)'],
@@ -272,6 +294,7 @@ def property_tables(records, spec, engine, instron, project=None):
                                'Width (mm)': reference['values'].get('width', np.nan),
                                'Thickness (mm)': reference['values'].get('thickness', np.nan)})
             diagnostics.append({**identity, 'Checks': checks, **reference.get('check_values', {}),
+                                'UTS-compatible rows (review only)': reference.get('identity_review_note', ''),
                                 **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
                                 'R2 warning threshold': p['R2 warning threshold'], 'Fit Point Count': p['Fit point count'],
                                 'Fit Lower Strain (%)': p['Fit lower strain (%)'], 'Fit Upper Strain (%)': p['Fit upper strain (%)'],
@@ -414,7 +437,7 @@ def summary_html(details):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None):
         from tensile_inspector import SpecimenInspector
         w = widgets
         self.frames = {}
@@ -426,7 +449,8 @@ class PropertyTablesView:
             layout=w.Layout(width='300px'))
         self.threshold_status = w.HTML('Applies to all graphs; warning only.')
         self.threshold.observe(self._threshold_changed, names='value')
-        self.review_only = w.Checkbox(value=False, description='Only fits needing review', indent=False,
+        self.review_only = w.Checkbox(value=False, description='Only specimens needing review', indent=False,
+                                     tooltip='Fit, fracture/EL, gauge reconstruction and Instron checks. Does not exclude specimens.',
                                      layout=w.Layout(width='auto'))
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
@@ -435,7 +459,7 @@ class PropertyTablesView:
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
-        self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply)
+        self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply, on_failure_apply=on_failure_apply)
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
         specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
@@ -493,7 +517,7 @@ class PropertyTablesView:
             return frame
         if self.review_only.value and 'Specimen ID' in frame:
             samples = self.frames['tensile_samples']
-            ids = set(samples.loc[samples['Fit review required'], 'Specimen ID'])
+            ids = set(samples.loc[specimen_review_mask(samples), 'Specimen ID'])
             frame = frame[frame['Specimen ID'].isin(ids)]
         text = self.filter.value.strip().casefold()
         if text:
@@ -576,10 +600,10 @@ class PropertyTablesView:
         self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
                                'SD requires at least two values. “—” means unavailable. '
-                               'Elongation: Instron = reported break result; Calc = detected CSV fracture EL; '
+                               'Elongation: Instron = reported break result; Calc = selected CSV endpoint; '
                                'Reconstruct = its gauge reconstruction, blank unless enabled and available. '
-                               'Instron columns remain available for uniform elongation and tensile toughness. Missing fracture detection is '
-                               'flagged in Checks; no final-reading fallback is used. '
+                               'Instron columns remain available for uniform elongation and tensile toughness. '
+                               'Missing endpoints and terminal estimates needing review are flagged in Checks. '
                                'Results display two decimals; elastic-fit R² and fit-strain details display five. '
                                'Calculations and checks retain full precision.</p>'
                                + basis_note + summary_html(summary))
@@ -589,10 +613,16 @@ class PropertyTablesView:
                                'Unchecked specimens stay here for review and in the specimen export. '
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '
-                               'Click a specimen name to inspect calculations and exact comparison values.</p>'
+                               'Click a specimen name to inspect calculations and exact comparison values. '
+                               'Below each name, <b>CSV</b> is the actual filename and <b>Assigned Instron row</b> is its '
+                               'current summary assignment; the main name is the assigned operator label. '
+                               'Click the filename for its full path. UTS-compatible alternatives in Checks are '
+                               'review hints only, scoped to that dataset; nothing is renamed or rematched.</p>'
                                '<p>For elongation, <b>Instron</b> is the reported break result, <b>Calc</b> is the '
-                               'detected CSV drop onset before any landmark shape setback, and <b>Reconstruct</b> '
+                               'selected CSV endpoint before any landmark shape setback, and <b>Reconstruct</b> '
                                'is its gauge reconstruction, blank unless enabled and available. '
+                               'Terminal estimates are flagged because separation is not resolved. '
+                               '<b>EL selection</b> identifies manual overrides; edit or restore them in the inspector. '
                                'Uniform elongation and tensile toughness retain <b>Calc / Instron</b> columns; '
                                'Calc toughness uses the selected measured/reconstructed basis. “—” means unavailable. '
                                'Instron uniform elongation is imported when supplied; toughness import is not yet supported. '
@@ -606,6 +636,6 @@ class PropertyTablesView:
             self.specimens.context = uuid.uuid4().hex
         self.inspector.set_rows(rows)
         included = int(samples['Included'].sum()) if not samples.empty else 0
-        flagged = int(samples['Checks'].fillna('').ne('').sum()) if not samples.empty else 0
+        flagged = int(specimen_review_mask(samples).sum())
         self.status.value = (f'{len(samples)} displayed specimens · {included} included · {flagged} needing review. '
                              'Search/sort only change the view; Include changes the analysis.')

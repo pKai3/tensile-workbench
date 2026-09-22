@@ -1,7 +1,7 @@
 """Per-group post-peak AVE gauge reconstruction; never mutate measurements."""
 from copy import deepcopy
 import math
-from tensile_fracture import fracture_endpoint, fracture_curve
+from tensile_fracture import fracture_endpoint, fracture_curve, endpoint_available
 
 def validate_group_policy(policy):
     if not isinstance(policy, dict) or not isinstance(policy.get('enabled', False), bool):
@@ -38,7 +38,7 @@ def migrate_group_gauges(project):
 def group_basis_label(state, spec, group):
     policy = group_policy(state, spec, group)
     return (f"Reconstructed CSV-derived fracture EL · target {policy['target_gauge_mm']:.2f} mm"
-            if policy['enabled'] else 'CSV-derived fracture EL · detected drop onset')
+            if policy['enabled'] else 'CSV-derived EL · selected endpoint')
 
 
 def acquisition_metadata(engine, frame, units, strain, stress):
@@ -90,17 +90,18 @@ def gauge_record(record, reference, enabled, target):
     view['_measured_record'] = record
     view['_gauge'] = audit
     endpoint = fracture_endpoint(record)
+    audit['Failure endpoint'] = endpoint.get('endpoint_kind', '')
     view['_fracture'] = endpoint
     view['failure_elongation_pct'] = endpoint['strain_pct']
     # Uncorrected and reconstructed tensile views share this exact endpoint.
     # Keep the original full curve on _measured_record for inspection and WH.
-    if endpoint['status'] == 'Detected':
+    if endpoint_available(endpoint):
         measured_x, measured_y, ids = fracture_curve(record)
         view.update(strain_pct=measured_x, raw_strain_pct=measured_x,
                     stress_mpa=measured_y, raw_stress_mpa=measured_y,
                     _measurement_indices=ids)
     try:
-        if endpoint['status'] != 'Detected':
+        if not endpoint_available(endpoint):
             raise ValueError('CSV fracture not detected: ' + endpoint['reason'])
         if not np.isfinite(dots) or dots <= 0:
             raise ValueError('Missing or conflicting Strain 1 gauge length in Instron summary')
@@ -156,7 +157,7 @@ def gauge_record(record, reference, enabled, target):
                       'Strain at peak force (%)': eu, 'Measured endpoint strain (%)': ef,
                       'Failure measurement row (1-based)': endpoint['row_before'],
                       'Failure time (s)': endpoint['time_s'],
-                      'Failure time basis': 'Original timestamp at selected pre-collapse measurement',
+                      'Failure time basis': 'Original timestamp at selected endpoint measurement',
                       'Failure endpoint stress (MPa)': endpoint['stress_mpa']})
         if enabled:
             view.update(strain_pct=corrected, raw_strain_pct=corrected,

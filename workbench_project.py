@@ -12,6 +12,7 @@ import uuid
 from tensile_selection import valid_specimen_id
 from tensile_fit import validate_threshold, validate_override
 from tensile_gauge import validate_group_policy
+from tensile_fracture import validate_failure_override
 
 
 class ProjectConflict(RuntimeError):
@@ -43,6 +44,22 @@ def validate_project(project):
         for key in ('before', 'after'):
             if event.get(key) is not None:
                 validate_override(event[key], saved=True)
+    overrides = project.get('specimen_failure_overrides', {})
+    if not isinstance(overrides, dict):
+        raise ValueError('Specimen failure EL overrides must be a mapping.')
+    for ident, override in overrides.items():
+        if not valid_specimen_id(ident):
+            raise ValueError('Failure EL overrides must use relative specimen identities.')
+        validate_failure_override(override, saved=True)
+    history = project.get('specimen_failure_history', [])
+    if not isinstance(history, list):
+        raise ValueError('Failure EL override history must be a list.')
+    for event in history:
+        if not isinstance(event, dict) or not valid_specimen_id(event.get('specimen_id')):
+            raise ValueError('Invalid failure EL history specimen identity.')
+        for key in ('before', 'after'):
+            if event.get(key) is not None:
+                validate_failure_override(event[key], saved=True)
     graphs = project.get('graphs', [])
     if not graphs:
         raise ValueError('A project needs at least one graph definition.')

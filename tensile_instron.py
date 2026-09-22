@@ -187,6 +187,59 @@ def _export_identity(source):
     return dataset, int(index[1]) if index else None
 
 
+def _identity_review(result, record, summary_rows):
+    """Read-only UTS-compatible alternatives within the named dataset, never rematch."""
+    source = Path(record['source_file'])
+    dataset, export_row = _export_identity(source)
+    result.update(csv_filename=source.name, export_row=export_row, dataset=dataset or '',
+                  uts_review_candidates=[])
+    audit = result.get('check_values', {})
+    raw = audit.get('UTS raw CSV maximum (MPa)', np.nan)
+    difference = audit.get('UTS check difference (MPa)', np.nan)
+    tolerance = audit.get('UTS check tolerance (MPa)', np.nan)
+    if not np.isfinite(raw) or (np.isfinite(difference) and np.isfinite(tolerance)
+                               and abs(difference) <= tolerance + 1e-12):
+        return result
+    if not dataset or not summary_rows:
+        return result
+    meta = record.get('_measured_record', record).get('_acquisition', {})
+    raw_resolution = meta.get('check_resolution', {}).get('uts', np.nan)
+    by_index = {}
+    for row in summary_rows:
+        by_index.setdefault(row['index'], []).append(row)
+    for index, rows in sorted(by_index.items()):
+        # Do not recommend one revision when another disagrees, or treat
+        # duplicate rows within a single summary as an unambiguous candidate.
+        values = [row['values'].get('uts', np.nan) for row in rows]
+        resolutions = [row.get('resolution', {}).get('uts', np.nan) for row in rows]
+        labels = {row['label'] for row in rows if row['label']}
+        if (len({row['source'] for row in rows}) != len(rows) or len(labels) > 1
+                or not all(np.isfinite(values)) or not all(np.isfinite(resolutions))
+                or not np.allclose(values, values[0], rtol=0, atol=1e-9)):
+            continue
+        reported = values[0]
+        allowed = (min(resolutions) / 2 + (raw_resolution / 2 if np.isfinite(raw_resolution) else 0)
+                   + 1e-9 * max(1, abs(raw), abs(reported)))
+        if abs(raw - reported) > allowed + 1e-12:
+            continue
+        result['uts_review_candidates'].append({
+            'row': index, 'label': next(iter(labels), ''), 'uts_mpa': reported,
+            'difference_mpa': raw - reported, 'tolerance_mpa': allowed,
+            'sources': sorted({row['source'] for row in rows}),
+            'excluded': any(row['excluded'] for row in rows),
+        })
+    hints = []
+    for candidate in result['uts_review_candidates']:
+        sources = ', '.join(sorted({Path(path).name for path in candidate['sources']}))
+        label = candidate['label'] or '(no operator label)'
+        hints.append(f'row {candidate["row"]} · {label} · {candidate["uts_mpa"]:.2f} MPa'
+                     f' [{sources}]' + (' (Instron excluded)' if candidate['excluded'] else ''))
+    result['identity_review_note'] = ('UTS-compatible rows — review only:\n' + '\n'.join(hints)
+        if hints else 'No UTS-compatible alternative in this dataset’s available summaries.')
+    result['check_failures'].append(result['identity_review_note'])
+    return result
+
+
 class InstronSummaries:
     def __init__(self, data_directory, group_directories=None):
         self.root = Path(data_directory)
@@ -204,6 +257,7 @@ class InstronSummaries:
         source = Path(record['source_file'])
         embedded = self.read(source)
         dataset, index = _export_identity(source)
+        review_rows = []
         if embedded:
             candidates = embedded if len(embedded) == 1 else [row for row in embedded if row['index'] == index]
             method = 'Embedded CSV summary'
@@ -213,11 +267,12 @@ class InstronSummaries:
                 self._groups[group] = [(path, self.read(path)) for path in csv_files(directory)
                                        if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
             candidates = []
-            if dataset is not None and index is not None:
+            if dataset is not None:
                 for path, rows in self._groups[group]:
                     # Instron names group summaries dataset.csv, dataset_1.csv,
                     # or dataset_1_1.csv. Do not attach unrelated summaries.
                     if re.fullmatch(re.escape(dataset) + r'(?:_\d+){0,2}', path.stem, re.I):
+                        review_rows.extend(rows)
                         candidates.extend(row for row in rows if row['index'] == index)
             method = 'Dataset + Instron row number'
             if not candidates:
@@ -230,7 +285,7 @@ class InstronSummaries:
         if not candidates:
             if dataset is None or index is None:
                 result['notes'] = 'No embedded summary or unambiguous dataset/row identity. No numerical matching attempted.'
-            return _verify_reference(result, record, False)
+            return _identity_review(_verify_reference(result, record, False), record, review_rows)
         # Multiple summary revisions may agree numerically but differ in labels.
         # Preserve non-conflicting fields; never select a conflicting value.
         values, resolution, conflicts = {}, {}, []
@@ -273,4 +328,4 @@ class InstronSummaries:
             name_failures.append(f'Name: export row {index} differs from the embedded summary row.')
         if len(labels) > 1:
             name_failures.append('Name: conflicting operator specimen labels across summary revisions.')
-        return _verify_reference(result, record, name_ok, name_failures)
+        return _identity_review(_verify_reference(result, record, name_ok, name_failures), record, review_rows)

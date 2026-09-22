@@ -32,7 +32,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
-from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve
+from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
 from tensile_selection import csv_files
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
@@ -798,7 +798,7 @@ def build_tensile_mean_tail(curves, points, settings, fracture_ends=None):
     ends = (list(fracture_ends) if fracture_ends is not None else
             [tensile_fracture_onset(x, y, slope_fraction) for x, y in clean])
     if len(ends) != len(clean) or not np.isfinite(ends).all():
-        return empty, empty, empty, empty, 'CSV fracture not detected; no terminal-strain substitution'
+        return empty, empty, empty, empty, 'No supported CSV endpoint; review required'
     end = min(ends)-setback
     target = float(np.mean(ends))
     if end <= start:
@@ -917,8 +917,9 @@ def render_average_plot(models, records, out_path, family, show_individual,
         color = color_map[group]
         label = f"{get_display_name(group, name_overrides)} (n={len(records[group])})"
         if show_individual:
-            for record in records[group]:
-                ax.plot(record["strain_pct"], record["stress_mpa"], color=color, alpha=.18, lw=.7)
+            for record, specimen in zip(records[group], scatter_specimen_labels(records[group])):
+                line, = ax.plot(record["strain_pct"], record["stress_mpa"], color=color, alpha=.18, lw=.7)
+                line._tensile_hover_label = f'{group} · {specimen}'
         if family in ("pointwise", "comparison"):
             ax.plot(pointwise["measured_x"], pointwise["measured_y"], color=color, label=label, lw=1.8)
             if len(pointwise["predicted_x"]):
@@ -1041,17 +1042,23 @@ def render_representative_tensile_plot(
         if representative is None:
             continue
 
+        specimen_labels = scatter_specimen_labels(groups_records[group_name])
         if show_individual:
-            for record in groups_records[group_name]:
-                plt.plot(record["strain_pct"], record["stress_mpa"],
-                         lw=.7, alpha=.18, color=color_map[group_name])
-        plt.plot(
+            for record, specimen in zip(groups_records[group_name], specimen_labels):
+                line, = plt.plot(record["strain_pct"], record["stress_mpa"],
+                                 lw=.7, alpha=.18, color=color_map[group_name])
+                line._tensile_hover_label = f'{group_name} · {specimen}'
+        line, = plt.plot(
             representative["strain_pct"],
             representative["stress_mpa"],
             lw=1.6,
             color=color_map[group_name],
             label=get_display_name(group_name, name_overrides),
         )
+        for record, specimen in zip(groups_records[group_name], specimen_labels):
+            if record is representative:
+                line._tensile_hover_label = f'{group_name} · {specimen} (representative)'
+                break
         print(
             f"[REP] {out_path.stem}: {group_name} -> "
             f"{representative['sample']} "
@@ -1092,6 +1099,7 @@ def render_work_hardening_plot(
     num_points=WH_POINTS,
     wh_filter_settings=None,
     preview=False,
+    specimen_labels=None,
 ):
     """
     Plot theta = d(true stress)/d(true plastic strain) up to uniform elongation.
@@ -1159,8 +1167,11 @@ def render_work_hardening_plot(
         color = color_map[group_name]
 
         if show_individual:
-            for eps_p_pct, theta in wh_curves:
-                plt.plot(eps_p_pct, theta, alpha=0.18, lw=0.7, color=color)
+            labels = (specimen_labels or {}).get(group_name, [])
+            for specimen_index, (eps_p_pct, theta) in zip(wh_indices, wh_curves):
+                line, = plt.plot(eps_p_pct, theta, alpha=0.18, lw=0.7, color=color)
+                if specimen_index < len(labels):
+                    line._tensile_hover_label = f'{group_name} · {labels[specimen_index]}'
 
         plt.plot(
             grid_pct,
@@ -1198,12 +1209,12 @@ def render_work_hardening_plot(
     return finish_plot(plt.gcf(), out_path, preview)
 
 def scatter_specimen_labels(rows):
-    """Short display labels only; source identities and table paths are unchanged."""
-    stems = [str(record['sample']) for record in rows]
-    numbered = [re.fullmatch(r'(.*)[ _-](\d+)', stem) for stem in stems]
-    common_prefix = (all(numbered) and len({match[1] for match in numbered}) == 1
-                     and len({match[2] for match in numbered}) == len(rows))
-    labels = [f'specimen {match[2]}' for match in numbered] if common_prefix else stems
+    """Specimen names for every plot; source identities are never renamed.
+
+    Prefer the matched operator label used by the specimen table. With no
+    summary label, use the actual CSV stem, never a position in the plotted list.
+    """
+    labels = [str(record.get('specimen_label') or record['sample']).strip() for record in rows]
     labels = [label if len(label) <= 48 else label[:18] + '…' + label[-29:] for label in labels]
     # Repeated basenames in nested exports must not become indistinguishable.
     duplicates = {label for label in labels if labels.count(label) > 1}
@@ -1222,7 +1233,7 @@ def render_strength_elongation_plot(
 ):
     """Measured specimen properties and paired group means; no mean-curve fits.
 
-    EL is CSV-derived drop onset (or its reconstruction), as in the specimen tables.
+    EL is the selected CSV endpoint (or its reconstruction), as in the tables.
     A point requires both EL and strength. Means and sample SDs use exactly
     those paired specimens; unresolved yield must never be replaced by zero.
     """
@@ -1293,7 +1304,7 @@ def render_strength_elongation_plot(
         note += ' Bars: ±1 sample SD (n ≥ 2).'
     if show_individual:
         note += ' Faint circles: individual specimens.'
-    note += '\nEL = detected CSV drop onset or its reconstruction; properties calculated per specimen.'
+    note += '\nEL = selected CSV endpoint or its reconstruction; properties calculated per specimen.'
     print('[PLOT INFO] ' + note.replace('\n', ' '))
     figure.tight_layout()
     return finish_plot(figure, out_path, preview)
@@ -1321,7 +1332,7 @@ def render_landmark_work_hardening_plot(
     title="Landmark-derived work-hardening response",
     youngs_modulus_mpa=YOUNGS_MODULUS_MPA, youngs_modulus_overrides=None,
     min_plastic_strain_percent=WH_MIN_PLASTIC_STRAIN_PERCENT, num_points=WH_POINTS,
-    wh_filter_settings=None, preview=False,
+    wh_filter_settings=None, preview=False, specimen_labels=None,
 ):
     """Plot the derivative of each landmark mean; optional faint specimen rates."""
     if not np.isfinite(youngs_modulus_mpa) or youngs_modulus_mpa <= 0:
@@ -1359,12 +1370,15 @@ def render_landmark_work_hardening_plot(
         x, theta = x[valid], theta[valid]
         color = color_map[group]
         if show_individual:
+            labels = (specimen_labels or {}).get(group, [])
             for specimen_index, (strain, stress) in enumerate(groups_curves[group]):
                 individual = compute_work_hardening_curve(strain, stress, **settings)
                 if individual is not None:
                     ix, iy, _ = individual
                     iv = np.isfinite(ix) & np.isfinite(iy)
-                    ax.plot(ix[iv], iy[iv], color=color, alpha=.18, lw=.7)
+                    line, = ax.plot(ix[iv], iy[iv], color=color, alpha=.18, lw=.7)
+                    if specimen_index < len(labels):
+                        line._tensile_hover_label = f'{group} · {labels[specimen_index]}'
                     if not hasattr(figure, '_export_wh'):
                         figure._export_wh = []
                     figure._export_wh.append(('WH individuals', group, specimen_index, ix[iv], iy[iv]))
@@ -1457,10 +1471,10 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
     source_knots = target_knots = np.array([x[0], yield_x, peak_x])
     if not prepeak_only:
         endpoint = fracture_endpoint(record)
-        if endpoint['status'] != 'Detected':
+        if not endpoint_available(endpoint):
             raise ValueError('CSV fracture not detected: ' + endpoint['reason'])
         end_x = endpoint['strain_pct']
-        # The detected onset sets reported EL. Only the shape endpoint retreats.
+        # The selected measurement sets reported EL. Only the shape endpoint retreats.
         # Re-use measured detection; a reconstructed curve has no unloading drop.
         clean_end = end_x - LANDMARK_PREBREAK_MARGIN_PERCENT
         if clean_end <= peak_x:

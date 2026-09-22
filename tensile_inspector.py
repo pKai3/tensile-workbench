@@ -1,10 +1,14 @@
 """On-demand specimen inspection and explicitly applied fit-override previews."""
 from copy import deepcopy
 from html import escape
+from pathlib import Path
 
 import numpy as np
 from tensile_properties import specimen_calculation, elongation_report
 from tensile_fit import fit_display_places
+from tensile_fracture import (endpoint_available, automatic_fracture_endpoint, failure_measurements,
+                              failure_row_for_strain, manual_failure_endpoint, fracture_curve)
+from tensile_gauge import gauge_record
 
 # Stable display-layer IDs: visibility never changes measurements/calculations.
 INSPECTOR_LAYERS = {
@@ -19,6 +23,7 @@ INSPECTOR_LAYERS = {
     'manual_fit': ('Yield & fit', True),
     'uts': ('Peak', True),
     'fracture_calc': ('Fracture', True),
+    'fracture_automatic': ('Fracture', True),
     'fracture_instron': ('Fracture', True),
     'fracture_reconstructed': ('Fracture', True),
     'peak_raw': ('Diagnostics', True),
@@ -66,6 +71,8 @@ def inspection_ranges(calculation, mode='yield'):
 
 
 def overlay_ranges(payload, mode='yield', show_gauge=False):
+    if mode == 'failure':
+        return failure_detail_ranges(payload, show_gauge)
     xrange, yrange = inspection_ranges(payload['calculation'], mode)
     reported_el = payload['reference'].get('values', {}).get('el', np.nan)
     if mode == 'full' and np.isfinite(reported_el):
@@ -82,6 +89,47 @@ def overlay_ranges(payload, mode='yield', show_gauge=False):
     return xrange, yrange
 
 
+def failure_detail_ranges(payload, show_gauge=False):
+    """Zoom around endpoint candidates and the recorded tail, without selecting EL."""
+    calc = payload['calculation']
+    acquisition = payload['record'].get('_acquisition', {})
+    x = np.asarray(acquisition.get('strain', calc['strain_pct']), dtype=float)
+    y = np.asarray(acquisition.get('stress', calc['stress_mpa']), dtype=float)
+    valid = np.isfinite(x) & np.isfinite(y) & (x >= 0)
+    if not valid.any():
+        return inspection_ranges(calc, 'full')
+    xs, ys = x[valid], y[valid]
+    anchors = [float(xs[-1])]
+    marker_stresses = []
+    ends = [calc['fracture']]
+    if payload['record'].get('_failure_override'):
+        ends.append(automatic_fracture_endpoint(payload['record']))
+    for endpoint in ends:
+        if endpoint_available(endpoint):
+            anchors.append(float(endpoint['strain_pct']))
+            marker_stresses.append(float(endpoint['stress_mpa']))
+    reported = payload['reference'].get('values', {}).get('el', np.nan)
+    if np.isfinite(reported):
+        anchors.append(float(reported))
+    preview = payload.get('gauge_preview')
+    if show_gauge and preview and preview['_gauge']['Gauge correction status'] == 'Applied':
+        gx, gy = np.asarray(preview['strain_pct'], float), np.asarray(preview['stress_mpa'], float)
+        usable = np.isfinite(gx) & np.isfinite(gy)
+        xs, ys = np.concatenate([xs, gx[usable]]), np.concatenate([ys, gy[usable]])
+        anchors.append(float(preview['_gauge']['Estimated failure elongation (%)']))
+    # A little necking context, rather than a microscopic view of one point.
+    padding = max(.05, .06 * float(np.ptp(x[valid])), .12 * (max(anchors) - min(anchors)))
+    left, right = min(anchors) - padding, max(anchors) + padding
+    local_y = ys[(xs >= left) & (xs <= right)]
+    local_y = np.concatenate([local_y, np.asarray(marker_stresses, float)])
+    local_y = local_y[np.isfinite(local_y)]
+    if not len(local_y):
+        return [left, right], inspection_ranges(calc, 'full')[1]
+    low, high = float(local_y.min()), float(local_y.max())
+    ypad = max(1., .08 * (high - low), .02 * abs(high))
+    return [left, right], [low - ypad, high + ypad]
+
+
 def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     """Plot original measurements and prepared fit points, never an averaged curve."""
     import plotly.graph_objects as go
@@ -92,13 +140,13 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
     fig = go.Figure()
 
     def line(name, xs, ys, color, *, layer, **kwargs):
-        places = 5 if mode == 'yield' or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
+        places = 5 if mode in ('yield', 'failure') or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
             name=name, mode='lines', line=dict(color=color, **kwargs), meta={'inspector_layer': layer},
             hovertemplate=escape(name) + '<br>Strain: %{x:.' + str(places) + 'f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
     def points(name, xs, ys, color, symbol='circle', size=9, *, layer):
-        places = 5 if mode == 'yield' or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
+        places = 5 if mode in ('yield', 'failure') or INSPECTOR_LAYERS[layer][0] == 'Yield & fit' else 2
         fig.add_trace(go.Scatter(x=np.asarray(xs).tolist(), y=np.asarray(ys).tolist(),
             name=name, mode='markers', marker=dict(color=color, symbol=symbol, size=size), meta={'inspector_layer': layer},
             hovertemplate=escape(name) + '<br>Strain: %{x:.' + str(places) + 'f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
@@ -157,14 +205,20 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
         points(name, [acquisition['strain'][raw_peak]], [acquisition['stress'][raw_peak]],
                '#dc2626', 'triangle-up-open', 13, layer='peak_raw')
     fracture = calculation['fracture']
-    if fracture['status'] == 'Detected':
-        points('Calc EL', [fracture['strain_pct']],
+    if payload['record'].get('_failure_override'):
+        automatic = automatic_fracture_endpoint(payload['record'])
+        if endpoint_available(automatic):
+            points('Automatic EL', [automatic['strain_pct']], [automatic['stress_mpa']],
+                   '#64748b', 'circle-open', 12, layer='fracture_automatic')
+    if endpoint_available(fracture):
+        label = {'Estimated': 'Calc EL (terminal estimate)', 'Manual': 'Calc EL (manual override)'}.get(fracture['status'], 'Calc EL')
+        points(label, [fracture['strain_pct']],
                [fracture['stress_mpa']], '#9333ea', 'x', 12, layer='fracture_calc')
         fig.add_vline(x=fracture['strain_pct'], name='inspector:fracture_guide',
                       line_dash='dot', line_color='#9333ea', line_width=1)
-    elif mode == 'full':
+    elif mode in ('full', 'failure'):
         fig.add_annotation(x=.02, y=.98, xref='paper', yref='paper', showarrow=False,
-                           text='CSV fracture not detected — no terminal-strain fallback',
+                           text='No supported EL endpoint — review the full curve',
                            xanchor='left', font=dict(color='#b45309'))
     reported = payload['reference'].get('values', {}).get('ys', np.nan)
     if np.isfinite(reported) and len(x):
@@ -195,7 +249,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
                 marker=dict(color='#be185d', symbol='diamond-open', size=14, line=dict(width=2)),
                 hovertemplate='Instron fracture EL: %{x:.2f}%<br>CSV-interpolated stress: %{y:.2f} MPa'
                               '<br>Strain from Instron summary; stress is not an Instron break result<extra></extra>'))
-        elif mode == 'full':
+        elif mode in ('full', 'failure'):
             fig.add_annotation(x=.02, y=.89, xref='paper', yref='paper', showarrow=False,
                 text='Instron fracture EL outside CSV range — no marker extrapolated',
                 xanchor='left', font=dict(color='#be185d'))
@@ -250,10 +304,11 @@ def gauge_model_help(expanded=False):
         <li>Continued deformation and elastic unloading outside the target gauge cannot
           be separated from this single gauge history. For targets longer than the AVE
           spacing, additional post-peak extension outside the measured interval is not recovered.</li>
-        <li>The failure endpoint is the last recorded point before a detected sustained
-          load collapse, selected in original acquisition order without a strain setback.
-          It is a heuristic selection, not Instron’s break result or a post-fracture gauge measurement.
-          If no drop is detected, fracture EL and reconstruction are unavailable.</li>
+        <li>The endpoint is selected in acquisition order: immediately before a distinct abrupt
+          collapse, or a review-flagged terminal estimate after substantial progressive load loss.
+          Unloaded trailing readings are excluded when resolved. The terminal estimate does not
+          establish physical separation. It is not Instron’s break result or a post-fracture gauge
+          measurement. With neither endpoint supported, EL and reconstruction are unavailable.</li>
         <li>Stress values stay unchanged throughout. Reconstructed toughness is the area
           under the estimated engineering curve, not a newly measured material property.</li>
       </ul>
@@ -288,12 +343,16 @@ def inspection_summary(payload):
               '.tw-inspect-summary li{margin:5px 0}'
               '.tw-inspect-warning{padding:8px;background:#fff4dc;border-left:3px solid #d97706}</style>',
               '<div class="tw-inspect-summary">',
-              '<p><b>' + escape(payload['group'] + ' · ' + payload['sample']) + '</b> · ' +
+              '<p><b>' + escape(payload['group'] + ' · ' + (reference.get('label') or payload['sample'])) + '</b> · ' +
               ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
     result.append('<p>Inclusion: ' + ('explicit override for this graph' if payload.get('selection_scope') == 'graph'
                                     else 'inherited from the global default') + '.</p>')
     if reference.get('label'):
         result.append('<p>Operator specimen/location label: <b>' + escape(reference['label']) + '</b></p>')
+    result.append('<p><b>CSV:</b> ' + escape(Path(payload['source_file']).name) +
+                  ' · <b>Assigned Instron row:</b> ' + escape(str(reference.get('index') if reference.get('source') else 'Unavailable')) +
+                  '<br><b>Summary:</b> ' + escape('; '.join(Path(path).name for path in
+                    reference.get('source', '').split('; ') if path) or 'Unavailable') + '</p>')
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
     show_automatic = bool(calculation.get('automatic_calculation'))
@@ -320,31 +379,35 @@ def inspection_summary(payload):
             ('Instron summary EL', 'Instron summary EL (%)', 'Imported Instron Strain 1 at break result.'),
             ('Last valid CSV strain', 'Last valid CSV strain (%)', 'Last finite strain in original acquisition order, not necessarily fracture.'),
             ('Max retained CSV strain', 'CSV endpoint EL (%)', 'Maximum strain after preparation; audit only, not used as fracture EL.'),
-            ('CSV-derived fracture EL', 'CSV-derived fracture EL (%)', 'Last recorded point before detected load collapse; no strain setback.'),
-            ('Reconstructed EL', 'Reconstructed EL (%)', 'Gauge reconstruction of detected CSV fracture EL; blank unless enabled and available.')):
+            ('Calc EL', 'CSV-derived fracture EL (%)', el['Fracture endpoint kind'] or 'No supported endpoint.'),
+            ('Reconstructed EL', 'Reconstructed EL (%)', 'Gauge reconstruction of the selected Calc endpoint; blank unless enabled and available.')):
         result.append('<tr><td>' + escape(label) + '</td><td>' + number(el[key]) + '</td><td>' + escape(description) + '</td></tr>')
     result.append('</table><p>These endpoint definitions are distinct. EL is not used to verify specimen identity, '
                   'and differences from the Instron break result do not trigger a matching failure. '
                   'The magenta hollow diamond shows Instron fracture EL on the measured CSV curve. Its strain is '
                   'imported from Instron; its stress is interpolated from CSV, not an Instron fracture-stress result. '
                   'No marker is extrapolated if that strain lies outside the CSV range.</p>')
-    result.append('<p><b>Fracture detection: ' + escape(el['Fracture detection status']) + '</b>' +
+    result.append('<p><b>Endpoint selection: ' + escape(el['Fracture detection status']) + '</b>' +
                   (': ' + escape(el['Fracture detection reason']) if el['Fracture detection reason'] else '') +
-                  '. The purple cross marks the last recorded point before the selected load collapse. '
-                  'Detection uses acquisition order, distinguishes rapid loss from preceding necking and rejects '
-                  'drops that recover. Review the selection against the full curve. No strain-grid interpolation '
-                  'or landmark shape setback is subtracted from reported EL.</p>')
+                  '. The purple cross marks the selected measurement. A terminal estimate is flagged for review '
+                  'because separation is not resolved. No strain-grid interpolation or landmark shape setback '
+                  'is subtracted from reported EL.</p>')
     result.append('<details><summary>Fracture detection details</summary><p>' + escape(el['Fracture EL method']) +
                   '.</p><p>Signal: ' + escape(el['Fracture load signal']) + '; rate basis: ' +
                   escape(el['Fracture rate basis']) + '. Detected load loss: ' +
                   number(el['Fracture detected load loss (%)']) + '% of peak.</p>')
-    if el['Fracture detection status'] == 'Detected':
-        result.append('<p>Selected pre-collapse measurement row: ' +
-                      row_number(el['Fracture bracket first row (1-based)']) + '; first collapse row: ' +
+    if el['Fracture detection status'] in ('Detected', 'Estimated', 'Manual'):
+        result.append('<p>Selected measurement row: ' +
+                      row_number(el['Fracture bracket first row (1-based)']) + '; following row (if recorded): ' +
                       row_number(el['Fracture bracket second row (1-based)']) +
                       '; time: ' + number(el['Fracture endpoint time (s)']) + ' s.</p>')
     if el['Fracture detection notes']:
         result.append('<p>' + escape(el['Fracture detection notes']) + '</p>')
+    result.append('<p>EL selection: <b>' + escape(el['EL selection']) + '</b>. Automatic EL: ' +
+                  number(el['Automatic EL (%)']) + '% (' + escape(el['Automatic EL status']) + ').</p>')
+    if el['EL override reason']:
+        result.append('<p>Override reason: ' + escape(el['EL override reason']) +
+                      '<br>Saved: ' + escape(el['EL override saved at']) + '</p>')
     result.append('</details>')
     from tensile_tables import specimen_check_failures
     failures = specimen_check_failures(p, reference,
@@ -439,9 +502,11 @@ def inspection_summary(payload):
 
 class SpecimenInspector:
     """Create one disposable interactive figure only when a specimen is selected."""
-    def __init__(self, widgets, loader=None, on_apply=None):
+    def __init__(self, widgets, loader=None, on_apply=None, on_failure_apply=None):
         self.w, self.loader = widgets, loader
         self.on_apply = on_apply
+        self.on_failure_apply = on_failure_apply
+        self._failure_sync, self._failure_draft = False, None
         self._painting, self._editing, self._draft = False, False, None
         self._updating, self._payload, self.chart, self._probe = False, None, None, None
         self._layer_choices, self._layer_widgets = {}, []
@@ -450,7 +515,8 @@ class SpecimenInspector:
                                  layout=w.Layout(width='min(100%, 720px)'))
         self.previous = w.Button(description='Previous', layout=w.Layout(width='95px'), disabled=True)
         self.next = w.Button(description='Next', layout=w.Layout(width='75px'), disabled=True)
-        self.view = w.ToggleButtons(options=[('Yield detail', 'yield'), ('Full curve', 'full')], value='yield')
+        self.view = w.ToggleButtons(options=[('Yield detail', 'yield'), ('Failure detail', 'failure'),
+                                            ('Full curve', 'full')], value='yield')
         self.reset = w.Button(description='Reset zoom', layout=w.Layout(width='110px'))
         self.gauge_overlay = w.Checkbox(description='Overlay measured / reconstructed', value=False, indent=False,
                                        layout=w.Layout(width='auto'))
@@ -476,6 +542,11 @@ class SpecimenInspector:
         self.x1 = w.FloatText(description='End strain (%)', continuous_update=False, style={'description_width': 'initial'})
         self.y0 = w.FloatText(description='Start stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
         self.y1 = w.FloatText(description='End stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
+        self.fit_pick = w.ToggleButtons(options=[('Not picking', ''), ('Set start', 'start'), ('Set end', 'end')],
+                                        value='', description='Click curve:', style={'description_width': 'initial'})
+        self.fit_pick_hint = w.HTML('Choose Set start or Set end, then click a measured point. '
+            'Manual range takes strain only; Manual line takes strain and stress. '
+            'Start advances to End; after End, picking stops. Nothing is saved until Apply.')
         self.line_fields = w.HBox([self.y0, self.y1], layout=w.Layout(flex_flow='row wrap', display='none'))
         self.reason = w.Text(description='Reason:', placeholder='Why is the fit being adjusted?', continuous_update=True,
                              layout=w.Layout(width='min(100%, 800px)'))
@@ -484,14 +555,35 @@ class SpecimenInspector:
         self.cancel_button = w.Button(description='Cancel preview', disabled=True)
         self.restore_button = w.Button(description='Restore automatic fit', layout=w.Layout(width='auto'), disabled=True)
         self.edit_status = w.HTML('Select a specimen to review or adjust its elastic fit.')
-        self.editor = w.Accordion(children=[w.VBox([self.mode,
+        self.editor = w.Accordion(children=[w.VBox([self.mode, self.fit_pick, self.fit_pick_hint,
             w.HBox([self.x0, self.x1], layout=w.Layout(flex_flow='row wrap')), self.line_fields, self.reason,
             w.HBox([self.apply_button, self.cancel_button, self.restore_button], layout=w.Layout(flex_flow='row wrap')),
             self.edit_status])], selected_index=None)
         self.editor.set_title(0, 'Adjust elastic fit · preview before applying')
+        self.failure_enabled = w.Checkbox(description='Edit failure EL', value=False, indent=False)
+        self.failure_el = w.FloatText(description='Failure EL (%)', continuous_update=False,
+                                     style={'description_width': 'initial'})
+        self.failure_row = w.BoundedIntText(value=1, min=1, max=1, description='Measurement row',
+                                            continuous_update=False, style={'description_width': 'initial'})
+        self.failure_reason = w.Text(description='Reason:', placeholder='Why is the endpoint being adjusted?',
+                                     layout=w.Layout(width='min(100%, 800px)'))
+        self.failure_apply = w.Button(description='Apply EL override · all graphs', button_style='primary',
+                                      layout=w.Layout(width='auto'), disabled=True)
+        self.failure_cancel = w.Button(description='Cancel EL preview', layout=w.Layout(width='auto'), disabled=True)
+        self.failure_restore = w.Button(description='Restore automatic EL', layout=w.Layout(width='auto'), disabled=True)
+        self.failure_status = w.HTML('Select a specimen to adjust failure elongation.')
+        self.failure_editor = w.Accordion(children=[w.VBox([
+            w.HTML('Enter measured EL (%) or click the measured curve while editing. EL snaps to a recorded '
+                   'post-peak point; the row selector distinguishes repeated strain readings. '
+                   'Choose the endpoint before any unwanted fracture/unloading tail. '
+                   'Reconstruction is applied afterwards; do not enter reconstructed EL here.'),
+            self.failure_enabled, w.HBox([self.failure_el, self.failure_row], layout=w.Layout(flex_flow='row wrap')),
+            self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
+                                       layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
+        self.failure_editor.set_title(0, 'Adjust failure elongation · preview before applying')
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status, self.editor, w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
+                          self.status, self.editor, self.failure_editor, w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
                           self.gauge_status, self.chart_box, self.layers_panel, self.summary], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(self._view_changed, names='value')
@@ -507,6 +599,13 @@ class SpecimenInspector:
         self.apply_button.on_click(lambda _: self._apply())
         self.cancel_button.on_click(lambda _: self._selected())
         self.restore_button.on_click(lambda _: self._apply(restore=True))
+        self.failure_enabled.observe(self._failure_mode_changed, names='value')
+        self.failure_el.observe(lambda _: self._failure_preview(from_strain=True), names='value')
+        self.failure_row.observe(lambda _: self._failure_preview(), names='value')
+        self.failure_reason.observe(lambda _: self._buttons(), names='value')
+        self.failure_apply.on_click(lambda _: self._apply_failure())
+        self.failure_cancel.on_click(lambda _: self._selected())
+        self.failure_restore.on_click(lambda _: self._apply_failure(restore=True))
         self._navigation()
 
     def _dispose(self):
@@ -519,6 +618,7 @@ class SpecimenInspector:
         self._probe = None
         self.chart, self._payload = None, None
         self._draft = None
+        self._failure_draft = None
         self.summary.value = ''
         self.gauge_status.value = ''
 
@@ -628,9 +728,12 @@ class SpecimenInspector:
     def set_rows(self, rows):
         selected = self.choice.value
         options = [('Choose a specimen…', '')]
-        for row in rows:
-            # Relative ID disambiguates identical basenames without using absolute paths.
-            label = row['id'] + ('' if row['included'] else ' (excluded)')
+        names = [row['group'] + ' · ' + row['sample'] for row in rows]
+        for row, name in zip(rows, names):
+            # Match the specimen table, not the export-row filename. Keep the
+            # stable relative ID as the value and only show it for duplicate names.
+            label = name + (' · ' + row['id'] if names.count(name) > 1 else '')
+            label += '' if row['included'] else ' (excluded)'
             options.append((label, row['id']))
         self._updating = True
         try:
@@ -681,14 +784,139 @@ class SpecimenInspector:
             self._editing = False
             self._saved_payload = payload
             self._seed_editor(payload)
+            self._seed_failure_editor(payload)
             self._paint(payload)
             self.status.value = ('Read-only until Apply override · drag to zoom; use Reset zoom to return. '
-                                 'Fit overrides apply to this specimen in every graph.')
+                                 'Fit and EL overrides apply to this specimen in every graph.')
             self.edit_status.value = 'Choose Manual range or Manual line to start an unsaved preview.'
         except Exception as error:
             self._dispose()
             self.status.value = '<b>Inspection unavailable:</b> ' + escape(str(error))
         self._navigation()
+
+    def _seed_failure_editor(self, payload):
+        self._failure_sync = True
+        self._failure_draft = None
+        try:
+            self.failure_enabled.value = False
+            self.failure_reason.value = (payload['record'].get('_failure_override') or {}).get('reason', '')
+            ids, x, _ = failure_measurements(payload['record'])
+            self.failure_row.max = len(x)
+            end = payload['calculation']['fracture']
+            row = end.get('row_before', np.nan)
+            row = int(row) if np.isfinite(row) and int(row) - 1 in ids else int(ids[-1]) + 1
+            self.failure_row.value = row
+            self.failure_el.value = float(x[row - 1])
+            self.failure_status.value = ('Current selection: <b>' + escape(end['status']) + '</b>. '
+                                         'Enable editing to preview a different endpoint; nothing changes until Apply.')
+        except ValueError as error:
+            self.failure_status.value = escape(str(error))
+        finally:
+            self._failure_sync = False
+
+    def _failure_mode_changed(self, _=None):
+        if self._failure_sync or self._payload is None:
+            return
+        if not self.failure_enabled.value:
+            self._selected()
+            return
+        # Preview one kind of override at a time; do not save/discard the other
+        # saved policy. EL preview uses the specimen's saved elastic fit.
+        self._editing = True
+        try:
+            self.mode.value = 'inspect'
+            self._draft = None
+        finally:
+            self._editing = False
+        self._painting = True
+        try:
+            self.view.value = 'failure'
+        finally:
+            self._painting = False
+        self._failure_preview(keep_zoom=False)
+
+    def _failure_preview(self, *, from_strain=False, keep_zoom=True):
+        if self._failure_sync or self._payload is None or not self.failure_enabled.value:
+            return
+        self._failure_draft = None
+        try:
+            saved = self._saved_payload
+            record = saved['record']
+            row = failure_row_for_strain(record, self.failure_el.value) if from_strain else self.failure_row.value
+            candidate = {'row': int(row), 'source_sha256': saved['source_sha256']}
+            endpoint = manual_failure_endpoint(record, candidate)
+            preview_record = {**record, '_failure_override': candidate}
+            fracture_curve(preview_record)  # Validate that downstream trimming is usable.
+            calc = specimen_calculation(preview_record, saved['calculation']['fit_fractions'])
+            target = saved.get('gauge_policy', {}).get('target_gauge_mm', 0)
+            preview = {**saved, 'record': preview_record, 'calculation': calc,
+                       'gauge_preview': gauge_record(preview_record, saved['reference'], True, target)}
+            self._failure_sync = True
+            try:
+                self.failure_row.value = row
+                self.failure_el.value = endpoint['strain_pct']
+            finally:
+                self._failure_sync = False
+            self._failure_draft = candidate
+            self._paint(preview, keep_zoom=keep_zoom)
+            self.failure_status.value = (f'<b>Unsaved EL preview:</b> {endpoint["strain_pct"]:.5f}% at '
+                f'{endpoint["stress_mpa"]:.2f} MPa · original measurement row {row}. '
+                'Purple × = selected point; grey circle = automatic point (when available). '
+                'Enter a reason, then Apply. Recorded values and Instron results are unchanged.')
+        except Exception as error:
+            self.failure_status.value = ('<b>Invalid EL preview:</b> ' + escape(str(error)) +
+                                         ' Nothing saved; chart retains the last valid view.')
+        finally:
+            self._buttons()
+
+    def _pick_failure_point(self, trace, points, _selector):
+        if self._painting or not self.failure_enabled.value or not points.point_inds:
+            return
+        # Measured trace keeps every acquisition row (invalid pairs are NaN),
+        # so Plotly point indices map exactly to original measurement indices.
+        self._failure_sync = True
+        try:
+            self.failure_row.value = int(points.point_inds[0]) + 1
+        finally:
+            self._failure_sync = False
+        self._failure_preview()
+
+    def _pick_curve_point(self, trace, points, selector):
+        if self._painting or not points.point_inds:
+            return
+        if self.failure_enabled.value:
+            if (trace.meta or {}).get('inspector_layer') == 'measured':
+                self._pick_failure_point(trace, points, selector)
+            return
+        endpoint = self.fit_pick.value
+        if self.mode.value == 'inspect' or not endpoint:
+            return
+        index = int(points.point_inds[0])
+        x, y = float(trace.x[index]), float(trace.y[index])
+        if not np.isfinite(x) or not np.isfinite(y):
+            return
+        self._editing = True
+        try:
+            (self.x0 if endpoint == 'start' else self.x1).value = x
+            if self.mode.value == 'line':
+                (self.y0 if endpoint == 'start' else self.y1).value = y
+            self.fit_pick.value = 'end' if endpoint == 'start' else ''
+        finally:
+            self._editing = False
+        self._preview()
+
+    def _apply_failure(self, restore=False):
+        if (not self.on_failure_apply or self._payload is None or
+                (not restore and self.failure_apply.disabled)):
+            return
+        try:
+            self.on_failure_apply(self.choice.value, self._saved_payload['source_sha256'],
+                                  None if restore else deepcopy(self._failure_draft), self.failure_reason.value)
+            self._selected()
+            self.failure_status.value = ('Automatic EL restored in all graphs.' if restore else
+                                         'Manual EL saved for this specimen in all graphs. Update plots when ready.')
+        except Exception as error:
+            self.failure_status.value = '<b>EL override not saved:</b> ' + escape(str(error))
 
     def _seed_editor(self, payload):
         calc = payload['calculation']
@@ -719,6 +947,8 @@ class SpecimenInspector:
 
     def _buttons(self):
         editing = self._payload is not None and self.mode.value != 'inspect'
+        self.fit_pick.disabled = not editing
+        self.fit_pick.layout.display = self.fit_pick_hint.layout.display = '' if editing else 'none'
         self.x0.disabled = self.x1.disabled = self.reason.disabled = not editing
         self.y0.disabled = self.y1.disabled = not editing or self.mode.value != 'line'
         self.line_fields.layout.display = '' if self.mode.value == 'line' else 'none'
@@ -727,16 +957,34 @@ class SpecimenInspector:
             self._payload['calculation']['properties']['Yield status'] == 'resolved' and self.on_apply)
         self.restore_button.disabled = not (self._payload and self.on_apply and
             self._saved_payload['calculation'].get('saved_override'))
+        failure_editing = self._payload is not None and self.failure_enabled.value
+        self.failure_enabled.disabled = self._payload is None or self.on_failure_apply is None
+        self.failure_el.disabled = self.failure_row.disabled = self.failure_reason.disabled = not failure_editing
+        self.failure_apply.disabled = not (failure_editing and self._failure_draft and
+                                          self.failure_reason.value.strip() and self.on_failure_apply)
+        self.failure_cancel.disabled = not failure_editing
+        self.failure_restore.disabled = not (self._payload and self.on_failure_apply and
+                                            self._saved_payload['record'].get('_failure_override'))
+        self.mode.disabled = self.chart is None or self.on_apply is None or failure_editing
+        if failure_editing:
+            self.restore_button.disabled = True
 
     def _mode_changed(self, _=None):
         if self._editing or self._payload is None:
             return
         if self.mode.value == 'inspect':
+            self.fit_pick.value = ''
             self._selected()
         else:
-            self._preview()
+            self.fit_pick.value = 'start'
+            self._painting = True
+            try:
+                self.view.value = 'yield'
+            finally:
+                self._painting = False
+            self._preview(keep_zoom=False)
 
-    def _preview(self):
+    def _preview(self, *, keep_zoom=True):
         if self._editing or self._payload is None or self.mode.value == 'inspect':
             return
         self._draft = None
@@ -758,9 +1006,11 @@ class SpecimenInspector:
             self.x0.value, self.x1.value = bounds
             self._editing = False
             self._draft = candidate
-            self._paint({**self._saved_payload, 'calculation': calc}, edit=candidate, keep_zoom=True)
-            instruction = ('Click a purple range border, then drag its corner handles; all measured points between them are refitted.'
-                           if self.mode.value == 'range' else 'Click the purple line, then drag either endpoint; this directly changes slope/intercept.')
+            self._paint({**self._saved_payload, 'calculation': calc}, edit=candidate, keep_zoom=keep_zoom)
+            instruction = ('Use Set start / Set end and click the measured curve, or drag the purple range borders; '
+                           'all selected points are refitted.' if self.mode.value == 'range' else
+                           'Use Set start / Set end and click the measured curve, or drag either purple line endpoint; '
+                           'this directly changes slope/intercept.')
             self.edit_status.value = '<b>Unsaved preview.</b> ' + instruction + ' Enter a reason, then Apply override to use it in every graph.'
             if calc['properties']['Yield status'] != 'resolved':
                 self.edit_status.value += '<br><b>Cannot apply:</b> ' + escape(calc['properties']['Notes'])
@@ -773,7 +1023,7 @@ class SpecimenInspector:
     def _overlay_changed(self, _=None):
         if self._painting or self._updating or self._payload is None:
             return
-        if self.gauge_overlay.value:
+        if self.gauge_overlay.value and self.view.value != 'failure':
             self._painting = True
             try:
                 self.view.value = 'full'
@@ -801,9 +1051,12 @@ class SpecimenInspector:
                     self.chart.add_traces(fig.data)
                     self.chart.layout.shapes = fig.layout.shapes
                     self.chart.layout.annotations = fig.layout.annotations
-                    self.chart.update_xaxes(range=fig.layout.xaxis.range)
-                    self.chart.update_yaxes(range=fig.layout.yaxis.range)
+                    self.chart.update_xaxes(range=fig.layout.xaxis.range, autorange=False)
+                    self.chart.update_yaxes(range=fig.layout.yaxis.range, autorange=False)
             self._payload = payload
+            for trace in self.chart.data:
+                if (trace.meta or {}).get('inspector_layer') in ('measured', 'fit_points'):
+                    trace.on_click(self._pick_curve_point)
             self._sync_layers()
             self.summary.value = inspection_summary(payload)
             preview = payload.get('gauge_preview')

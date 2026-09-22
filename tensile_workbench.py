@@ -15,8 +15,10 @@ from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_instron import InstronSummaries
-from tensile_tables import property_tables, PropertyTablesView
+from tensile_tables import property_tables, PropertyTablesView, specimen_review_mask
 from tensile_properties import specimen_calculation
+from tensile_fracture import (endpoint_available, validate_failure_override, manual_failure_endpoint,
+                              automatic_fracture_endpoint, fracture_curve)
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_fit import fit_policy, validate_override, validate_threshold
@@ -181,6 +183,7 @@ class PreviewSession:
 
     def _bind_fit_context(self, record):
         record['_fit_override'] = deepcopy(self.project.get('specimen_fit_overrides', {}).get(specimen_id(record)))
+        record['_failure_override'] = deepcopy(self.project.get('specimen_failure_overrides', {}).get(specimen_id(record)))
         record['_fit_r2_threshold'] = self.project.get('yield_r2_warning', .98)
 
     def fit_signature(self):
@@ -200,7 +203,9 @@ class PreviewSession:
         ids = {specimen_id(r) for group in self.visible_groups(state['groups']) for r in self._load(group)}
         return {'yield_r2_warning': self.project.get('yield_r2_warning', .98),
                 'specimen_fit_overrides': {k: v for k, v in self.project.get('specimen_fit_overrides', {}).items() if k in ids},
-                'specimen_fit_history': [event for event in self.project.get('specimen_fit_history', []) if event['specimen_id'] in ids]}
+                'specimen_fit_history': [event for event in self.project.get('specimen_fit_history', []) if event['specimen_id'] in ids],
+                'specimen_failure_overrides': {k: v for k, v in self.project.get('specimen_failure_overrides', {}).items() if k in ids},
+                'specimen_failure_history': [event for event in self.project.get('specimen_failure_history', []) if event['specimen_id'] in ids]}
 
     def output_root(self):
         """Local folder choice overrides the graph template without changing it."""
@@ -237,6 +242,9 @@ class PreviewSession:
                     "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
                 })
             for record in records:
+                # Operator/location label is not the Instron export-row suffix.
+                # Preserve sample/source IDs for matching, settings and audit.
+                record['specimen_label'] = self.instron.match(group, record)['label']
                 self._bind_fit_context(record)
                 properties = self.engine.specimen_properties(record)
                 record['failure_elongation_pct'] = properties['Failure elongation (%)']
@@ -276,7 +284,7 @@ class PreviewSession:
                       if group_policy(state, spec, g)['enabled'] and r['_gauge']['Gauge correction status'] != 'Applied']
             errors.extend(f"{g}/{r['sample']}: CSV fracture not detected — {r['_fracture']['reason']}"
                           for g, rows in result.items() for r in rows
-                          if not group_policy(state, spec, g)['enabled'] and r['_fracture']['status'] != 'Detected')
+                          if not group_policy(state, spec, g)['enabled'] and not endpoint_available(r['_fracture']))
             if errors:
                 raise ValueError('Specimen review required; none have been automatically excluded. ' + '; '.join(errors))
             for g, rows in result.items():
@@ -476,7 +484,8 @@ class PreviewSession:
                 common = dict(out_path=Path("preview.png"), color_map={**self.colors, **spec.get('color_overrides', {})},
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
                               title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
-                wh = self._wh_settings(state, spec)
+                wh = {**self._wh_settings(state, spec),
+                      'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in records.items()}}
                 if family in PROPERTY_FAMILIES:
                     fig = e.render_strength_elongation_plot(records, family=family,
                         error_bars=state.get('property_error_bars', True),
@@ -545,7 +554,7 @@ class PreviewSession:
         if not results:
             raise ValueError("There are no valid previews to export.")
         if any(r.get('fit_signature') != self.fit_signature() for r in results):
-            raise ValueError('Specimen fit settings changed. Update plots before exporting.')
+            raise ValueError('Specimen fit or EL settings changed. Update plots before exporting.')
         if any(r.get('selection_signature') != self.selection_signature() for r in results):
             raise ValueError('Specimen inclusion changed. Update plots before exporting.')
         result = results[0]
@@ -713,18 +722,20 @@ class TensileWorkbench:
         self.details = w.Textarea(disabled=True, layout=w.Layout(width="98%", height="180px"))
         self.tables = PropertyTablesView(w, on_selection=self._specimen_changed,
                                         inspect_loader=self._inspect_specimen, on_fit_apply=self._apply_specimen_fit,
-                                        on_threshold=self._change_fit_threshold)
+                                        on_threshold=self._change_fit_threshold, on_failure_apply=self._apply_specimen_failure)
         self.fit_warning = w.HTML(layout=w.Layout(width='100%'))
-        self.review_fits = w.Button(description='Review fits', layout=w.Layout(width='110px', flex='0 0 110px'), disabled=True)
+        self.review_fits = w.Button(description='Review specimens', layout=w.Layout(width='145px', flex='0 0 145px'), disabled=True)
         self.review_fits.on_click(self._review_fits)
         self.fit_review_bar = w.VBox([
             self._row([self.tables.threshold, self.tables.threshold_status]),
             w.HBox([self.fit_warning, self.review_fits], layout=w.Layout(width='100%'))
         ], layout=w.Layout(width='100%'))
         self.tables_update_button = w.Button(description='Update tables')
+        self.tables_reload_button = w.Button(description='Reload data',
+            tooltip='Reread CSVs and summary files, refresh tables, and clear old plots. No page refresh needed.')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
-            self.tables.ui, self._row([self.tables_update_button, self.table_export_button])
+            self._row([self.tables_reload_button, self.tables_update_button, self.table_export_button]), self.tables.ui
         ])], selected_index=None, layout=w.Layout(width='100%'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
         general = w.Accordion(children=[w.VBox([self.override_group, self.override_name,
@@ -813,6 +824,7 @@ class TensileWorkbench:
         self.override_button.on_click(self._apply_overrides)
         self.update_button.on_click(lambda _: self.update())
         self.reload_button.on_click(self._reload_data)
+        self.tables_reload_button.on_click(lambda _: self._reload_data(plots=False))
         self.export_button.on_click(self._export)
         self.tables_update_button.on_click(self._update_tables)
         self.table_export_button.on_click(self._export_properties)
@@ -1288,17 +1300,29 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = "<b>Override not saved:</b> " + escape(str(error))
 
-    def _reload_data(self, _=None):
-        if not self.save_current():
+    def _reload_data(self, _=None, *, plots=True):
+        if self._busy or not self.save_current():
             return
+        self.reload_button.disabled = self.tables_reload_button.disabled = True
         self.export_button.disabled = True
+        self.table_export_button.disabled = True
         self._results, self._signature = [], None
+        self.viewer.clear('Source files are being reloaded; previous plots have been cleared.')
+        self.tables.clear('Reloading source CSVs and summaries…')
         try:
             self.session.reload_data()
             self._apply_graph(self.graph.value)
-            self.update(save=False)
+            if plots:
+                self.update(save=False)
+            else:
+                self._refresh_properties()
+                self.status.value = 'Data reloaded. Tables refreshed; click Update plots when ready.'
+                self.viewer.clear('Data reloaded. Click Update plots when ready.')
         except Exception as error:
             self.status.value = "<b>Data reload failed:</b> " + escape(str(error))
+            self.tables.status.value = self.status.value
+        finally:
+            self.reload_button.disabled = self.tables_reload_button.disabled = False
 
     def _sample_data_note(self):
         if not self.session.sample_data_dir.is_dir():
@@ -1355,7 +1379,7 @@ class TensileWorkbench:
         self.session.set_project(self.store.data)
         self._results, self._signature = [], None
         self.export_button.disabled = True
-        self.viewer.clear('Specimen fit settings changed. Update plots to use the saved fits.')
+        self.viewer.clear('Specimen calculation settings changed. Update plots to use the saved fit/EL selections.')
         self._show_saved()
         self._refresh_properties()
 
@@ -1407,6 +1431,43 @@ class TensileWorkbench:
         self.store.save(project)
         self._fit_settings_saved()
 
+    def _apply_specimen_failure(self, ident, source_sha256, override, reason):
+        """Validate against unchanged raw data, then save an endpoint for all graphs."""
+        if not self.save_current():
+            raise ValueError('Save failed; failure EL was not changed.')
+        payload = self._inspect_specimen(ident)
+        record = payload['record']
+        if (source_sha256 != record['source_sha256'] or
+                hashlib.sha256(Path(record['source_file']).read_bytes()).hexdigest() != source_sha256):
+            raise ValueError('Source data changed during review. Reload data before changing failure EL.')
+        project = deepcopy(self.store.data)
+        before = deepcopy(project.get('specimen_failure_overrides', {}).get(ident))
+        timestamp = datetime.now().astimezone().isoformat()
+        candidate = None
+        if override is not None:
+            candidate = deepcopy(override)
+            endpoint = manual_failure_endpoint(record, candidate)
+            # Validate the exact trimmed prefix too, before committing any setting.
+            trial = {**record, '_failure_override': {**candidate, 'source_sha256': source_sha256}}
+            fracture_curve(trial)
+            automatic = automatic_fracture_endpoint(record)
+            import math
+            fields = ('status', 'method', 'strain_pct', 'stress_mpa', 'row_before', 'time_s', 'reason', 'endpoint_kind')
+            snapshot = {key: (value if isinstance(value, str) or (isinstance(value, (int, float)) and math.isfinite(value)) else None)
+                        for key in fields for value in [automatic.get(key)]}
+            candidate.update(source_sha256=source_sha256, reason=reason.strip(), saved_at=timestamp,
+                             automatic_snapshot=snapshot, strain_pct=endpoint['strain_pct'], stress_mpa=endpoint['stress_mpa'])
+            validate_failure_override(candidate, saved=True)
+            project.setdefault('specimen_failure_overrides', {})[ident] = candidate
+        else:
+            project.setdefault('specimen_failure_overrides', {}).pop(ident, None)
+        if before == candidate:
+            return
+        project.setdefault('specimen_failure_history', []).append({'specimen_id': ident, 'saved_at': timestamp,
+            'action': 'apply' if candidate else 'restore automatic', 'before': before, 'after': candidate})
+        self.store.save(project)
+        self._fit_settings_saved()
+
     def _review_fits(self, _=None):
         self.properties_panel.selected_index = 0
         self.tables.filter.value = ''
@@ -1422,16 +1483,16 @@ class TensileWorkbench:
             self.fit_warning.value = ''
             self.review_fits.disabled = True
             return
-        flagged = samples[samples['Fit review required']]
+        flagged = samples[specimen_review_mask(samples)]
         self.review_fits.disabled = flagged.empty
         included = int(flagged['Included'].sum())
         excluded = len(flagged) - included
         threshold = self.store.data.get('yield_r2_warning', .98)
         self.fit_warning.value = (
             f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
-            f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} fit review</b> · {included} included; {excluded} excluded. '
-            f'R² below {threshold:.5f}, unresolved fit, or stale override. Checks use full precision. No automatic exclusion.</div>'
-            if len(flagged) else f'Elastic-fit checks: no warnings at R² threshold {threshold:.5f}.')
+            f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} review</b> · {included} included; {excluded} excluded. '
+            f'Fit, fracture/EL, reconstruction or Instron checks. R² threshold {threshold:.5f}. No automatic exclusion.</div>'
+            if len(flagged) else f'Specimen checks: no review items. R² threshold {threshold:.5f}.')
 
     def _inspect_specimen(self, ident):
         with redirect_stdout(io.StringIO()):
