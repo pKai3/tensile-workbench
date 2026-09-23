@@ -1,5 +1,6 @@
 """Categorical dual-axis view; synthetic temporary data only."""
 from contextlib import redirect_stdout
+from copy import deepcopy
 import io
 from pathlib import Path
 import shutil
@@ -92,6 +93,7 @@ class GroupPropertiesTests(unittest.TestCase):
         self.assertEqual(means['EL'].marker.color, '#aa2244')
         self.assertEqual(means['EL'].customdata[0][1], 3)
         self.assertTrue(all(trace.mode == 'lines+markers' for trace in means.values()))
+        self.assertTrue(all(trace.line.dash == 'solid' for trace in means.values()))
         self.assertTrue(all(trace.error_y.array[0] > 0 for trace in means.values()))
         self.assertEqual(len({trace.legendgroup for trace in chart.data}), 3)
         self.assertTrue(any('coupon_1' in trace.hovertemplate for trace in chart.data))
@@ -144,6 +146,32 @@ class GroupPropertiesTests(unittest.TestCase):
         self.assertTrue(any('10_properties_by_group_without_individuals.png' in name for name in names))
         self.assertTrue(any(name.endswith('_results.xlsx') for name in names))
         self.assertFalse(any(name.endswith('_curves.xlsx') for name in names))
+
+    def test_group_gauge_policies_change_only_the_elongation_series(self):
+        raw = self.session.render(self.state())
+        project = deepcopy(self.session.project)
+        project['graphs'][0]['definition']['gauge_reconstruction'] = {
+            'Alloy A': {'enabled': True, 'target_gauge_mm': 25},
+            'Heat treated': {'enabled': True, 'target_gauge_mm': 40}}
+        self.session.set_project(project)
+        original = self.session.instron.match
+        def reference_with_gauge(group, record):
+            reference = original(group, record)
+            return {**reference, 'values': {**reference.get('values', {}), 'gauge': 50}}
+        with patch.object(self.session.instron, 'match', side_effect=reference_with_gauge):
+            reconstructed = self.session.render(self.state())
+        before, after = self.means(raw), self.means(reconstructed)
+        for metric in ('0.2% YS', 'UTS'):
+            np.testing.assert_allclose(before[metric].get_ydata(), after[metric].get_ydata())
+        for index, group, ratio in ((0, 'Heat treated', 1.25), (1, 'Alloy Z', 1), (2, 'Alloy A', 2)):
+            expected = []
+            for record in raw['export_records'][group]:
+                original_record = record['_measured_record']
+                meta = original_record['_acquisition']
+                eu = meta['strain'][meta['peak']]
+                ef = self.session.engine.specimen_properties(record)['Failure elongation (%)']
+                expected.append(eu + ratio * (ef - eu))
+            self.assertAlmostEqual(after['EL'].get_ydata()[index], np.mean(expected))
 
     def test_unrelated_filters_do_not_recompute_and_existing_single_axis_plotly_works(self):
         first = self.session.render(self.state())

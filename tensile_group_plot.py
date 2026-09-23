@@ -34,8 +34,8 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
     stats = {g: [(r, e.specimen_properties(r, fit_fractions)) for r in records.get(g, [])]
              for g in groups}
     metrics = [('Yield (MPa)', '0.2% YS', 'o', '-', left, 'ys'),
-               ('UTS (MPa)', 'UTS', '^', '--', left, 'uts'),
-               ('Failure elongation (%)', 'EL', 's', '-.', right, 'el')]
+               ('UTS (MPa)', 'UTS', '^', '-', left, 'uts'),
+               ('Failure elongation (%)', 'EL', 's', '-', right, 'el')]
     handles, plotted = [], False
     errors = state.get('properties_by_group_error_bars', True)
     for field, label, marker, style, ax, key in metrics:
