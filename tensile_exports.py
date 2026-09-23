@@ -51,7 +51,7 @@ def write_workbook(path, sheets):
                         cell.alignment = Alignment(wrap_text=True, vertical='top')
                 if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
                     header = headers[cell.column - 1].lower()
-                    integer = (header.endswith(' n') or header in ('n', 'included n', 'available n')
+                    integer = (header.endswith(' n') or header in ('n', 'included n', 'available n', 'pairs with checks')
                                or 'row (1-based)' in header)
                     cell.number_format = '0' if integer else '0.' + '0' * fit_display_places(header)
         for cell in sheet[1]:
@@ -159,8 +159,23 @@ def export_results(frames, path, metadata):
         'instron_el_marker': 'Inspector-only: an Instron EL just outside CSV bounds within half the summary printed unit plus applicable CSV precision and floating-point allowance is displayed at the boundary. Tables and marker hover preserve the imported EL. This never changes analysis EL, reconstruction or specimen matching.',
         'failure_override': 'A specimen-wide manual EL override selects an original post-peak measurement row. It replaces the analysis endpoint in Calc EL, toughness, tensile curves and reconstruction, but not raw data, Instron results or pre-peak properties. Specimens identifies Manual versus Automatic selection; Audit retains the automatic result, selected row, reason and save time. Saved policy/history includes the source fingerprint and automatic snapshot. Stale overrides are not applied and require review.',
         'precision': 'Full numeric precision stored; two decimal places for ordinary results, five for elastic-fit R2, its warning threshold and fit/yield strain details. Counts and row identifiers remain integers.'}}
-    write_workbook(path, {'Summary': summary, 'Specimens': specimens, 'Audit': checks,
-                         'Export info': flatten_info(metadata)})
+    from tensile_comparison import relative_comparison
+    agreement = relative_comparison(frames)
+    metadata['definitions']['relative_comparison'] = (
+        'Calc-Instron agreement uses included specimens with finite paired measured values and nonzero Instron values. '
+        'Mean and sample SD of 100*(Calc-Instron)/Instron are calculated per specimen, not from a ratio of group means. '
+        'Positive means Calc is higher. Gauge-reconstructed values are not compared with uncorrected Instron. '
+        'Failure EL is the selected measured CSV endpoint versus the Instron summary endpoint. '
+        'SD Calc and SD Instron use exactly those same paired specimens in original units; '
+        'SD change (%) is 100*(SD Calc/SD Instron-1), distinct from SD of paired percentage differences. '
+        'SD change is unavailable for n<2 or zero Instron SD. Lower scatter is not proof of greater accuracy. '
+        'Missing comparisons remain absent; n=1 has no SD. Checks are retained, not automatic exclusions. '
+        'UTS is retained here for audit, but omitted from the comparison charts; discrepancies stay in specimen Checks.')
+    sheets = {'Summary': summary, 'Specimens': specimens}
+    if not agreement.empty:
+        sheets['Calc-Instron agreement'] = agreement
+    sheets.update({'Audit': checks, 'Export info': flatten_info(metadata)})
+    write_workbook(path, sheets)
 
 
 def export_curves(results, engine, path):

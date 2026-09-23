@@ -414,6 +414,19 @@ def gauge_model_help(expanded=False):
     </details>'''
 
 
+def inspection_checks(payload, *, preview=False):
+    """The same failure-only checks as the specimen table, visible above the plot."""
+    from tensile_tables import specimen_check_failures
+    gauge = (payload.get('gauge_preview') or {}).get('_gauge') if payload.get('gauge_policy', {}).get('enabled') else None
+    failures = specimen_check_failures(payload['calculation']['properties'], payload['reference'], gauge)
+    if not failures:
+        return ''
+    title = 'Specimen checks' + (' · unsaved preview' if preview else '')
+    return ('<div role="status" style="font:13px/1.5 Arial,sans-serif;white-space:normal;'
+            'overflow-wrap:anywhere;padding:8px 12px;background:#fff4dc;border-left:3px solid #d97706">'
+            '<b>' + title + '</b><div style="white-space:pre-line">' + escape(failures) + '</div></div>')
+
+
 def inspection_summary(payload):
     """Display fit provenance and available Instron values without inventing matches."""
     calculation, reference = payload['calculation'], payload['reference']
@@ -433,12 +446,13 @@ def inspection_summary(payload):
               '.tw-inspect-summary table{border-collapse:collapse;width:100%;max-width:850px}'
               '.tw-inspect-summary th,.tw-inspect-summary td{padding:6px 12px;border-bottom:1px solid #dce3e9;text-align:right}'
               '.tw-inspect-summary th:first-child,.tw-inspect-summary td:first-child{text-align:left}'
-              '.tw-inspect-summary th{background:#e8eef4}.tw-inspect-summary details{margin:8px 0}'
-              '.tw-inspect-summary summary{cursor:pointer}'
+              '.tw-inspect-summary th{background:#e8eef4}.tw-inspect-summary details{margin:8px 0;padding:0 8px;border:1px solid #dce3e9;border-radius:3px}'
+              '.tw-inspect-summary summary{cursor:pointer;padding:8px 0;font-weight:600}'
               '.tw-gauge-equations{padding:10px 12px;background:#f2f6fa;border-radius:5px;line-height:1.8}'
               '.tw-inspect-summary li{margin:5px 0}'
               '.tw-inspect-warning{padding:8px;background:#fff4dc;border-left:3px solid #d97706}</style>',
               '<div class="tw-inspect-summary">',
+              '<details><summary>Specimen identity and inclusion</summary>',
               '<p><b>' + escape(payload['group'] + ' · ' + (reference.get('label') or payload['sample'])) + '</b> · ' +
               ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
     result.append('<p>Inclusion: ' + ('explicit override for this graph' if payload.get('selection_scope') == 'graph'
@@ -451,6 +465,7 @@ def inspection_summary(payload):
                     reference.get('source', '').split('; ') if path) or 'Unavailable') + '</p>')
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
+    result.append('</details><details><summary>Calculated and Instron properties</summary>')
     show_automatic = bool(calculation.get('automatic_calculation'))
     result.append('<p><b>Fit method: ' + escape(p.get('Fit method', 'Automatic')) + '</b> · ' +
                   escape(p.get('Override status', 'None')) + '</p>')
@@ -467,10 +482,10 @@ def inspection_summary(payload):
                   'Instron YS has a hollow diamond at the first ascending pre-UTS '
                   'CSV crossing of that stress. The marker strain is interpolated from CSV, not supplied by Instron. '
                   'Its horizontal stress reference is available under Diagnostics and shown by default '
-                  'if no crossing exists.</p>')
+                  'if no crossing exists.</p></details>')
     active_record = (payload.get('gauge_preview') if payload.get('gauge_policy', {}).get('enabled') else None)
     el = elongation_report(active_record or payload['record'], reference, p)
-    result.append('<h4>Elongation sources</h4><table><tr><th>Quantity</th><th>Strain (%)</th><th>Source</th></tr>')
+    result.append('<details><summary>Elongation sources and endpoint selection</summary><table><tr><th>Quantity</th><th>Strain (%)</th><th>Source</th></tr>')
     for label, key, description in (
             ('Instron summary EL', 'Instron summary EL (%)', 'Imported Instron Strain 1 at break result.'),
             ('Last valid CSV strain', 'Last valid CSV strain (%)', 'Last finite strain in original acquisition order, not necessarily fracture.'),
@@ -525,12 +540,7 @@ def inspection_summary(payload):
     if el['EL override reason']:
         result.append('<p>Override reason: ' + escape(el['EL override reason']) +
                       '<br>Saved: ' + escape(el['EL override saved at']) + '</p>')
-    result.append('</details>')
-    from tensile_tables import specimen_check_failures
-    failures = specimen_check_failures(p, reference,
-        payload.get('gauge_preview', {}).get('_gauge') if payload.get('gauge_policy', {}).get('enabled') else None)
-    if failures:
-        result.append('<p class="tw-inspect-warning" style="white-space:pre-line"><b>Checks</b><br>' + escape(failures) + '</p>')
+    result.append('</details></details>')
     if reference.get('check_values'):
         result.append('<details><summary>Original CSV ↔ Instron verification values</summary><table>')
         for label, value in reference['check_values'].items():
@@ -545,6 +555,7 @@ def inspection_summary(payload):
     if preview:
         audit = preview['_gauge']
         enabled = payload.get('gauge_policy', {}).get('enabled', False)
+        result.append('<details><summary>Gauge reconstruction</summary>')
         result.append('<p><b>Gauge reconstruction for this group: ' + ('on' if enabled else 'off — preview only') + '</b>. '
                       'The calculations and Instron comparison above remain measured. Overlaying a curve does not apply it.</p>')
         result.append('<table><tr><th>AVE dot spacing (mm)</th><th>Group target (mm)</th><th>Ratio</th></tr>'
@@ -558,19 +569,21 @@ def inspection_summary(payload):
             result.append('<tr><td>' + label + '</td><td>' + number(p[raw_key]) + '</td><td>' + number(audit[estimated_key]) + '</td></tr>')
         result.append('</table><p>Derived localisation model, not a standards-compliant measurement. '
                       'Pre-peak strain is unchanged; stress values are unchanged throughout.</p>')
-        result.append(gauge_model_help(expanded=True))
+        result.append(gauge_model_help())
         if audit['Gauge correction status'] != 'Applied':
             result.append('<p class="tw-inspect-warning"><b>Overlay unavailable:</b> ' + escape(audit['Gauge correction status']) +
                           '. Set and save a target under Gauge reconstruction · per sample group.</p>')
         for key in ('Gauge model warning', 'Gauge reconstruction notes'):
             if audit.get(key):
                 result.append('<p class="tw-inspect-warning">' + escape(audit[key]) + '</p>')
+        result.append('</details>')
         acquisition = payload['record'].get('_acquisition', {})
         peak = acquisition.get('peak')
         if peak is not None:
             acquisition_note = ('<p>' + escape(acquisition['peak_basis']) + f': original measurement row {peak + 1}, '
                           + 'time ' + number(acquisition['time'][peak]) + ' s, strain ' + number(acquisition['strain'][peak]) + '%. '
                           'Peak comes from the original acquisition, independently of plotting cleanup.</p>')
+    result.append('<details><summary>Elastic fit and calculation details</summary>')
     if p['Yield status'] != 'resolved' or p['Notes']:
         result.append('<p class="tw-inspect-warning"><b>Yield ' + escape(p['Yield status']) + ':</b> ' +
                       escape(p['Notes']) + '</p>')
@@ -605,7 +618,7 @@ def inspection_summary(payload):
     result.append('<p>Uniform elongation uses the first maximum engineering stress. Tensile plots, fracture EL and '
                   'toughness use the selected CSV endpoint, or its reconstruction when enabled. Missing detection '
                   'is not replaced unconditionally by a final reading or an Instron result. Supported estimates '
-                  'remain review-flagged; pre-peak calculations remain available.</p>')
+                  'remain review-flagged; pre-peak calculations remain available.</p></details>')
     result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
                   '</p><p>The measured line preserves original acquisition order. Elastic-fit points use the '
@@ -639,6 +652,7 @@ class SpecimenInspector:
         self.gauge_overlay = w.Checkbox(description='Overlay measured / reconstructed', value=False, indent=False,
                                        layout=w.Layout(width='auto'))
         self.gauge_status = w.HTML()
+        self.checks = w.HTML(layout=w.Layout(width='100%', min_width='0', display='none'))
         self.status = w.HTML('Click a specimen name in the Specimens table, or choose one above.')
         self.summary = w.HTML(layout=w.Layout(width='100%', min_width='0'))
         self.chart_box = w.VBox(layout=w.Layout(width='100%', min_width='0'))
@@ -699,11 +713,19 @@ class SpecimenInspector:
             self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
                                        layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
         self.failure_editor.set_title(0, 'Adjust failure elongation · preview before applying')
+        self.layers_dropdown = w.Accordion(children=[self.layers_panel], selected_index=None)
+        self.layers_dropdown.set_title(0, 'Show on plot · display items')
+        self.details_panel = w.Accordion(children=[w.VBox([
+            self.layers_dropdown, self.editor, self.failure_editor,
+            self.summary, w.HTML(fracture_detection_help()),
+        ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,
+            layout=w.Layout(width='100%', min_width='0'))
+        self.details_panel.set_title(0, 'Inspector controls and calculation details')
         self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status, w.HTML(fracture_detection_help()), self.editor, self.failure_editor,
+                          self.status,
                           w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
-                          self.gauge_status, self.chart_box, self.layers_panel, self.summary], layout=w.Layout(width='100%', min_width='0'))
+                          self.gauge_status, self.checks, self.chart_box, self.details_panel], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(self._view_changed, names='value')
         self.reset.on_click(lambda _: self._reset_zoom())
@@ -740,6 +762,8 @@ class SpecimenInspector:
         self._failure_draft = None
         self.summary.value = ''
         self.gauge_status.value = ''
+        self.checks.value = ''
+        self.checks.layout.display = 'none'
 
     def _clear_layers(self):
         self.layer_groups.children = ()
@@ -1178,6 +1202,8 @@ class SpecimenInspector:
                     trace.on_click(self._pick_curve_point)
             self._sync_layers()
             self.summary.value = inspection_summary(payload)
+            self.checks.value = inspection_checks(payload, preview=bool(edit or self._failure_draft))
+            self.checks.layout.display = '' if self.checks.value else 'none'
             preview = payload.get('gauge_preview')
             audit = preview['_gauge'] if preview else {}
             self.gauge_status.value = ''

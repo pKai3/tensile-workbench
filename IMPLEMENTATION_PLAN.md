@@ -1,5 +1,71 @@
 # Implementation record
 
+## Change notes — 2026-09-24
+
+### Property-specific specimen exclusions — requested for later
+
+- Allow a specimen's individual properties to be excluded without discarding its
+  valid remaining measurements. Keep whole-specimen exclusion available.
+- Record the property, reason and scope against the stable specimen identity;
+  default to specimen-wide persistence across graphs, with explicit graph
+  exceptions consistent with the existing inclusion policy.
+- Preserve imported/calculated values for inspection and audit; mark them as
+  excluded rather than deleting or overwriting them. Atypical values alone are
+  not automatically invalidated.
+- Apply exclusions consistently to statistics, plots, comparisons and Excel
+  exports, with separate valid n per property and paired n for paired analyses.
+- Define dependency rules before implementing: excluding an unreliable EL must
+  also affect reconstructed EL, endpoint-dependent toughness and affected
+  average/representative curves, without needlessly discarding valid pre-peak
+  YS, UTS, uniform elongation or WH. Avoid silently retaining an invalid input
+  in downstream results. Clarify any distinction between an invalid measurement
+  segment and excluding only a reported result.
+- UI, dependency behaviour and export schema require a separate implementation
+  request. No property-specific exclusion logic is added in this change.
+
+### Summary-page Instron/Calc comparison — implemented after design approval
+
+- The user selected percentage differences around zero instead of paired
+  100%-normalised bars. Calculate 100 × (Calc − Instron) / Instron for each
+  included specimen/property pair; show group mean ±1 sample SD of those
+  percentages. This is not the percentage difference between group means.
+- The collapsible chart below Summary renders only when opened. Properties
+  use compact panels three across (two/one on narrow screens) with independent percentage-axis ranges, so larger
+  discrepancies cannot hide small ones. Hover reports paired n,
+  original-unit means and the count of pairs carrying specimen checks.
+- UTS is omitted from these charts and their spread tables. Its existing
+  original-CSV-versus-summary check still flags disagreements beyond exported
+  precision tolerance; no matching logic or tolerances were relaxed.
+- Each panel has a spread table below it: paired n, Instron sample SD, Calc
+  sample SD and 100 × (SD Calc / SD Instron − 1). The two SDs use exactly the
+  same paired specimens as that panel. n<2 has no SD, and zero Instron SD
+  leaves percentage change unavailable. Less scatter is not proof of accuracy.
+  This is distinct from the chart's SD of paired percentage differences.
+- Use existing reference assignments and include decisions; require both
+  finite values and a nonzero Instron denominator. Do not filter out numerical
+  disagreement or existing review warnings to improve apparent agreement.
+- Omit properties without comparison data; n=1 gets no SD bar. Explain that
+  the bars show specimen spread, not uncertainty of the paired difference.
+- Compare measured Calc with Instron on the original gauge basis, not
+  reconstructed EL/toughness against uncorrected Instron values. EL endpoint
+  definitions may differ; label that distinction rather than treating all
+  differences as calculation errors.
+- The same aggregate values are included in a Calc-Instron agreement sheet
+  in the existing results workbook when usable comparison pairs exist,
+  including the SD comparison and audit-only UTS aggregates.
+
+### Inspector layout — implemented
+
+- Specimen check messages now sit immediately above the graph and update with
+  specimen selection and unsaved fit/EL previews; an empty check list is hidden.
+- Display-item controls, fit and EL editors, calculation/source/gauge reports
+  and method explanations are collapsible within one outer Inspector controls
+  and calculation details fold. The selector and view toolbar remain visible.
+
+## Historical implementation notes
+
+The notes below describe earlier change sets and are not a current test report.
+
 Status: Excel consolidation, per-group gauge reconstruction and inspector
 measured/reconstructed overlays implemented. Runtime verification not performed.
 Tests and output generation deliberately not run, at the user's request.

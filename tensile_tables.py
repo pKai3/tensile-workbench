@@ -439,6 +439,7 @@ class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
     def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None):
         from tensile_inspector import SpecimenInspector
+        from tensile_comparison import ComparisonView
         w = widgets
         self.frames = {}
         self._threshold_sync = False
@@ -463,7 +464,9 @@ class PropertyTablesView:
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
         specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
-        self.tabs = w.Tab(children=[self.panels[0], specimen_panel, self.inspector.ui],
+        self.comparison = ComparisonView(w)
+        summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
+        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
         for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector']):
             self.tabs.set_title(i, name)
@@ -511,6 +514,7 @@ class PropertyTablesView:
         self.specimens.rows = []
         self.specimens.context = uuid.uuid4().hex
         self.inspector.clear()
+        self.comparison.clear()
 
     def _filtered(self, frame):
         if frame.empty:
@@ -586,6 +590,7 @@ class PropertyTablesView:
             return
         samples = self._filtered(self.frames['tensile_samples'])
         summary = self._filtered(self.frames['tensile_summary_details'])
+        self.comparison.set_frames(self.frames, summary['Group'].unique() if 'Group' in summary else [])
         basis_note = ''
         if not samples.empty and 'Elongation basis' in samples:
             labels = []
