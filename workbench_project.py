@@ -74,6 +74,14 @@ def validate_project(project):
         if not isinstance(graph.get('settings'), dict) or not isinstance(graph.get('definition'), dict):
             raise ValueError('Each graph needs calculation settings and a definition.')
         settings = graph['settings']
+        order = settings.get('properties_by_group_order', [])
+        if (not isinstance(order, list) or any(not isinstance(g, str) or not g for g in order)
+                or len(set(order)) != len(order)):
+            raise ValueError('Property-plot sample order must be a list of unique group names.')
+        for key in ('ys', 'uts', 'el'):
+            color = settings.get(f'properties_by_group_{key}_color', '#000000')
+            if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+                raise ValueError('Property-plot colours must be six-digit hex colours.')
         group_gauges = graph['definition'].get('gauge_reconstruction', {})
         if not isinstance(group_gauges, dict):
             raise ValueError('Group gauge settings must be a mapping.')

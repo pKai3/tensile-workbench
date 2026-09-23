@@ -21,6 +21,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
                               automatic_fracture_endpoint, fracture_curve)
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
+from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
                                specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX)
@@ -87,6 +88,7 @@ FAMILIES = [
     ("Representative tensile curves", "representative"),
     ("0.2% YS vs elongation", "ys_vs_el"),
     ("UTS vs elongation", "uts_vs_el"),
+    ("YS, UTS and elongation by sample", GROUP_FAMILY),
 ]
 
 PROPERTY_FAMILIES = ('ys_vs_el', 'uts_vs_el')
@@ -94,6 +96,7 @@ PROPERTY_DEFAULTS = {'property_error_bars': True,
                      **{family + suffix: None for family in PROPERTY_FAMILIES
                         for suffix in ('_xlim', '_ylim')}}
 AXIS_DEFAULTS = {'tensile_xlim': [0, 30], 'tensile_ylim': [0, 1000],
+                 'properties_by_group_ylim': [0, 1000], 'properties_by_group_el_ylim': [0, 30],
                  'wh_xlim': [0, 7], 'wh_ylim': [0, 4500],
                  **{family + suffix: limits for family in PROPERTY_FAMILIES
                     for suffix, limits in (('_xlim', [0, 30]), ('_ylim', [0, 1000]))}}
@@ -215,7 +218,7 @@ class PreviewSession:
 
     def defaults(self, graph_index=0):
         result = deepcopy(self.project["graphs"][graph_index]["settings"])
-        for key, value in PROPERTY_DEFAULTS.items():
+        for key, value in {**PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.items():
             result.setdefault(key, deepcopy(value))
         result["graph_index"] = graph_index
         result["family"] = result["families"][0] if result["families"] else "landmark"
@@ -392,7 +395,10 @@ class PreviewSession:
         for key in PROPERTY_DEFAULTS:
             if family not in PROPERTY_FAMILIES or (key != 'property_error_bars' and not key.startswith(family + '_')):
                 key_state.pop(key, None)
-        if family in PROPERTY_FAMILIES:
+        if family != GROUP_FAMILY:
+            for key in GROUP_DEFAULTS:
+                key_state.pop(key, None)
+        if family in (*PROPERTY_FAMILIES, GROUP_FAMILY):
             for key in ('landmark_points', 'pointwise_points', 'landmark_error_bars',
                         'tail_enabled', 'tail_window', 'tail_setback', 'tensile_xlim', 'tensile_ylim'):
                 key_state.pop(key, None)
@@ -441,7 +447,7 @@ class PreviewSession:
                     print('[SELECTION] No included usable specimens; omitted groups: ' + ', '.join(empty))
                 curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in records.items()}
                 family = state["family"]
-                if family in PROPERTY_FAMILIES:
+                if family in (*PROPERTY_FAMILIES, GROUP_FAMILY):
                     xlim, ylim = state.get(family + '_xlim'), state.get(family + '_ylim')
                 else:
                     auto_x, auto_y = e.compute_axes(curves)
@@ -449,7 +455,7 @@ class PreviewSession:
                     xlim = state['wh_xlim'] if is_wh else state['tensile_xlim'] or auto_x
                     ylim = state['wh_ylim'] if is_wh else state['tensile_ylim'] or auto_y
                 models = None
-                if family not in ("work_hardening", "representative", *PROPERTY_FAMILIES):
+                if family not in ("work_hardening", "representative", *PROPERTY_FAMILIES, GROUP_FAMILY):
                     key = json.dumps([spec, {g: [specimen_id(r) for r in rows] for g, rows in records.items()},
                         state["landmark_points"], state["pointwise_points"],
                         family.startswith('work_hardening')], sort_keys=True)
@@ -475,7 +481,7 @@ class PreviewSession:
                     "representative": (f"tensile_representative_{variant}", "tensile_representative"),
                     "work_hardening": (f"work_hardening_{variant}", "work_hardening_with_individuals" if state["show_individuals"] else "work_hardening_averages_only"),
                     "work_hardening_landmark": (f"work_hardening_landmark_{variant}", "work_hardening_landmark"),
-                    **{kind: (f'{kind}_{variant}', kind) for kind in PROPERTY_FAMILIES},
+                    **{kind: (f'{kind}_{variant}', kind) for kind in (*PROPERTY_FAMILIES, GROUP_FAMILY)},
                 }
                 titles = spec.get("titles", {})
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
@@ -486,7 +492,11 @@ class PreviewSession:
                               title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
                 wh = {**self._wh_settings(state, spec),
                       'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in records.items()}}
-                if family in PROPERTY_FAMILIES:
+                if family == GROUP_FAMILY:
+                    fig = render_group_properties(e, records, state,
+                        fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
+                        **common)
+                elif family in PROPERTY_FAMILIES:
                     fig = e.render_strength_elongation_plot(records, family=family,
                         error_bars=state.get('property_error_bars', True),
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
@@ -579,7 +589,7 @@ class PreviewSession:
             for view in results:
                 view_state = view["state"]
                 variant = "with_individuals" if view_state["show_individuals"] else "without_individuals"
-                family_number = {"pointwise": "01", "landmark": "02", "comparison": "03", "representative": "04", "work_hardening": "05", "work_hardening_landmark": "06", "work_hardening_comparison": "07", "ys_vs_el": "08", "uts_vs_el": "09"}[view_state["family"]]
+                family_number = {"pointwise": "01", "landmark": "02", "comparison": "03", "representative": "04", "work_hardening": "05", "work_hardening_landmark": "06", "work_hardening_comparison": "07", "ys_vs_el": "08", "uts_vs_el": "09", GROUP_FAMILY: "10"}[view_state["family"]]
                 plot = destination / f"{graph}_{family_number}_{view_state['family']}_{variant}.png"
                 view["figure"].savefig(plot, dpi=self.engine.PLOT_DPI)
             (destination / "settings.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -648,6 +658,17 @@ class TensileWorkbench:
         self._check("show_both_versions", "Display both with/without-individuals versions")
         self._check("landmark_error_bars", "Landmark ±1 SD bars")
         self._check("property_error_bars", "Group mean ±1 SD bars · strength–EL plots")
+        self._check('properties_by_group_error_bars', 'Group mean ±1 SD bars')
+        for key, label in (('ys', 'YS colour'), ('uts', 'UTS colour'), ('el', 'EL colour')):
+            name = f'properties_by_group_{key}_color'
+            self.controls[name] = w.ColorPicker(description=label, value=GROUP_DEFAULTS[name])
+        self._group_order = []
+        self.group_order_select = w.Select(options=[], rows=6, layout=w.Layout(width='98%'))
+        self.group_order_up = w.Button(description='Move left ↑', layout=w.Layout(width='auto'))
+        self.group_order_down = w.Button(description='Move right ↓', layout=w.Layout(width='auto'))
+        self.group_order_up.on_click(lambda _: self._move_group_order(-1))
+        self.group_order_down.on_click(lambda _: self._move_group_order(1))
+        self.group_order_select.observe(lambda _: self._sync_order_buttons(), names='value')
         self._check("live_update", "Live preview (may be very slow)")
         self.controls["live_update"].tooltip = "Automatically update plots when settings change, including on slider release."
         self._check("export_tables", "Include Excel tables when exporting")
@@ -683,7 +704,9 @@ class TensileWorkbench:
         for key, title in (("tensile_xlim", "Tensile strain (%)"), ("tensile_ylim", "Tensile stress (MPa)"),
                            ("wh_xlim", "WH plastic strain (%)"), ("wh_ylim", "WH rate (MPa)"),
                            ("ys_vs_el_xlim", "Elongation at failure (%)"), ("ys_vs_el_ylim", "0.2% YS (MPa)"),
-                           ("uts_vs_el_xlim", "Elongation at failure (%)"), ("uts_vs_el_ylim", "UTS (MPa)")):
+                           ("uts_vs_el_xlim", "Elongation at failure (%)"), ("uts_vs_el_ylim", "UTS (MPa)"),
+                           ('properties_by_group_ylim', 'Left axis · strength (MPa)'),
+                           ('properties_by_group_el_ylim', 'Right axis · elongation at failure (%)')):
             auto = w.Checkbox(description="Automatic", indent=False)
             lo, hi = w.FloatText(description="Min:", continuous_update=False), w.FloatText(description="Max:", continuous_update=False)
             row = w.VBox([w.HTML("<b>" + title + "</b>"), auto, self._row([lo, hi])])
@@ -750,9 +773,19 @@ class TensileWorkbench:
             wh = family.startswith("work_hardening")
             property_plot = family in PROPERTY_FAMILIES
             axes_prefix = family if property_plot else ("wh" if wh else "tensile")
-            axes = w.Accordion(children=[w.VBox([self.axes[axes_prefix + suffix][3] for suffix in ("_xlim", "_ylim")])], selected_index=None)
-            axes.set_title(0, 'Axes · this plot' if property_plot else "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
+            axis_keys = ([GROUP_FAMILY + '_ylim', GROUP_FAMILY + '_el_ylim'] if family == GROUP_FAMILY
+                         else [axes_prefix + suffix for suffix in ('_xlim', '_ylim')])
+            axes = w.Accordion(children=[w.VBox([self.axes[key][3] for key in axis_keys])], selected_index=None)
+            axes.set_title(0, 'Axes · this plot' if property_plot or family == GROUP_FAMILY else "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
             local.append(axes)
+            if family == GROUP_FAMILY:
+                local += [w.HTML('<b>Sample order</b> · top to bottom = left to right. Select a group, then move it.'),
+                          self.group_order_select, self._row([self.group_order_up, self.group_order_down]),
+                          self.controls['properties_by_group_error_bars'],
+                          self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
+                          w.HTML('Lines connect group means. YS and UTS use the left axis; EL uses the right. '
+                                 'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
+                                 'Show individuals adds faint specimen points. Colours here identify properties, not groups.')]
             if property_plot:
                 local += [self.controls['property_error_bars'],
                           w.HTML('EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
@@ -875,6 +908,7 @@ class TensileWorkbench:
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
         state["groups"] = list(state["groups"])
+        state['properties_by_group_order'] = list(self._group_order)
         state["families"] = [family for family, box in self.family_boxes.items() if box.value]
         for key, (auto, lo, hi, _) in self.axes.items():
             state[key] = None if auto.value else [lo.value, hi.value]
@@ -896,7 +930,7 @@ class TensileWorkbench:
                 return label if group in self.session.files else label + ' (unavailable)'
             self.controls["groups"].options = [(group_label(g), g) for g in choices]
             for key, control in self.controls.items():
-                value = state.get(key, {"export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS}.get(key, control.value))
+                value = state.get(key, {"export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
                 if key == "groups":
                     value = tuple(self.session.visible_groups(value))
                 if isinstance(control, (self.w.IntSlider, self.w.FloatSlider)):
@@ -905,6 +939,8 @@ class TensileWorkbench:
                 control.value = value
             for family, box in self.family_boxes.items():
                 box.value = family in state["families"]
+            self._group_order = list(state.get('properties_by_group_order', []))
+            self._sync_group_order()
             for key, (auto, lo, hi, _) in self.axes.items():
                 pair = state.get(key)
                 auto.value = pair is None
@@ -938,6 +974,36 @@ class TensileWorkbench:
         self.viewer.apply_layout()
         for family, settings in self.plot_settings.items():
             settings.layout.display = "" if self.family_boxes[family].value else "none"
+
+    def _sync_order_buttons(self):
+        options = list(self.group_order_select.options)
+        value = self.group_order_select.value
+        index = options.index(value) if value in options else -1
+        self.group_order_up.disabled = index <= 0
+        self.group_order_down.disabled = index < 0 or index >= len(options) - 1
+
+    def _sync_group_order(self):
+        groups = list(self.controls['groups'].value)
+        self._group_order += [g for g in groups if g not in self._group_order]
+        selected = self.group_order_select.value
+        self.group_order_select.options = ordered_groups(groups, self._group_order)
+        if selected in self.group_order_select.options:
+            self.group_order_select.value = selected
+        self._sync_order_buttons()
+
+    def _move_group_order(self, direction):
+        visible = list(self.group_order_select.options)
+        selected = self.group_order_select.value
+        if selected not in visible:
+            return
+        index = visible.index(selected)
+        other = index + direction
+        if not 0 <= other < len(visible):
+            return
+        a, b = self._group_order.index(selected), self._group_order.index(visible[other])
+        self._group_order[a], self._group_order[b] = self._group_order[b], self._group_order[a]
+        self._sync_group_order()
+        self._changed()
 
     def save_current(self):
         """Validate then autosave; never discard a conflicting external edit."""
@@ -985,6 +1051,7 @@ class TensileWorkbench:
     def _changed(self, _=None):
         if self._paused:
             return
+        self._sync_group_order()
         self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True

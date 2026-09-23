@@ -50,7 +50,7 @@ def wrapped(text, width=75):
 def resize_chart(chart, width, *, focused=False):
     """Reserve actual pixel space for the axes and every wrapped legend row."""
     width = max(200, int(width))
-    left, right, top = 85, 25, 20
+    left, right, top = 85, (85 if 'yaxis2' in chart.layout else 25), 20
     plot_height = 500 if focused else max(260, int(width * 2 / 3) - 85)
     label_columns = max(12, int((width - left - right - 55) / 6.5))
     legend_height = 0
@@ -86,10 +86,27 @@ def figure_to_plotly(figure, *, width=640):
     Conversion is intentionally one-way: view zoom, legend clicks and resizing
     never modify the canonical figure, graph settings or exported data.
     """
+    if len(figure.axes) == 1:
+        return _axis_to_plotly(figure.axes[0], width=width)
+    if len(figure.axes) != 2 or not getattr(figure, '_tensile_group_plot', False):
+        raise ValueError('Unsupported multi-axis figure; use Static plots.')
+    result = _axis_to_plotly(figure.axes[0], width=width)
+    secondary = _axis_to_plotly(figure.axes[1], width=width)
+    for trace in secondary.data:
+        trace.yaxis = 'y2'
+        trace.legendgroup = 'right-' + trace.legendgroup
+        result.add_trace(trace)
+    right_axis = secondary.layout.yaxis.to_plotly_json()
+    right_axis.update(overlaying='y', side='right', showgrid=False, mirror=False)
+    result.update_layout(yaxis2=right_axis, yaxis_mirror=False)
+    resize_chart(result, width)
+    return result
+
+
+def _axis_to_plotly(ax, *, width=640):
+    """Convert one axis, including categorical labels when supplied by a plot."""
     import plotly.graph_objects as go
-    if len(figure.axes) != 1:
-        raise ValueError('This Plotly view supports the workbench single-axis plots only.')
-    ax = figure.axes[0]
+    categories = getattr(ax, '_tensile_category_labels', None)
     error_by_line, caps = {}, set()
     for container in ax.containers:
         if not isinstance(container, ErrorbarContainer):
@@ -147,14 +164,21 @@ def figure_to_plotly(figure, *, width=640):
         mode = 'lines+markers' if has_line and has_marker else 'markers' if has_marker else 'lines'
         color = to_hex(line.get_color())
         hover_name = getattr(line, '_tensile_hover_label', None) or name
+        counts = getattr(line, '_tensile_counts', None)
+        custom = ([[categories[int(value)], counts[i] if counts is not None else None]
+                   for i, value in enumerate(x)] if categories is not None else None)
+        x_hover = ('Sample group: %{customdata[0]}' if categories is not None else
+                   escape(plain(ax.get_xlabel())) + ': %{x:.2f}')
         trace = go.Scatter(x=x.tolist(), y=y.tolist(), mode=mode, name=plain(name),
+            customdata=custom,
             meta=dict(legend_label=plain(name)),
             showlegend=visible_label, legendgroup=group, connectgaps=False,
             opacity=1 if line.get_alpha() is None else float(line.get_alpha()),
             line=dict(color=color, width=float(line.get_linewidth()) * 1.3, dash=dashes.get(line.get_linestyle(), 'solid')),
             marker=dict(color=color, size=float(line.get_markersize()) * 1.3, symbol=markers.get(marker, 'circle')),
-            hovertemplate=(escape(plain(hover_name)) + '<br>' + escape(plain(ax.get_xlabel())) + ': %{x:.2f}<br>'
-                           + escape(plain(ax.get_ylabel())) + ': %{y:.2f}<extra></extra>'),
+            hovertemplate=(escape(plain(hover_name)) + '<br>' + x_hover + '<br>'
+                           + escape(plain(ax.get_ylabel())) + ': %{y:.2f}'
+                           + ('<br>n=%{customdata[1]}' if counts is not None else '') + '<extra></extra>'),
             **error_by_line.get(id(line), {}))
         traces.append(trace)
     if not traces:
@@ -171,6 +195,9 @@ def figure_to_plotly(figure, *, width=640):
         legend=dict(orientation='v', x=0, xanchor='left', yanchor='top',
                     tracegroupgap=8, groupclick='togglegroup', font=dict(size=11)),
         dragmode='zoom', hovermode='closest', uirevision='exploration')
+    if categories is not None:
+        result.update_xaxes(tickmode='array', tickvals=list(range(len(categories))),
+                            ticktext=[wrapped(label, 22) for label in categories])
     resize_chart(result, width)
     return result
 

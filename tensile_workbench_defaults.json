@@ -55,7 +55,14 @@
         "ys_vs_el_xlim": null,
         "ys_vs_el_ylim": null,
         "uts_vs_el_xlim": null,
-        "uts_vs_el_ylim": null
+        "uts_vs_el_ylim": null,
+        "properties_by_group_order": [],
+        "properties_by_group_ylim": null,
+        "properties_by_group_el_ylim": null,
+        "properties_by_group_error_bars": true,
+        "properties_by_group_ys_color": "#1f77b4",
+        "properties_by_group_uts_color": "#d95f02",
+        "properties_by_group_el_color": "#2ca02c"
       },
       "definition": {
         "name": "Demo comparison",
@@ -119,7 +126,14 @@
       "ys_vs_el_xlim": null,
       "ys_vs_el_ylim": null,
       "uts_vs_el_xlim": null,
-      "uts_vs_el_ylim": null
+      "uts_vs_el_ylim": null,
+      "properties_by_group_order": [],
+      "properties_by_group_ylim": null,
+      "properties_by_group_el_ylim": null,
+      "properties_by_group_error_bars": true,
+      "properties_by_group_ys_color": "#1f77b4",
+      "properties_by_group_uts_color": "#d95f02",
+      "properties_by_group_el_color": "#2ca02c"
     },
     "definition": {
       "name": "New graph",

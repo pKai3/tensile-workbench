@@ -285,9 +285,17 @@ Each point requires both properties to be available. If a yield fit is unresolve
 
 Each view has its own title and independent x/y limits under Settings. The with/without-individuals versions of a given scatter plot always share automatic limits based on all included paired specimen values and any displayed SD bars; manual limits override these for both versions. Colours and group legend labels follow the graph's overrides. Static and Plotly views show the same values. Individual hover labels use matched operator names, or CSV stems when unavailable, not long folder paths or arbitrary curve numbers. Full source identity remains in the tables. Exports are numbered `08_ys_vs_el` and `09_uts_vs_el`, with adjacent `with_individuals` / `without_individuals` filenames. Existing saved graphs gain these options without changing their current selected plots.
 
+## YS, UTS and elongation by sample
+
+Select **YS, UTS and elongation by sample** under Plot views. Sample groups run left to right on a categorical x-axis; **0.2% YS** and **UTS** use the left strength axis, and failure **EL** uses the right percentage axis. Three lines connect the group means as visual guides, not fitted trends. Each property uses its own available included specimens, so an unresolved YS does not discard a valid UTS or EL. Missing values leave a gap. EL follows each group's Calc/Reconstruct setting, including manual endpoint overrides.
+
+Open this plot's **Settings** to select a group in **Sample order** and use **Move left / Move right**. The list runs top to bottom in x-axis order. The order is saved per graph, affects only this plot, and is remembered when groups are deselected or sample data is hidden. Newly selected groups append to the order. Settings also provide independent left/right axis limits, a title, property colours, and optional ±1 sample SD bars. A single specimen has no SD bar.
+
+**Show individual specimens** adds faint, unconnected points; Plotly hover identifies specimens and reports the mean's n. Both display modes and with/without-individuals variants use the same values and axis limits. Group label overrides supply x-axis labels; colours identify properties here, not sample groups. Exported plots use `10_properties_by_group_with_individuals` / `without_individuals`. The existing results workbook supplies the underlying properties and mean/SD/n; no average tensile curves are fitted or exported for this view.
+
 ## Per-graph colours
 
-Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to all static and Plotly views and exported plots. Different graph definitions can use different colours for the same group.
+Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to group-coloured static and Plotly views and exported plots. The dual-axis property plot instead has its own YS/UTS/EL colours under Settings. Different graph definitions can use different colours for the same group.
 
 ## Advanced notebook mode
 
