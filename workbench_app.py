@@ -1,5 +1,6 @@
 """Voilà entry: a ready-to-use web app, not a user-editable notebook."""
 from pathlib import Path
+from html import escape
 import os
 import sys
 
@@ -29,14 +30,31 @@ body { background: #f5f7fa; }
 .tw-webapp .widget-accordion { margin: 8px 0; }
 .tw-webapp .widget-accordion .p-Accordion-header,
 .tw-webapp .widget-accordion .lm-AccordionPanel-title { padding: 8px 12px; }
+.tw-webapp .tw-copyright { margin-top:24px; padding-top:12px; border-top:1px solid #dce3e9;
+  color:#536273; font-size:12px; line-height:1.5; white-space:normal; }
+.tw-webapp .tw-copyright summary { cursor:pointer; padding:4px 0; }
+.tw-webapp .tw-copyright pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; }
 @media(max-width: 700px) { .tw-webapp { padding: 8px; } }
 </style>'''))
 migrate(root)
 workbench = launch(root)
+licence_path = root / 'LICENSE'
+licence_text = licence_path.read_text(encoding='utf-8') if licence_path.is_file() else ''
+copyright_notice = next((line for line in licence_text.splitlines() if line.startswith('Copyright (c) ')),
+                        'Copyright (c) 2026 Brogan Csinger, University of Queensland')
+footer = w.HTML('<footer class="tw-copyright">' + escape(copyright_notice.replace('Copyright (c)', '©', 1))
+    + ' · Tensile Workbench<details><summary>MIT licence</summary>'
+    + ('<pre>' + escape(licence_text) + '</pre>' if licence_text else
+       '<p>See the LICENSE file supplied with Tensile Workbench, or the '
+       '<a href="https://github.com/pKai3/tensile-workbench/blob/main/LICENSE" target="_blank" '
+       'rel="noopener noreferrer">repository licence</a>.</p>')
+    + '<p>Third-party dependencies retain their own licences. This software licence does not change '
+      'the rights applying to imported datasets or generated results.</p></details></footer>')
 page = w.VBox([
     w.HTML('<h1>Tensile Workbench</h1><p>Select your folders, choose a graph, and analyse your samples. '
            'No notebook commands are needed. Keep the launcher window open while you work.</p>'),
     workbench.ui,
+    footer,
 ], layout=w.Layout(width='100%'))
 page.add_class('tw-webapp')
 display(page)

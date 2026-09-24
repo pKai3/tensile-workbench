@@ -463,7 +463,10 @@ class PropertyTablesView:
         self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply, on_failure_apply=on_failure_apply)
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
-        specimen_panel = w.VBox([self.panels[1], self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
+        self.specimen_help = w.Accordion(children=[self.panels[1]], selected_index=None,
+                                          layout=w.Layout(width='100%', min_width='0'))
+        self.specimen_help.set_title(0, 'About the specimen table · inclusion, checks and data sources')
+        specimen_panel = w.VBox([self.specimen_help, self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
         self.comparison = ComparisonView(w)
         summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
         self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui],

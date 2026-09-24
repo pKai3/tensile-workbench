@@ -121,4 +121,14 @@ For very old installations where personal definitions were tracked by Git, back 
 
 The service runs locally on **127.0.0.1**. Keep one editing session per project and do not expose the local server directly to the internet. Advanced setup and optional notebook access are covered in [SETUP.md](SETUP.md) and the [Workbench Guide](WORKBENCH_GUIDE.md#advanced-notebook-mode).
 
-No software licence has been added to this repository.
+## Licence and copyright
+
+Copyright © 2026 Brogan Csinger, University of Queensland.
+
+Tensile Workbench is licensed under the [MIT License](LICENSE). You may use,
+modify and redistribute the software, including commercially, provided the
+copyright and permission notice is retained. The software is supplied without
+warranty; see the full licence for its terms.
+
+Third-party dependencies retain their own licences. This software licence does
+not change the rights applying to datasets you import or results you generate.

@@ -47,6 +47,11 @@ In the **Calculation inspector**, the selected specimen's check messages appear 
 
 ### Include/exclude specimens
 
+The explanatory text above **Specimens**, including inclusion rules, source labels
+and the current EL basis by group, is under the initially collapsed **About the
+specimen table · inclusion, checks and data sources** section. Filters, Include
+controls and the specimen-specific Checks column remain visible outside it.
+
 The **Include** checkbox is **global by default**, saved in the personal project file. Excluding a bad specimen applies to existing and future graphs, including statistics, Instron comparisons, both tensile averages, both work-hardening methods, representative selection and individual plots/exports.
 
 For an exception, first change **Applies to** to **This graph only**, then set Include. This explicitly overrides the global setting for this specimen in this graph. Choosing **Global default** again removes the exception and restores the current global choice; it does not copy the local choice into the global setting. Changes to the global default leave other graphs' explicit exceptions untouched. The row shows whether the global default is included or excluded while an override is active.
