@@ -1,72 +1,124 @@
 # Tensile Workbench
 
-Browser-based tensile-data analysis, with static and Plotly views, specimen-property tables, Instron CSV comparisons, and saved graph definitions. Launch opens the ready-to-use web app: no notebook commands, cells or kernel selection are needed.
+Analyse tensile-test CSV exports in a local browser app. Compare sample groups, review individual specimens, produce publication plots and export results to Excel. **No Jupyter or programming knowledge is needed for normal use.**
 
-This repository starts from the working **v18** application. The original OneDrive installation is a separate, unchanged copy. Current deployments contain no research data, personal graph definitions, generated results, or Python environment. Only the small, explicitly synthetic examples are bundled.
+The workbench includes stress–strain curves, work-hardening plots, strength–elongation comparisons, specimen statistics and comparisons with available Instron summary CSVs. Three small synthetic datasets let you try it before adding your own data.
 
-## Install and open the workbench
+## 1. Install and launch
 
-1. Clone this repository or download and **extract** the ZIP to a writable folder.
-2. Install standard **Python 3.13, 64-bit** if needed (Windows x86-64; Mac Apple Silicon or Intel). See [setup instructions](SETUP.md) for download links and troubleshooting.
-3. First-time users: double-click **`Setup_Tensile_Workbench.bat`** on Windows or **`Setup_Tensile_Workbench.command`** on Mac. Setup downloads dependencies and creates or reuses an environment outside the code/data folders. Close running workbench sessions before rerunning Setup.
-4. Double-click **`Launch_Tensile_Workbench.bat`** on Windows or **`Launch_Tensile_Workbench.command`** on Mac. The web app opens and starts automatically.
+You need **standard Python 3.13, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). If Python is not installed, follow the platform-specific links in [SETUP.md](SETUP.md#first-use).
 
-Existing users upgrading from notebook-only mode should run Setup once to add Voilà, then use Launch normally. The original Windows v17 environment and Mac environment are recognised and reused. If dependencies need updating, rerun Setup; compatible installed packages are kept. Ordinary Launch never downloads packages or creates an environment.
+1. Download the repository ZIP and **extract it completely**, or clone the repository. Put the application in a writable folder.
+2. Double-click the **Setup** file for your system. Wait for **Setup complete**.
+3. Double-click the **Launch** file to open the app in your browser.
 
-- Detailed application usage: [workbench guide](WORKBENCH_GUIDE.md).
+| System | First installation | Open the app afterwards |
+|---|---|---|
+| Windows | [Setup_Tensile_Workbench.bat](Setup_Tensile_Workbench.bat) | [Launch_Tensile_Workbench.bat](Launch_Tensile_Workbench.bat) |
+| macOS | [Setup_Tensile_Workbench.command](Setup_Tensile_Workbench.command) | [Launch_Tensile_Workbench.command](Launch_Tensile_Workbench.command) |
 
-Graph definitions support confirmed deletion with persistent Undo. The Specimens table has **global Include defaults with explicit per-graph overrides**, controlling statistics and every plot method without renaming source files. Excluded rows remain available for review. A single **Checks** column lists failed/incomplete identity, UTS agreement, fit and fracture-detection checks. **EL is not used for specimen matching**: Instron's break result and CSV endpoints have different definitions. Tables and Excel group elongation into **Instron / Calc / Reconstruct**; last valid strain remains only in the inspector and Audit. **Uniform Elongation** and **Tensile Toughness** retain **Calc / Instron** columns, including placeholders for unavailable imports. Tensile plots and toughness use detected CSV drop onset, before any landmark shape setback, or its reconstruction. Missing detection is explicit, never replaced by terminal strain; pre-peak properties and WH remain available. The inspector marks the detected endpoint on the full measured curve. Reconstruct is blank unless enabled and available, while the inspector can show a labelled preview with reconstruction off. Separate Instron and Checks tabs have been removed; use the inspector for details. Excel Summary and Specimens share the UI's column definitions; provenance and diagnostics are kept on Audit. Displayed quantities use two decimals without rounding stored calculation data. `!` remains a hard-ignore marker anywhere in data filenames or nested folder names. See the guide for export/audit details.
+Setup creates or reuses a separate local Python environment outside the code and data folders. It installs dependencies but does not analyse data. Launch reuses that environment and does not install packages.
 
-Elastic-fit precision is an exception to the two-decimal display rule: **R², its warning threshold and fit/yield strain details use five decimal places**, including Excel exports. Calculations and saved fit settings remain full precision.
+Leave the launcher's terminal window open while working. To stop the app, return to it and press **Ctrl-C**. If the browser does not open, copy the complete URL printed in the terminal, including its token. There is no notebook to select and no cell to run.
 
-On first run the app asks for **Data folder** and **Output folder** before loading data. Defaults are **`./data`** and **`./output`**, relative to the folder containing the workbench code, not the terminal's current directory. Either location can be an absolute path elsewhere on the computer or an accessible external/network drive.
+See [SETUP.md](SETUP.md) for detailed installation, environment locations and troubleshooting.
 
-Click **Save folders and open** to confirm. Missing folders are created; existing files are not moved or copied. Expand **Folders · data and output locations** at the top of the workbench to change them later. Paths are saved in the ignored, installation-local `.tensile-paths.json`, separate from the shared graph definitions. An unavailable folder or invalid settings file brings the setup form back instead of silently choosing another location.
+## 2. Choose folders—or try the examples
 
-Three lightweight synthetic groups (three specimens each) are available alongside your own data. Use **Show sample data** beside the sample-group selector to show or hide them. The setting is remembered across sessions. No folder switching is required: your data and output paths remain unchanged, and the bundled sample source is managed separately in the background. Fresh installations start with samples visible and a simple **Demo comparison** graph. Hiding samples removes them from the selector, calculations and plots while retaining their saved graph selections for next time. See [the example description](examples/README.md) for the invented inputs and curve construction. They are not experimental material properties.
+On first launch, confirm the **Data folder** and **Output folder**, then click **Save folders and open**.
 
-On the original Mac, ignored `data` and `output` links point to the existing OneDrive folders. They do not duplicate those folders. Accepting the defaults uses these links; another location can be chosen instead. The copied graph settings are independent: changing them here does not update the OneDrive installation.
+- Defaults are **./data** and **./output**, relative to the application folder.
+- Either folder can be elsewhere on your computer or on an accessible external/network drive.
+- Changing these settings never moves or copies existing data.
+- Change them later under **Folders · data and output locations**.
 
-## Another computer or a fresh clone
+To explore first, leave **Show sample data** enabled and select **Demo comparison**. The examples appear alongside your own groups without changing your data folder. They are invented curves, not experimental results. See [examples/README.md](examples/README.md).
 
-The local data/output links and chosen paths are **not** included in a clone. The new user gets the first-run folder form. The shared `tensile_workbench_defaults.json` supplies only the generic demo graph and a blank-new-graph template. Personal graphs are saved in ignored `tensile_workbench.project.json`. If no current project exists, `migrate_tensile_project.py` can copy an older v18/v17 project from the same folder, or seed one from the defaults; it never overwrites an existing current project.
+### Add your own data
 
-**One-time update for existing clones:** before pulling the change that stops tracking personal definitions, copy your `tensile_workbench.project.json` outside the checkout. Git may remove a formerly tracked file during that update. Restore your copy afterwards if needed. Future edits are local-only; keep your own backups or share that file separately by choice. Older Git commits may still contain historical definitions; this update does not rewrite history.
+Use one subfolder per sample group, with one raw curve CSV per specimen. Names do **not** need to follow a B-number format.
 
-Use the supplied Setup for a new computer. Environments, research data, outputs and machine-specific folder choices are not downloaded from GitHub. Setup validates dependencies and saved definitions but does **not** process data, regenerate plots, or rewrite graph settings.
+    data/
+    ├── As built/
+    │   ├── specimen_1.csv
+    │   ├── specimen_2.csv
+    │   └── summary.csv
+    └── Heat treated/
+        └── instrument_exports/
+            ├── specimen_1.csv
+            └── specimen_2.csv
 
-Advanced/manual installation: create a Python 3.13 virtual environment **outside a cloud-synced folder**, install `requirements.txt` into it, and run:
+Nested export folders are supported. Keep original CSV headings and units; the reader recognises supported stress/strain columns and skips summary headers before the time-series data. Available Instron summary CSVs can remain with their dataset for comparison. PDF reports are not imported.
 
-```text
-python /path/to/tensile-workbench/launch_workbench.py
-```
+Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Include** checkbox instead.
 
-Use the environment's Python; the command works from any working directory. On Windows, use the corresponding Windows path. `launch_workbench.py` locates its own folder and starts the app there. Both supplied launchers support an absolute `TENSILE_ENV_DIR` override for an environment outside the code and cloud-storage folders. See [SETUP.md](SETUP.md) for environment locations, recovery and checks.
+After adding or changing files, click **Reload data**. Cloud-hosted files must be downloaded and accessible locally.
 
-## Advanced notebook access
+## 3. Everyday workflow
 
-The original notebook remains available for developers and advanced users. Use the workbench environment's Python:
+1. **Choose a graph definition.** Select an existing graph, duplicate one, or choose **＋ Create new graph…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
+2. **Review the data.** Expand **Specimen properties · tables and calculation inspector**. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint.
+3. **Resolve questionable results.** Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Untick Include to exclude an entire specimen. Exclusions are global unless you explicitly select a graph-only exception. Original data files are not altered.
+4. **Choose plots.** Select **Static plots** or **Interactive Plotly**, tick the required plot types, and open their **Settings** for axes and plot-specific options. Choose whether to show individuals or both versions.
+5. **Click Update plots.** Live preview is off by default because recalculation can be slow. Set layout and size in the plot-view area. Static plots can be enlarged; Plotly supports zoom, pan and hover.
+6. **Export.** Use **Export plot set** for generated views, optionally with Excel tables. Use **Export tables only** when you do not need plots. Outputs go into graph-specific subfolders of your chosen output folder.
 
-```text
-python /path/to/tensile-workbench/launch_workbench.py --notebook
-```
+### Which view should I choose?
 
-Only this optional mode uses JupyterLab and **Run → Run All Cells**. The normal web app is served by Voilà from `workbench_app.py`, not your saved notebook. Both modes use the same calculations, data settings and graph JSON. Avoid editing the same project in multiple tabs/sessions; autosave detects conflicting edits. Restart the launcher after code updates. Do not expose the local service directly to the internet.
+| View | Use it for |
+|---|---|
+| Landmark / pointwise tensile averages | Comparing group stress–strain responses; the methods combine specimens differently |
+| Representative tensile curves | Showing one measured specimen per group, with an optional selection override |
+| Work-hardening views | Comparing the pre-necking hardening response |
+| YS or UTS vs elongation | Comparing strength and ductility, with optional individual points |
+| YS, UTS and elongation by sample | Comparing ordered groups on a dual-axis chart |
 
-## Version control
+For the last view, **Settings** include sample order, connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**), property colours, SD bars and **X-axis labels · this plot only**. Short axis labels here do not shorten names elsewhere.
 
-- Source code, documentation, the clean notebook, generic defaults, and the nine synthetic demo CSVs are tracked.
-- Personal graph definitions (`tensile_workbench.project.json`), chosen folder paths, research files, output folders, environments, previous-save backups, archives and share ZIPs are ignored. Back up personal definitions independently of Git.
-- Before committing a notebook, clear its outputs and save it. Do not commit exported tables or embedded research plots. Review changes in GitHub Desktop before committing and pushing.
-- Use stable filenames and ordinary Git commits for ongoing edits. The `v18-baseline` tag preserves the pre-migration application; do not create `_vX` source copies. The naming and folder setup changes do not change calculation methods.
-- Close the app/notebook and stop its launcher before switching branches or pulling updates. Restart the launcher after code updates (or the kernel in notebook mode).
+Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
 
-## Checks without research plots
+## 4. Understand the results
 
-```text
-python -m unittest discover -s tests -v
-```
+- **Instron** is an imported summary result; **Calc** is the workbench calculation. Different methods or endpoint definitions can produce different results.
+- **Reconstruct** is an optional gauge-length reconstruction, not a directly measured or standards-compliant elongation. Review its formula and assumptions before enabling it.
+- Yield strength uses a 0.2% offset fit. Automatic fit and fracture detection can need manual review; check messages and the inspector expose the selections.
+- SD bars show specimen scatter, not confidence intervals. Summary comparison error bars specifically show scatter in paired percentage differences.
+- Excel retains full numerical precision; ordinary displayed results use two decimals. Fit diagnostics use additional precision.
 
-These use temporary synthetic data and check first-run behaviour, saved locations, path changes, launching from another working directory, and output routing. They do not process research datasets or regenerate their plots.
+See the [Workbench Guide](WORKBENCH_GUIDE.md) for methods, overrides, endpoint selection, gauge reconstruction and export definitions.
 
-No licence has been added; this is a private repository, not a public software release.
+## 5. Save, back up and update
+
+Your settings are local to the application folder:
+
+| File | Contents |
+|---|---|
+| tensile_workbench.project.json | Personal graphs, selections, labels and specimen overrides |
+| .tensile-paths.json | Data/output locations and sample-data visibility |
+| tensile_workbench_defaults.json | Shared starter definitions—not personal settings |
+
+The first two files are ignored by Git. **Back them up separately.** A fresh download does not include your personal settings, research data or results. To share a project, provide the personal project file and corresponding data deliberately; choose data/output paths again on the other computer.
+
+To update:
+
+1. Close the app and stop its launcher. Back up your personal settings.
+2. Pull the new code, or copy the extracted ZIP contents over the existing application folder. **Do not delete the old folder first**; preserve local settings, data and outputs.
+3. Rerun Setup if dependencies changed or Launch reports missing packages, then Launch again.
+
+For very old installations where personal definitions were tracked by Git, back up **tensile_workbench.project.json** outside the checkout before pulling. That one-time transition can remove the tracked copy; restore your own copy afterwards if necessary.
+
+## Common problems
+
+| Problem | What to try |
+|---|---|
+| Missing Python or dependencies | Install standard Python 3.13, then rerun Setup |
+| Mac will not execute a .command file | See [Mac permission troubleshooting](SETUP.md#troubleshooting) |
+| No groups appear | Check the Data folder, group subfolders and local file availability; click Reload data |
+| Plots did not change after editing settings | Click Update plots; live preview is normally off |
+| Startup or updates are slow | Leave live preview off, select fewer plots, and avoid repeatedly refreshing |
+| Browser requests a token | Use the full current URL printed by Launch |
+| Settings report a save conflict | Close other sessions editing the same project; retain your settings backup |
+
+The service runs locally on **127.0.0.1**. Keep one editing session per project and do not expose the local server directly to the internet. Advanced setup and optional notebook access are covered in [SETUP.md](SETUP.md) and the [Workbench Guide](WORKBENCH_GUIDE.md#advanced-notebook-mode).
+
+No software licence has been added to this repository.

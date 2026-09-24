@@ -11,7 +11,7 @@ from unittest.mock import patch
 import numpy as np
 
 from selection_fixture import make_fixture
-from tensile_group_plot import GROUP_FAMILY, ordered_groups
+from tensile_group_plot import GROUP_FAMILY, ordered_groups, render_group_properties, validate_group_display
 from tensile_plotly import figure_to_plotly, resize_chart
 from tensile_workbench import TensileWorkbench
 
@@ -108,6 +108,8 @@ class GroupPropertiesTests(unittest.TestCase):
         self.app._move_group_order(-1)
         self.app._move_group_order(-1)
         self.app.controls['properties_by_group_error_bars'].value = False
+        self.app.controls['properties_by_group_line_style'].value = 'dot'
+        self.app.group_label_fields['Alloy A'].value = '0%\nCO₂'
         self.app.title_inputs[GROUP_FAMILY].value = 'Comparison'
         auto, lo, hi, _ = self.app.axes['properties_by_group_el_ylim']
         lo.value, hi.value, auto.value = 0, 40, False
@@ -117,6 +119,8 @@ class GroupPropertiesTests(unittest.TestCase):
             reopened = TensileWorkbench(self.root)
         self.assertEqual(list(reopened.group_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
         self.assertFalse(reopened.state()['properties_by_group_error_bars'])
+        self.assertEqual(reopened.state()['properties_by_group_line_style'], 'dot')
+        self.assertEqual(reopened.state()['properties_by_group_labels'], {'Alloy A': '0%\nCO₂'})
         self.assertEqual(reopened.state()['properties_by_group_el_ylim'], [0, 40])
         self.assertEqual(reopened.title_inputs[GROUP_FAMILY].value, 'Comparison')
         reopened.controls['groups'].value = ('Alloy A', 'Alloy Z')
@@ -124,8 +128,79 @@ class GroupPropertiesTests(unittest.TestCase):
         self.assertEqual(list(reopened.group_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
         reopened._apply_graph('1')
         self.assertEqual(reopened.state()['properties_by_group_order'], ['Alloy A'])
+        self.assertEqual(reopened.state()['properties_by_group_line_style'], 'solid')
+        self.assertEqual(reopened.group_label_fields['Alloy A'].value, '')
         reopened._apply_graph('0')
         self.assertEqual(reopened.state()['properties_by_group_order'], ['Heat treated', 'Alloy A', 'Alloy Z'])
+        self.assertEqual(reopened.group_label_fields['Alloy A'].value, '0%\nCO₂')
+        reopened.controls['groups'].value = ('Alloy Z',)
+        reopened.controls['groups'].value = ('Alloy A', 'Alloy Z')
+        self.assertEqual(reopened.group_label_fields['Alloy A'].value, '0%\nCO₂')
+        reopened.group_label_fields['Alloy A'].value = ' '
+        self.assertNotIn('Alloy A', reopened.state()['properties_by_group_labels'])
+
+    def test_connecting_styles_preserve_markers_sd_and_individuals(self):
+        for style, mpl, plotly in [('solid', '-', 'solid'), ('dash', '--', 'dash'),
+                                   ('dot', ':', 'dot'), ('none', 'None', 'solid')]:
+            with self.subTest(style=style):
+                result = self.session.render(self.state(properties_by_group_line_style=style, show_individuals=True))
+                lines = self.means(result)
+                self.assertTrue(all(line.get_linestyle() == mpl for line in lines.values()))
+                chart = figure_to_plotly(result['figure'])
+                means = [trace for trace in chart.data if trace.showlegend]
+                self.assertTrue(all(trace.line.dash == plotly for trace in means))
+                self.assertTrue(all(trace.mode == ('markers' if style == 'none' else 'lines+markers') for trace in means))
+                self.assertTrue(all(trace.error_y.visible for trace in means))
+                individuals = [trace for trace in chart.data if trace.opacity < .5]
+                self.assertEqual(len(individuals), 27)
+                self.assertTrue(all(trace.mode == 'markers' for trace in individuals))
+        result = self.session.render(self.state(properties_by_group_line_style='none', properties_by_group_error_bars=False))
+        self.assertTrue(all(line.get_linestyle() == 'None' for line in self.means(result).values()))
+
+    def test_short_labels_only_affect_this_plot_and_keep_hover_identity(self):
+        labels = {'Alloy A': '0%\nCO₂', 'Alloy Z': '5% CO₂'}
+        result = self.session.render(self.state(properties_by_group_labels=labels))
+        self.assertEqual([t.get_text() for t in result['figure'].axes[0].get_xticklabels()],
+                         ['Heat treated', '5% CO₂', '0%\nCO₂'])
+        chart = figure_to_plotly(result['figure'])
+        self.assertEqual(chart.layout.xaxis.ticktext[-1], '0%<br>CO₂')
+        self.assertEqual(next(trace for trace in chart.data if trace.showlegend).customdata[-1][0], 'Alloy A')
+        plain = self.session.render(self.state(family='uts_vs_el'))
+        changed = self.session.render(self.state(family='uts_vs_el', properties_by_group_labels=labels,
+                                                properties_by_group_line_style='none'))
+        self.assertIs(plain['figure'], changed['figure'])
+
+    def test_long_labels_fit_five_static_categories_and_rewrap_in_plotly(self):
+        base = self.session.render(self.state())
+        groups = [f'Treatment {i}' for i in range(5)]
+        records = {g: base['export_records']['Alloy A'] for g in groups}
+        labels = {g: f'{g}: {i * 2.5:.1f}% CO2 in Ar / Air Atmosphere / titanium alloy' for i, g in enumerate(groups)}
+        with redirect_stdout(io.StringIO()):
+            fig = render_group_properties(self.session.engine, records, self.state(groups=groups),
+                out_path=self.root / 'unused.png', name_overrides=labels, preview=True)
+        self.addCleanup(self.session.engine.plt.close, fig)
+        fig.canvas.draw()
+        ticks = fig.axes[0].get_xticklabels()
+        boxes = [tick.get_window_extent(fig.canvas.get_renderer()) for tick in ticks]
+        self.assertTrue(all(a.x1 < b.x0 for a, b in zip(boxes, boxes[1:])))
+        xlabel = fig.axes[0].xaxis.label.get_window_extent(fig.canvas.get_renderer())
+        self.assertLess(xlabel.y1, min(box.y0 for box in boxes))
+        chart = figure_to_plotly(fig, width=1100)
+        wide = chart.layout.xaxis.ticktext
+        resize_chart(chart, 450)
+        narrow = chart.layout.xaxis.ticktext
+        self.assertGreater(sum(t.count('<br>') for t in narrow), sum(t.count('<br>') for t in wide))
+        self.assertEqual(chart.layout.xaxis.tickangle, 0)
+        self.assertGreater(chart.layout.margin.b, 150)
+        self.assertFalse((self.root / 'unused.png').exists())
+
+    def test_bad_display_settings_rejected_without_changing_saved_graph(self):
+        for settings in ({'properties_by_group_line_style': 'wrong'},
+                         {'properties_by_group_line_style': []},
+                         {'properties_by_group_labels': []},
+                         {'properties_by_group_labels': {'Alloy A': 3}}):
+            with self.subTest(settings=settings), self.assertRaises(ValueError):
+                validate_group_display(settings)
 
     def test_new_groups_append_without_losing_saved_order_and_empty_groups_leave_gaps(self):
         self.assertEqual(ordered_groups(['A', 'C', 'B'], ['B', 'hidden', 'A']), ['B', 'A', 'C'])

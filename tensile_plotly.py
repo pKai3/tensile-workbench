@@ -54,7 +54,17 @@ def resize_chart(chart, width, *, focused=False):
     plot_height = 500 if focused else max(260, int(width * 2 / 3) - 85)
     label_columns = max(12, int((width - left - right - 55) / 6.5))
     legend_height = 0
+    categories = (chart.layout.meta or {}).get('category_labels')
+    axis_footer = 76
     with chart.batch_update():
+        if categories is not None:
+            # Reflow category labels when a card is resized or enlarged, not
+            # just when the numerical figure is first rendered.
+            slot = max(1, (width - left - right) / max(1, len(categories)))
+            columns = max(1, min(22, int(slot * .85 / 6.5)))
+            labels = [wrapped(label, columns) for label in categories]
+            axis_footer = 60 + 14 * max((label.count('<br>') + 1 for label in labels), default=1)
+            chart.update_xaxes(ticktext=labels, tickangle=0)
         for trace in chart.data:
             if trace.showlegend:
                 label = trace.meta['legend_label']
@@ -62,10 +72,10 @@ def resize_chart(chart, width, *, focused=False):
                 trace.name = display_label
                 # FigureWidget batches assignments until the context exits.
                 legend_height += 18 * (display_label.count('<br>') + 1) + 8
-        bottom = 76 + legend_height + 14
+        bottom = axis_footer + legend_height + 14
         chart.update_layout(width=width, height=plot_height + top + bottom,
             margin=dict(l=left, r=right, t=top, b=bottom),
-            legend=dict(y=-76 / plot_height))
+            legend=dict(y=-axis_footer / plot_height))
 
 
 def text_block(widgets, text, *, title=False):
@@ -107,6 +117,7 @@ def _axis_to_plotly(ax, *, width=640):
     """Convert one axis, including categorical labels when supplied by a plot."""
     import plotly.graph_objects as go
     categories = getattr(ax, '_tensile_category_labels', None)
+    category_hover = getattr(ax, '_tensile_category_hover_labels', categories)
     error_by_line, caps = {}, set()
     for container in ax.containers:
         if not isinstance(container, ErrorbarContainer):
@@ -165,7 +176,7 @@ def _axis_to_plotly(ax, *, width=640):
         color = to_hex(line.get_color())
         hover_name = getattr(line, '_tensile_hover_label', None) or name
         counts = getattr(line, '_tensile_counts', None)
-        custom = ([[categories[int(value)], counts[i] if counts is not None else None]
+        custom = ([[escape(category_hover[int(value)]), counts[i] if counts is not None else None]
                    for i, value in enumerate(x)] if categories is not None else None)
         x_hover = ('Sample group: %{customdata[0]}' if categories is not None else
                    escape(plain(ax.get_xlabel())) + ': %{x:.2f}')
@@ -196,6 +207,7 @@ def _axis_to_plotly(ax, *, width=640):
                     tracegroupgap=8, groupclick='togglegroup', font=dict(size=11)),
         dragmode='zoom', hovermode='closest', uirevision='exploration')
     if categories is not None:
+        result.update_layout(meta={'category_labels': list(categories)})
         result.update_xaxes(tickmode='array', tickvals=list(range(len(categories))),
                             ticktext=[wrapped(label, 22) for label in categories])
     resize_chart(result, width)

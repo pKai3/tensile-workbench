@@ -21,7 +21,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
                               automatic_fracture_endpoint, fracture_curve)
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
-from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties
+from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
                                specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX)
@@ -363,6 +363,7 @@ class PreviewSession:
 
     @staticmethod
     def _validate(state):
+        validate_group_display(state)
         if not state["groups"]:
             raise ValueError("Select at least one sample group.")
         if state["family"] not in dict((value, label) for label, value in FAMILIES):
@@ -659,10 +660,16 @@ class TensileWorkbench:
         self._check("landmark_error_bars", "Landmark ±1 SD bars")
         self._check("property_error_bars", "Group mean ±1 SD bars · strength–EL plots")
         self._check('properties_by_group_error_bars', 'Group mean ±1 SD bars')
+        self.controls['properties_by_group_line_style'] = w.Dropdown(
+            description='Connecting lines:', options=[('Straight / solid', 'solid'), ('Dash', 'dash'),
+                                                       ('Dot', 'dot'), ('None · markers only', 'none')],
+            value='solid', style={'description_width': 'initial'}, layout=w.Layout(width='330px'))
         for key, label in (('ys', 'YS colour'), ('uts', 'UTS colour'), ('el', 'EL colour')):
             name = f'properties_by_group_{key}_color'
             self.controls[name] = w.ColorPicker(description=label, value=GROUP_DEFAULTS[name])
         self._group_order = []
+        self._group_labels, self.group_label_fields = {}, {}
+        self.group_labels_box = w.VBox(layout=w.Layout(width='100%'))
         self.group_order_select = w.Select(options=[], rows=6, layout=w.Layout(width='98%'))
         self.group_order_up = w.Button(description='Move left ↑', layout=w.Layout(width='auto'))
         self.group_order_down = w.Button(description='Move right ↓', layout=w.Layout(width='auto'))
@@ -779,8 +786,14 @@ class TensileWorkbench:
             axes.set_title(0, 'Axes · this plot' if property_plot or family == GROUP_FAMILY else "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
             local.append(axes)
             if family == GROUP_FAMILY:
+                label_settings = w.Accordion(children=[w.VBox([
+                    w.HTML('Short x-axis labels for this plot only. Leave blank to use the usual display name. '
+                           'Line breaks are allowed. Other plots and tables keep their existing names.'),
+                    self.group_labels_box])], selected_index=None)
+                label_settings.set_title(0, 'X-axis labels · this plot only')
                 local += [w.HTML('<b>Sample order</b> · top to bottom = left to right. Select a group, then move it.'),
                           self.group_order_select, self._row([self.group_order_up, self.group_order_down]),
+                          self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
                           w.HTML('Lines connect group means. YS and UTS use the left axis; EL uses the right. '
@@ -909,6 +922,7 @@ class TensileWorkbench:
         state = {key: control.value for key, control in self.controls.items()}
         state["groups"] = list(state["groups"])
         state['properties_by_group_order'] = list(self._group_order)
+        state['properties_by_group_labels'] = dict(self._group_labels)
         state["families"] = [family for family, box in self.family_boxes.items() if box.value]
         for key, (auto, lo, hi, _) in self.axes.items():
             state[key] = None if auto.value else [lo.value, hi.value]
@@ -940,7 +954,8 @@ class TensileWorkbench:
             for family, box in self.family_boxes.items():
                 box.value = family in state["families"]
             self._group_order = list(state.get('properties_by_group_order', []))
-            self._sync_group_order()
+            self._group_labels = dict(state.get('properties_by_group_labels', {}))
+            self._sync_group_order(force_labels=True)
             for key, (auto, lo, hi, _) in self.axes.items():
                 pair = state.get(key)
                 auto.value = pair is None
@@ -982,7 +997,7 @@ class TensileWorkbench:
         self.group_order_up.disabled = index <= 0
         self.group_order_down.disabled = index < 0 or index >= len(options) - 1
 
-    def _sync_group_order(self):
+    def _sync_group_order(self, *, force_labels=False):
         groups = list(self.controls['groups'].value)
         self._group_order += [g for g in groups if g not in self._group_order]
         selected = self.group_order_select.value
@@ -990,6 +1005,38 @@ class TensileWorkbench:
         if selected in self.group_order_select.options:
             self.group_order_select.value = selected
         self._sync_order_buttons()
+        self._sync_group_labels(force=force_labels)
+
+    def _sync_group_labels(self, *, force=False):
+        groups = list(self.group_order_select.options)
+        if not force and groups == list(self.group_label_fields):
+            return
+        old_rows = self.group_labels_box.children
+        self.group_labels_box.children = ()
+        for row in old_rows:
+            for child in row.children:
+                child.close()
+            row.close()
+        self.group_label_fields = {}
+        rows = []
+        for group in groups:
+            field = self.w.Textarea(value=self._group_labels.get(group, ''), rows=2,
+                placeholder='Automatic display name', continuous_update=False,
+                layout=self.w.Layout(width='70%', min_width='160px'))
+            field.observe(lambda change, group=group: self._group_label_changed(group, change['new']), names='value')
+            self.group_label_fields[group] = field
+            name = self.w.HTML(escape(group), layout=self.w.Layout(width='28%', min_width='100px'))
+            rows.append(self._row([name, field]))
+        self.group_labels_box.children = tuple(rows)
+
+    def _group_label_changed(self, group, label):
+        if self._paused:
+            return
+        if label.strip():
+            self._group_labels[group] = label.strip()
+        else:
+            self._group_labels.pop(group, None)
+        self._changed()
 
     def _move_group_order(self, direction):
         visible = list(self.group_order_select.options)
