@@ -713,10 +713,7 @@ class SpecimenInspector:
             self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
                                        layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
         self.failure_editor.set_title(0, 'Adjust failure elongation · preview before applying')
-        self.layers_dropdown = w.Accordion(children=[self.layers_panel], selected_index=None)
-        self.layers_dropdown.set_title(0, 'Show on plot · display items')
         self.details_panel = w.Accordion(children=[w.VBox([
-            self.layers_dropdown, self.editor, self.failure_editor,
             self.summary, w.HTML(fracture_detection_help()),
         ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,
             layout=w.Layout(width='100%', min_width='0'))
@@ -725,7 +722,9 @@ class SpecimenInspector:
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
                           self.status,
                           w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
-                          self.gauge_status, self.checks, self.chart_box, self.details_panel], layout=w.Layout(width='100%', min_width='0'))
+                          self.gauge_status, self.checks, self.editor, self.failure_editor,
+                          self.chart_box, self.layers_panel,
+                          self.details_panel], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(self._view_changed, names='value')
         self.reset.on_click(lambda _: self._reset_zoom())

@@ -54,14 +54,20 @@ class InspectorLayoutTests(unittest.TestCase):
         self.inspector.select('Alloy A/coupon_1.csv')
         self.payload = deepcopy(self.inspector._payload)
 
-    def test_checks_immediately_precede_plot_and_all_dialogues_have_outer_fold(self):
+    def test_editors_below_checks_above_plot_and_outside_details_fold(self):
         children = list(self.inspector.ui.children)
-        self.assertIs(children[children.index(self.inspector.chart_box) - 1], self.inspector.checks)
+        start = children.index(self.inspector.checks)
+        self.assertEqual(children[start:start + 4], [self.inspector.checks, self.inspector.editor,
+                                                   self.inspector.failure_editor, self.inspector.chart_box])
+        self.assertIs(children[children.index(self.inspector.chart_box) + 1], self.inspector.layers_panel)
+        self.assertEqual(self.inspector.layers_panel.layout.display, '')
         self.assertIs(children[-1], self.inspector.details_panel)
         self.assertIsNone(self.inspector.details_panel.selected_index)
         nested = self.inspector.details_panel.children[0].children
-        for child in (self.inspector.layers_dropdown, self.inspector.editor, self.inspector.failure_editor):
-            self.assertIn(child, nested)
+        self.assertNotIn(self.inspector.layers_panel, nested)
+        for child in (self.inspector.editor, self.inspector.failure_editor):
+            self.assertNotIn(child, nested)
+            self.assertIn(child, children)
             self.assertIsNone(child.selected_index)
         self.assertIn(self.inspector.summary, nested)
         self.assertNotIn(self.inspector.summary, children)
@@ -116,13 +122,33 @@ class InspectorLayoutTests(unittest.TestCase):
     def test_folding_never_changes_saved_data_or_reruns_calculations(self):
         before = self.app.store.path.read_bytes()
         with patch('tensile_inspector.specimen_calculation', side_effect=AssertionError('recalculated')):
-            self.inspector.details_panel.selected_index = 0
             self.inspector.editor.selected_index = 0
-            self.inspector.layers_dropdown.selected_index = 0
             self.inspector.failure_editor.selected_index = 0
+            self.assertIsNone(self.inspector.details_panel.selected_index)
+            self.inspector.details_panel.selected_index = 0
             self.inspector.details_panel.selected_index = None
+            self.assertEqual(self.inspector.editor.selected_index, 0)
+            self.assertEqual(self.inspector.failure_editor.selected_index, 0)
+            self.assertEqual(self.inspector.layers_panel.layout.display, '')
         self.assertEqual(self.app.store.path.read_bytes(), before)
         self.assertFalse((self.root / 'output').exists())
+
+    def test_visible_legend_toggles_chart_with_details_closed_without_recalculation(self):
+        before = self.app.store.path.read_bytes()
+        checkbox = next(widget for widget in self.inspector._layer_widgets
+                        if isinstance(widget, self.app.w.Checkbox) and not widget.disabled)
+        trace = next(trace for trace in self.inspector.chart.data if trace.name == checkbox.description)
+        original = checkbox.value
+        self.assertIsNone(self.inspector.details_panel.selected_index)
+        with patch('tensile_inspector.specimen_calculation', side_effect=AssertionError('recalculated')):
+            checkbox.value = not original
+            self.assertEqual(trace.visible, not original)
+            checkbox.value = original
+            self.assertEqual(trace.visible, original)
+        self.assertEqual(self.inspector.layers_panel.layout.display, '')
+        self.assertEqual(self.app.store.path.read_bytes(), before)
+        self.inspector.clear()
+        self.assertEqual(self.inspector.layers_panel.layout.display, 'none')
 
 
 if __name__ == '__main__':

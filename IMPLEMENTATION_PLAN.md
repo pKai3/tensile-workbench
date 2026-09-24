@@ -56,11 +56,15 @@
 
 ### Inspector layout — implemented
 
-- Specimen check messages now sit immediately above the graph and update with
+- Specimen check messages now sit above the graph and update with
   specimen selection and unsaved fit/EL previews; an empty check list is hidden.
-- Display-item controls, fit and EL editors, calculation/source/gauge reports
-  and method explanations are collapsible within one outer Inspector controls
-  and calculation details fold. The selector and view toolbar remain visible.
+- Show on plot stays directly below the chart as an always-visible checkbox
+  legend whenever a specimen chart is present; it is outside all folds.
+- Adjust elastic fit and Adjust failure elongation are individually collapsible
+  directly below specimen warnings and above the plot, outside the details fold.
+- Calculation/source/gauge reports and method explanations are collapsible
+  within one outer Inspector controls and calculation details fold. The selector
+  and view toolbar remain visible.
 
 ## Historical implementation notes
 
