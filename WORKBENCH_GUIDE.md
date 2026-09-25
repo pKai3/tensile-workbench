@@ -312,7 +312,37 @@ Under **X-axis labels · this plot only**, enter a short label beside each selec
 
 ## Per-graph colours
 
-Expand **Labels and colours · this graph, all plot types**, select a group, tick **Override colour for this graph**, choose a colour and click **Apply group overrides**. Untick it and apply to restore the automatic colour. Overrides are saved with the graph and apply to group-coloured static and Plotly views and exported plots. The dual-axis property plot instead has its own YS/UTS/EL colours under Settings. Different graph definitions can use different colours for the same group.
+Expand **Labels and colours · this graph, all plot types** and choose a **Palette**.
+The swatches update immediately. There are 16 palettes, including:
+
+- **Retro Pop · reference colours**: the original pink, grey, olive-lime
+  and cyan combination; **Retro Pop · vivid** adds stronger, contrasting accents.
+- **Citrus & Ink**, **Orchid & Teal**, **Jewel**, **Candy** and **Mineral** for more
+  unconventional, saturated combinations.
+- **Pastel · Coastal**, **Pastel · Orchard** and **Pastel · Berry**: stronger
+  saturation and broader hue separation than the original soft pastel versions.
+- **Muted**, **Vivid**, **Earth**, **Ocean**, **Greyscale**, and unchanged **Classic**.
+
+The choice saves automatically per graph; click **Update plots** to apply it when
+live preview is off. Existing graphs start with Classic. The custom themes have
+been strengthened in place, retaining their saved palette IDs; individual colour
+overrides and the Classic palette are unchanged.
+
+Palette colours apply consistently to group-coloured tensile, work-hardening and
+strength–EL plots, static and Plotly views, exports, and the summary comparison
+charts. Assignment keeps the existing alphabetical all-loaded-groups order,
+with bundled examples after research groups; selecting fewer groups does not
+reassign colours. Palettes repeat once their colours are exhausted. Adding or
+removing data groups can still shift automatic assignments.
+
+To fix a particular group's colour, select the group, tick **Override colour for
+this graph**, choose a colour and click **Apply group overrides**. Overrides take
+priority over any palette. Untick it and apply to restore that palette's automatic
+colour. Different graph definitions can use different colours for the same group.
+The dual-axis property plot keeps its own YS/UTS/EL colours under Settings, and the
+calculation inspector retains its fixed diagnostic colours. Pastel and greyscale
+themes may need additional markers or line styles to distinguish similar colours
+in print; no palette is a guarantee of accessibility.
 
 ## Advanced notebook mode
 

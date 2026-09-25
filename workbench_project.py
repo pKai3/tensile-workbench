@@ -14,6 +14,7 @@ from tensile_fit import validate_threshold, validate_override
 from tensile_gauge import validate_group_policy
 from tensile_fracture import validate_failure_override
 from tensile_group_plot import validate_group_display
+from tensile_colors import DEFAULT_PALETTE, validate_palette
 
 
 class ProjectConflict(RuntimeError):
@@ -75,6 +76,7 @@ def validate_project(project):
         if not isinstance(graph.get('settings'), dict) or not isinstance(graph.get('definition'), dict):
             raise ValueError('Each graph needs calculation settings and a definition.')
         settings = graph['settings']
+        validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(settings)
         order = settings.get('properties_by_group_order', [])
         if (not isinstance(order, list) or any(not isinstance(g, str) or not g for g in order)

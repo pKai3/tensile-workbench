@@ -22,6 +22,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
+from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
                                specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX)
@@ -157,6 +158,10 @@ class PreviewSession:
         palette = itertools.cycle(self.engine.plt.rcParams["axes.prop_cycle"].by_key()["color"])
         # Adding sample groups must not change the colours of research groups.
         self.colors = {g: next(palette) for g in [*sorted(research), *sorted(set(files) - set(research))]}
+
+    def color_map(self, state, spec):
+        return group_color_map(self.colors, state.get('color_palette', DEFAULT_PALETTE),
+                               spec.get('color_overrides', {}))
 
     def hidden_sample_group(self, group):
         return group.startswith(SAMPLE_GROUP_PREFIX) and not self.show_sample_data
@@ -363,6 +368,7 @@ class PreviewSession:
 
     @staticmethod
     def _validate(state):
+        validate_palette(state.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(state)
         if not state["groups"]:
             raise ValueError("Select at least one sample group.")
@@ -488,7 +494,7 @@ class PreviewSession:
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
                              dict((value, label) for label, value in FAMILIES)[family])
                 title = spec.get("workbench_titles", {}).get(family) or title
-                common = dict(out_path=Path("preview.png"), color_map={**self.colors, **spec.get('color_overrides', {})},
+                common = dict(out_path=Path("preview.png"), color_map=self.color_map(state, spec),
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
                               title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
                 wh = {**self._wh_settings(state, spec),
@@ -722,6 +728,9 @@ class TensileWorkbench:
             self.title_inputs[family] = w.Text(description=label, continuous_update=False,
                 style={"description_width": "initial"}, layout=w.Layout(width="98%"))
         self.override_group = w.Dropdown(description="Group:", layout=w.Layout(width="98%"))
+        self.controls['color_palette'] = w.Dropdown(description='Palette:', options=PALETTE_OPTIONS,
+            value=DEFAULT_PALETTE, layout=w.Layout(width='98%'))
+        self.palette_swatches = w.HTML()
         self.override_name = w.Text(description="Legend label:", continuous_update=False,
                                     style={"description_width": "initial"}, layout=w.Layout(width="98%"))
         self.override_color_enabled = w.Checkbox(description='Override colour for this graph', indent=False)
@@ -769,7 +778,8 @@ class TensileWorkbench:
             self._row([self.tables_reload_button, self.tables_update_button, self.table_export_button]), self.tables.ui
         ])], selected_index=None, layout=w.Layout(width='100%'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
-        general = w.Accordion(children=[w.VBox([self.override_group, self.override_name,
+        general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
+                             self.override_group, self.override_name,
                              self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
         general.set_title(0, "Labels and colours · this graph, all plot types")
         self.plot_settings = {}
@@ -854,7 +864,8 @@ class TensileWorkbench:
         self.graph.observe(self._graph_changed, names="value")
         self.name.observe(self._changed, names="value")
         for key, widget in self.controls.items():
-            widget.observe(self._view_changed if key in VIEW_ONLY_SETTINGS else self._changed, names="value")
+            widget.observe(self._palette_changed if key == 'color_palette' else
+                           self._view_changed if key in VIEW_ONLY_SETTINGS else self._changed, names="value")
         for widget in list(self.family_boxes.values()) + list(self.title_inputs.values()):
             widget.observe(self._changed, names="value")
         for auto, lo, hi, _ in self.axes.values():
@@ -944,7 +955,7 @@ class TensileWorkbench:
                 return label if group in self.session.files else label + ' (unavailable)'
             self.controls["groups"].options = [(group_label(g), g) for g in choices]
             for key, control in self.controls.items():
-                value = state.get(key, {"export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
+                value = state.get(key, {"color_palette": DEFAULT_PALETTE, "export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
                 if key == "groups":
                     value = tuple(self.session.visible_groups(value))
                 if isinstance(control, (self.w.IntSlider, self.w.FloatSlider)):
@@ -978,6 +989,8 @@ class TensileWorkbench:
             self._paused = old
 
     def _sync_disabled(self):
+        self.palette_swatches.value = palette_preview(self.controls['color_palette'].value,
+            self.session.engine.plt.rcParams['axes.prop_cycle'].by_key()['color'])
         for auto, lo, hi, _ in self.axes.values():
             lo.disabled = hi.disabled = auto.value
         active_wh = any(box.value and family.startswith("work_hardening") for family, box in self.family_boxes.items())
@@ -1109,6 +1122,16 @@ class TensileWorkbench:
             self.update(save=False)
         else:
             self.status.value = "Settings saved. Click <b>Update plots</b>; displayed plots may reflect previous settings."
+
+    def _palette_changed(self, change):
+        if self._paused:
+            return
+        self._changed(change)
+        # Refresh the automatic colour without discarding any pending manual override.
+        if self.override_group.value is not None and not self.override_color_enabled.value:
+            from matplotlib.colors import to_hex
+            colors = self.session.color_map(self.state(), {})
+            self.override_color.value = to_hex(colors.get(self.override_group.value, '#1f77b4'))
 
     def _view_changed(self, change=None):
         """Layout, display width and export preferences do not invalidate curves."""
@@ -1368,7 +1391,7 @@ class TensileWorkbench:
         from matplotlib.colors import to_hex
         color = spec.get('color_overrides', {}).get(group)
         self.override_color_enabled.value = color is not None
-        self.override_color.value = color or to_hex(self.session.colors.get(group, '#1f77b4'))
+        self.override_color.value = color or to_hex(self.session.color_map(self.state(), {}).get(group, '#1f77b4'))
         modulus = spec.get("youngs_modulus_overrides", {}).get(group)
         self.override_e_enabled.value = modulus is not None
         self.override_e.value = modulus/1000 if modulus is not None else self.controls["modulus_gpa"].value
@@ -1625,7 +1648,7 @@ class TensileWorkbench:
         try:
             with redirect_stdout(io.StringIO()):
                 frames = self.session.property_tables(state, self._current()['definition'])
-            self.tables.set_frames(frames)
+            self.tables.set_frames(frames, color_map=self.session.color_map(state, self._current()['definition']))
             self._update_fit_warning(frames)
             self.table_export_button.disabled = frames['tensile_samples'].empty
         except Exception as error:

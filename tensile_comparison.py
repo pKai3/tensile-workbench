@@ -74,7 +74,7 @@ def size_comparison(figure, width):
                          margin={'l': 58, 'r': 12, 't': 40, 'b': 60})
 
 
-def comparison_figure(summary, *, width=360, groups=None):
+def comparison_figure(summary, *, width=360, groups=None, color_map=None):
     """One compact independent property panel; SD comparison lives below it."""
     import plotly.graph_objects as go
     from plotly.colors import qualitative
@@ -91,7 +91,8 @@ def comparison_figure(summary, *, width=360, groups=None):
     figure = go.Figure(go.Bar(name=PROPERTY_LABELS.get(prop, prop), showlegend=False,
         x=[wrapped(str(group), 16) for group in groups], meta={'property': prop},
         y=[v if np.isfinite(v) else None for v in data['Mean difference (%)']],
-        marker={'color': [qualitative.Plotly[i % len(qualitative.Plotly)] for i in range(len(groups))]},
+        marker={'color': [(color_map or {}).get(group, qualitative.Plotly[i % len(qualitative.Plotly)])
+                          for i, group in enumerate(groups)]},
         error_y={'type': 'data', 'array': [v if np.isfinite(v) else None for v in data['SD difference (%)']],
                  'visible': True, 'thickness': 1.2, 'width': 4}, customdata=custom,
         hovertemplate=PROPERTY_LABELS.get(prop, prop) + '<br>%{x}<br>Mean paired difference: %{y:.5g}%'
@@ -141,6 +142,7 @@ class ComparisonView:
     def __init__(self, widgets):
         self.w = widgets
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
+        self.color_map = {}
         self.charts, self.probe, self._owned = {}, None, []
         self.box = widgets.VBox(layout=widgets.Layout(width='100%', min_width='0'))
         self.grid = widgets.GridBox(layout=widgets.Layout(width='100%', min_width='0', grid_gap='12px',
@@ -176,12 +178,14 @@ class ComparisonView:
         self._dispose()
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
 
-    def set_frames(self, frames, groups):
+    def set_frames(self, frames, groups, color_map=None):
         summary = relative_comparison(frames)
         summary = summary[summary['Group'].isin(groups)].reset_index(drop=True)
-        if summary.equals(self.summary):
+        colors = dict(color_map or {})
+        if summary.equals(self.summary) and colors == self.color_map:
             return
         self.summary = summary
+        self.color_map = colors
         self._dispose()
         if self.ui.selected_index is not None:
             self._render()
@@ -204,7 +208,7 @@ class ComparisonView:
             cards = []
             for prop in properties:
                 data = self.summary[self.summary['Property'].eq(prop)]
-                chart = go.FigureWidget(comparison_figure(data, groups=groups))
+                chart = go.FigureWidget(comparison_figure(data, groups=groups, color_map=self.color_map))
                 chart._config = {**chart._config, 'displaylogo': False, 'responsive': True}
                 spread = self.w.HTML(spread_table(data), layout=self.w.Layout(width='100%', min_width='0'))
                 card = self.w.VBox([chart, spread], layout=self.w.Layout(

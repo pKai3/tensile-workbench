@@ -442,6 +442,7 @@ class PropertyTablesView:
         from tensile_comparison import ComparisonView
         w = widgets
         self.frames = {}
+        self.color_map = {}
         self._threshold_sync = False
         self.on_threshold = on_threshold
         self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.001,
@@ -498,8 +499,9 @@ class PropertyTablesView:
             self.set_threshold(change['old'])
             self.threshold_status.value = '<b>Not saved:</b> ' + escape(str(error))
 
-    def set_frames(self, frames):
+    def set_frames(self, frames, color_map=None):
         self.frames = frames
+        self.color_map = dict(color_map or {})
         self.render()
 
     def open_inspector(self, ident):
@@ -593,7 +595,8 @@ class PropertyTablesView:
             return
         samples = self._filtered(self.frames['tensile_samples'])
         summary = self._filtered(self.frames['tensile_summary_details'])
-        self.comparison.set_frames(self.frames, summary['Group'].unique() if 'Group' in summary else [])
+        self.comparison.set_frames(self.frames, summary['Group'].unique() if 'Group' in summary else [],
+                                   color_map=self.color_map)
         basis_note = ''
         if not samples.empty and 'Elongation basis' in samples:
             labels = []
