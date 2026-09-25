@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
 from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
-from tensile_selection import csv_files
+from tensile_selection import csv_files, curve_allowed
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
@@ -698,7 +698,7 @@ def load_and_prepare_curve(csv_path, return_metadata=False):
     metadata['check_resolution'] = raw_check_precision(df_raw, has_units,
         find_first_col(df, STRESS_COLS), find_first_col(df, STRAIN_COLS), metadata)
     indices = prepared_indices(metadata)
-    if len(indices) < 5:
+    if len(indices) < 5 and not (return_metadata and np.isfinite(metadata['stress']).sum() >= 5):
         return None
     s_sorted, st_sorted = metadata['strain'][indices], metadata['stress'][indices]
     if return_metadata:
@@ -879,9 +879,9 @@ def draw_landmark_points(ax, landmark, color, error_bars, comparison=False):
         # With bars off, retain the v11 marker behavior in comparison plots.
         if comparison and not error_bars and point["name"] != "failure":
             continue
-        if error_bars and landmark["n"] > 1:
-            ax.errorbar(point["x"], point["y"], xerr=point["x_sd"],
-                        yerr=point["y_sd"], fmt=point["marker"],
+        if error_bars and (np.isfinite(point['x_sd']) or np.isfinite(point['y_sd'])):
+            ax.errorbar(point["x"], point["y"], xerr=point["x_sd"] if np.isfinite(point['x_sd']) else None,
+                        yerr=point["y_sd"] if np.isfinite(point['y_sd']) else None, fmt=point["marker"],
                         color=color, ecolor=color, ms=point["marker_size"],
                         elinewidth=.9, capsize=3, capthick=.9, linestyle="none",
                         label="_nolegend_", zorder=4)
@@ -1499,10 +1499,25 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
                         "Pre-break source strain (%)": clean_end, "Pre-break stress (MPa)": float(stages[2][-1])})
     return target_knots,np.array(stages),details
 
-def average_landmark_shapes(items):
+def average_landmark_shapes(items, target_knots=None, target_stresses=None):
     """Equal specimen weights at equal progress within each deformation stage."""
     knots=np.mean([item[0] for item in items],axis=0)
     stages=np.mean([item[1] for item in items],axis=0)
+    if target_knots is not None:
+        knots = np.asarray(target_knots, dtype=float)
+        stresses = np.asarray(target_stresses, dtype=float)
+        if (not np.all(np.isfinite(knots)) or not np.all(np.isfinite(stresses))
+                or np.any(np.diff(knots) <= 0) or not stresses[0] < stresses[1] <= stresses[2]):
+            raise ValueError('Eligible group means do not form ordered start / yield / UTS / failure landmarks')
+        for j, stage in enumerate(stages):
+            source_span = stage[-1] - stage[0]
+            target_span = stresses[j + 1] - stresses[j]
+            if abs(source_span) < 1e-10:
+                if abs(target_span) > 1e-10:
+                    raise ValueError('Trusted shape has a flat stage that cannot reach the eligible group means')
+                stages[j] = stage + stresses[j] - stage[0]
+            else:
+                stages[j] = stresses[j] + (stage - stage[0]) * target_span / source_span
     progress=np.linspace(0,1,stages.shape[1])
     xs=[];ys=[]
     for j in range(len(stages)):
@@ -1524,8 +1539,14 @@ def prepare_average_curves(plot_spec, selected_records, *,
     audit, summaries, models = [], [], {}
     tail_settings = dict(TENSILE_MEAN_TAIL)
     tail_settings.update(plot_spec.get("tensile_mean_tail", {}))
-    for group,records in sorted(selected_records.items()):
+    for group,property_records in sorted(selected_records.items()):
+        if not property_records:
+            continue
+        records = [r for r in property_records if curve_allowed(r, prepeak=prepeak_only)]
         if not records:
+            models[group] = {'pointwise': None, 'landmark': None, 'mean_failure': np.nan,
+                'pointwise_diagnostic': 'No eligible curve shapes',
+                'landmark_diagnostic': 'No eligible curve shapes; property means remain available', 'curves': []}
             continue
         curves = ([(r['strain_pct'], r['stress_mpa']) for r in records] if prepeak_only else
                   [fracture_curve(r)[:2] for r in records])
@@ -1570,24 +1591,47 @@ def prepare_average_curves(plot_spec, selected_records, *,
             models[group]["landmark_diagnostic"] = f"unresolved specimens: {', '.join(rejected)}"
             print(f"[LANDMARK WARNING] {group}: plot omitted; unresolved specimens {rejected}")
             continue
-        x,y,knots=average_landmark_shapes(items)
-        models[group]["landmark"] = {"x": x, "y": y, "knots": knots,
-                                      "mean_yield": float(np.mean([i[2]["Yield (MPa)"] for i in items])),
-                                      "mean_uts": float(np.mean([i[2]["UTS (MPa)"] for i in items]))}
-        models[group]['landmark']['n'] = len(items)
+        # Shapes and property means may have different eligible populations.
+        # Never let a partial AVE failure contribute a fabricated curve section.
+        values = [specimen_properties(r, fit_fractions, LANDMARK_YIELD_R2_WARNING) for r in property_records]
+        fields = ('Yield (MPa)', 'Yield strain (%)', 'UTS (MPa)', 'Uniform elongation (%)')
+        if not prepeak_only:
+            fields += ('Failure elongation (%)', 'Pre-break stress (MPa)')
+        summary = {'Group': group, 'n': len(items), 'Shape n': len(items)}
+        for key in fields:
+            cohort = [i[2][key] for i in items] if key == 'Pre-break stress (MPa)' else [p[key] for p in values]
+            cohort = np.asarray(cohort, dtype=float)
+            cohort = cohort[np.isfinite(cohort)]
+            summary['Mean '+key] = float(np.mean(cohort)) if len(cohort) else np.nan
+            summary['SD '+key] = float(np.std(cohort, ddof=1)) if len(cohort)>1 else np.nan
+            summary['n '+key] = len(cohort)
+        targets = [float(np.mean([i[0][0] for i in items])), summary['Mean Yield strain (%)'],
+                   summary['Mean Uniform elongation (%)']]
+        stresses = [float(np.mean([i[1][0][0] for i in items])), summary['Mean Yield (MPa)'], summary['Mean UTS (MPa)']]
+        if not prepeak_only:
+            targets.append(summary['Mean Failure elongation (%)'])
+            stresses.append(summary['Mean Pre-break stress (MPa)'])
+        try:
+            x,y,knots=average_landmark_shapes(items, targets, stresses)
+        except ValueError as error:
+            models[group]['landmark_diagnostic'] = str(error)
+            print(f'[LANDMARK WARNING] {group}: {error}')
+            continue
+        models[group]['landmark'] = {'x': x, 'y': y, 'knots': knots,
+            'mean_yield': summary['Mean Yield (MPa)'], 'mean_uts': summary['Mean UTS (MPa)'],
+            'n': len(items), 'shape_n': len(items),
+            'property_counts': {key: summary['n '+key] for key in fields},
+            'shape_specimens': [r.get('specimen_id', r['source_file']) for r in records]}
         if prepeak_only:
             print(f'[LANDMARK WH] {group}: n={len(items)}, pre-peak stages only; fracture detection not required')
             continue
-        summary={"Group":group,"n":len(items)}
-        for key in ("Yield (MPa)","Yield strain (%)","UTS (MPa)","Uniform elongation (%)","Failure elongation (%)","Pre-break stress (MPa)"):
-            summary["Mean "+key]=float(np.mean([i[2][key] for i in items]))
-            summary["SD "+key]=float(np.std([i[2][key] for i in items], ddof=1)) if len(items)>1 else np.nan
         # Derive error bars from original per-specimen landmark properties,
         # never from the aligned/resampled mean curve.
         models[group]["landmark"]["n"] = len(items)
         models[group]["landmark"]["point_statistics"] = [
             {"name": name, "x": summary["Mean "+x_key], "y": summary["Mean "+y_key],
              "x_sd": summary["SD "+x_key], "y_sd": summary["SD "+y_key],
+             "x_n": summary['n '+x_key], "y_n": summary['n '+y_key],
              "marker": marker, "marker_size": size}
             for name,x_key,y_key,marker,size in (
                 ("yield", "Yield strain (%)", "Yield (MPa)", "o", 4),

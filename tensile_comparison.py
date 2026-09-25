@@ -27,6 +27,7 @@ def relative_comparison(frames):
         el = samples[el_columns].rename(columns={'CSV-derived fracture EL (%)': 'Calculated',
                                                 'Instron summary EL (%)': 'Instron'}).copy()
         el['Property'], el['Unit'] = 'Failure elongation', '%'
+        el['Property included'] = samples['Data use mode'].eq('all') if 'Data use mode' in samples else True
         el['Checks'] = samples['Checks'] if 'Checks' in samples else ''
         pairs = pairs[pairs.Property.ne('Failure elongation')] if 'Property' in pairs else pairs
         pairs = pd.concat([pairs, el], ignore_index=True)
@@ -36,6 +37,8 @@ def relative_comparison(frames):
     calc = pd.to_numeric(pairs['Calculated'], errors='coerce')
     instron = pd.to_numeric(pairs['Instron'], errors='coerce')
     valid = pairs['Included'].fillna(False).astype(bool) & np.isfinite(calc) & np.isfinite(instron) & instron.ne(0)
+    if 'Property included' in pairs:
+        valid &= pairs['Property included'].fillna(True).astype(bool)
     pairs = pairs.loc[valid].copy()
     pairs['Calculated'], pairs['Instron'] = calc.loc[valid], instron.loc[valid]
     pairs['Relative difference'] = 100 * (pairs['Calculated'] - pairs['Instron']) / pairs['Instron']

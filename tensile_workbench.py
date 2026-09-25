@@ -25,7 +25,8 @@ from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, ren
 from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
-                               specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX)
+                               specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX,
+                               DATA_MODES, record_mode, property_allowed, curve_allowed, validate_data_mode)
 from tensile_startup import sample_data_settings, save_sample_data_visibility, resolve_folder
 import hashlib
 import io
@@ -56,7 +57,7 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
         if exclusions is not None:
             graph['definition']['specimen_exclusions'] = {
                 SAMPLE_ID_PREFIX + k if k.split('/')[0] in rename else k: v for k, v in exclusions.items()}
-        for mapping in (project.get('specimen_exclusions', {}),
+        for mapping in (project.get('specimen_exclusions', {}), project.get('specimen_data_modes', {}),
                         graph['definition'].get('specimen_inclusion_overrides', {})):
             for ident in list(mapping):
                 if ident.split('/')[0] in rename:
@@ -199,12 +200,14 @@ class PreviewSession:
 
     def selection_signature(self):
         return json.dumps([self.project.get('specimen_exclusions', {}),
+            self.project.get('specimen_data_modes', {}),
             {g['id']: g['definition'].get('specimen_inclusion_overrides', {})
              for g in self.project['graphs']}], sort_keys=True)
 
     def selection_provenance(self, state, spec):
         ids = {specimen_id(r) for group in self.visible_groups(state['groups']) for r in self._load(group)}
         return {'global_exclusions': {k: v for k, v in self.project.get('specimen_exclusions', {}).items() if k in ids},
+                'global_data_modes': {k: v for k, v in self.project.get('specimen_data_modes', {}).items() if k in ids},
                 'graph_overrides': {k: v for k, v in spec.get('specimen_inclusion_overrides', {}).items() if k in ids}}
 
     def fit_provenance(self, state):
@@ -262,11 +265,33 @@ class PreviewSession:
     def included_records(self, groups, spec):
         """The single selection gate for every plot family and average export."""
         return {group: selected for group in self.visible_groups(groups)
-                if (selected := [row for row in self._load(group) if is_included(row, spec, self.project)])}
+                if (selected := [self.selected_record(row, spec) for row in self._load(group)
+                                 if is_included(row, spec, self.project)])}
+
+    def selected_record(self, row, spec):
+        selection = selection_state(row, spec, self.project)
+        return {**row, '_data_mode': selection['mode'], '_selection': selection}
+
+    def group_review_records(self, group, spec):
+        fractions = spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS)
+        return [{**self.selected_record(row, spec),
+                 '_review_properties': self.engine.specimen_properties(row, fractions,
+                     self.engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)} for row in self._load(group)]
+
+    def scatter_omission_warning(self, state, spec):
+        omitted = [f"{group} / {r.get('specimen_label') or r['sample']}"
+                   for group, rows in self.included_records(state['groups'], spec).items() for r in rows
+                   if not property_allowed(record_mode(r), 'el')]
+        if not omitted:
+            return ''
+        return ('Omitted from strength–EL pairs because elongation is excluded: ' + '; '.join(omitted) +
+                '. Eligible strength results still contribute to the group statistics and landmark anchors. '
+                'Scatter means use paired specimens only, so they may differ from the summary means.')
 
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
         key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
+                          self.project.get('specimen_data_modes', {}),
                           self.project.get('specimen_exclusions', {}), spec.get('specimen_inclusion_overrides', {}),
                           spec.get('specimen_exclusions', {}),
                           {g: group_policy(state, spec, g) for g in state['groups']}], sort_keys=True)
@@ -277,29 +302,30 @@ class PreviewSession:
                 self._property_frames.pop(next(iter(self._property_frames)))
         return self._property_frames[key]
 
-    def analysis_records(self, state, spec, include_excluded=False, measured=False):
-        records = ({g: self._load(g) for g in self.visible_groups(state['groups'])}
+    def analysis_records(self, state, spec, include_excluded=False, measured=False, require_curves=True):
+        records = ({g: [self.selected_record(row, spec) for row in self._load(g)] for g in self.visible_groups(state['groups'])}
                    if include_excluded else self.included_records(state['groups'], spec))
         if measured:
             return records
         result = {}
         for g, rows in records.items():
             policy = group_policy(state, spec, g)
-            result[g] = [gauge_record(r, self.instron.match(g, r), policy['enabled'], policy['target_gauge_mm']) for r in rows]
-        if not include_excluded:
+            result[g] = [gauge_record(r, self.instron.match(g, r), policy['enabled'] and curve_allowed(r),
+                                      policy['target_gauge_mm']) for r in rows]
+        if not include_excluded and require_curves:
             errors = [f"{g}/{r['sample']}: {r['_gauge']['Gauge correction status']}"
                       for g, rows in result.items() for r in rows
-                      if group_policy(state, spec, g)['enabled'] and r['_gauge']['Gauge correction status'] != 'Applied']
+                      if curve_allowed(r) and group_policy(state, spec, g)['enabled'] and r['_gauge']['Gauge correction status'] != 'Applied']
             errors.extend(f"{g}/{r['sample']}: CSV fracture not detected — {r['_fracture']['reason']}"
                           for g, rows in result.items() for r in rows
-                          if not group_policy(state, spec, g)['enabled'] and not endpoint_available(r['_fracture']))
+                          if curve_allowed(r) and not group_policy(state, spec, g)['enabled'] and not endpoint_available(r['_fracture']))
             if errors:
                 raise ValueError('Specimen review required; none have been automatically excluded. ' + '; '.join(errors))
             for g, rows in result.items():
                 if group_policy(state, spec, g)['enabled']:
                     target = group_policy(state, spec, g)['target_gauge_mm']
                     print(f'[GAUGE] {g}: reconstructed post-peak strain at target gauge {target:.2f} mm; '
-                          f'{len(rows)} specimens, each using its own AVE dot spacing.')
+                          f'{sum(curve_allowed(r) for r in rows)} eligible specimens, each using its own AVE dot spacing.')
                     for r in rows:
                         if r['_gauge']['Gauge model warning']:
                             print(f"[GAUGE WARNING] {g}/{r['sample']}: {r['_gauge']['Gauge model warning']}")
@@ -340,6 +366,7 @@ class PreviewSession:
                     return {'group': group, 'sample': record['sample'], 'specimen_id': ident,
                             'source_file': record['source_file'], 'source_sha256': record.get('source_sha256', ''),
                             'included': selection['included'], 'selection_scope': selection['scope'],
+                            'data_use': DATA_MODES[selection['mode']], 'data_mode': selection['mode'],
                             'exclusion_reason': selection['reason'],
                             'record': record,
                             'calculation': specimen_calculation(record, fractions, self.engine.LANDMARK_YIELD_R2_WARNING),
@@ -446,14 +473,17 @@ class PreviewSession:
         before = set(e.plt.get_fignums())
         with redirect_stdout(stream), redirect_stderr(stream):
             try:
-                records = self.analysis_records(state, spec, measured=state['family'].startswith('work_hardening'))
+                family = state['family']
+                records = self.analysis_records(state, spec, measured=family.startswith('work_hardening'),
+                    require_curves=family not in (*PROPERTY_FAMILIES, GROUP_FAMILY))
                 if not records:
-                    raise ValueError('No included usable specimens. Tick Include on the Specimens tab.')
+                    raise ValueError('No included usable specimens. Change Data use on the Specimens tab.')
                 empty = [g for g in state['groups'] if g not in records]
                 if empty:
                     print('[SELECTION] No included usable specimens; omitted groups: ' + ', '.join(empty))
-                curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in records.items()}
-                family = state["family"]
+                shape_records = {g: eligible for g, rows in records.items()
+                    if (eligible := [r for r in rows if curve_allowed(r, prepeak=family.startswith('work_hardening'))])}
+                curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in shape_records.items()}
                 if family in (*PROPERTY_FAMILIES, GROUP_FAMILY):
                     xlim, ylim = state.get(family + '_xlim'), state.get(family + '_ylim')
                 else:
@@ -498,7 +528,7 @@ class PreviewSession:
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
                               title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
                 wh = {**self._wh_settings(state, spec),
-                      'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in records.items()}}
+                      'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in shape_records.items()}}
                 if family == GROUP_FAMILY:
                     fig = render_group_properties(e, records, state,
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
@@ -509,10 +539,10 @@ class PreviewSession:
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
                         **common)
                 elif family in ("landmark", "pointwise", "comparison"):
-                    fig = e.render_average_plot(models, records, family=family,
+                    fig = e.render_average_plot(models, shape_records, family=family,
                         landmark_error_bars=state["landmark_error_bars"], **common)
                 elif family == "representative":
-                    fig = e.render_representative_tensile_plot(records,
+                    fig = e.render_representative_tensile_plot(shape_records,
                         representative_overrides=spec.get("representative_overrides", {}), **common)
                 elif family == "work_hardening":
                     fig = e.render_work_hardening_plot(curves, **common, **wh)
@@ -531,7 +561,8 @@ class PreviewSession:
                 return {"figure": fig, "svg": buffer.getvalue(), "state": deepcopy(state),
                         "graph_spec": spec, "sources": source_rows, "log": stream.getvalue(),
                         "seconds": perf_counter() - start, "n_samples": len(source_rows),
-                        "export_records": records, "export_models": models}
+                        "export_records": records if family in (*PROPERTY_FAMILIES, GROUP_FAMILY) else shape_records,
+                        "export_models": models}
             finally:
                 # Avoid duplicate notebook displays and accumulating open figures.
                 # Figure objects remain usable for an explicit later PNG export.
@@ -762,7 +793,8 @@ class TensileWorkbench:
         self.details = w.Textarea(disabled=True, layout=w.Layout(width="98%", height="180px"))
         self.tables = PropertyTablesView(w, on_selection=self._specimen_changed,
                                         inspect_loader=self._inspect_specimen, on_fit_apply=self._apply_specimen_fit,
-                                        on_threshold=self._change_fit_threshold, on_failure_apply=self._apply_specimen_failure)
+                                        on_threshold=self._change_fit_threshold, on_failure_apply=self._apply_specimen_failure,
+                                        group_loader=lambda group: self.session.group_review_records(group, self._current()['definition']))
         self.fit_warning = w.HTML(layout=w.Layout(width='100%'))
         self.review_fits = w.Button(description='Review specimens', layout=w.Layout(width='145px', flex='0 0 145px'), disabled=True)
         self.review_fits.on_click(self._review_fits)
@@ -1269,7 +1301,7 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = '<b>Could not restore graph:</b> ' + escape(str(error))
 
-    def _specimen_changed(self, ident, included, reason, scope='global', action='selection'):
+    def _specimen_changed(self, ident, included, reason, scope='global', action='selection', mode=None):
         if self._paused:
             return
         if not self.save_current():
@@ -1282,15 +1314,23 @@ class TensileWorkbench:
                 raise ValueError('Specimen is no longer in this graph. Reload its tables.')
             project = deepcopy(self.store.data)
             spec = project['graphs'][self._index()]['definition']
+            mode = mode if mode is not None else ('all' if included else 'exclude')
+            validate_data_mode(mode)
+            included = mode != 'exclude'
             overrides = spec.setdefault('specimen_inclusion_overrides', {})
             if action == 'inherit':
                 overrides.pop(ident, None)
             elif scope == 'graph':
-                overrides[ident] = {'included': included, 'reason': reason.strip()}
+                overrides[ident] = {'included': included, 'mode': mode, 'reason': reason.strip()}
             else:
                 # Normal Include changes are global. Existing explicit overrides
                 # in other graphs remain deliberate exceptions.
                 exclusions = project.setdefault('specimen_exclusions', {})
+                modes = project.setdefault('specimen_data_modes', {})
+                if mode in ('all', 'exclude'):
+                    modes.pop(ident, None)
+                else:
+                    modes[ident] = {'mode': mode, 'reason': reason.strip()}
                 if included:
                     exclusions.pop(ident, None)
                 else:
@@ -1511,7 +1551,8 @@ class TensileWorkbench:
         graph = deepcopy(self._current())
         for key in VIEW_ONLY_SETTINGS:
             graph['settings'].pop(key, None)
-        return json.dumps([graph, fit_policy(self.store.data), self.store.data.get('specimen_exclusions', {})], sort_keys=True)
+        return json.dumps([graph, fit_policy(self.store.data), self.store.data.get('specimen_exclusions', {}),
+                           self.store.data.get('specimen_data_modes', {})], sort_keys=True)
 
     def _fit_settings_saved(self):
         self.session.set_project(self.store.data)
@@ -1695,6 +1736,8 @@ class TensileWorkbench:
                     subtitle = "with individuals" if individuals else "without individuals"
                     item = {"key": family + ("_with" if individuals else "_without"), "label": label + " · " + subtitle}
                     try:
+                        if family in PROPERTY_FAMILIES:
+                            item['warning'] = self.session.scatter_omission_warning(state, self._current()['definition'])
                         result = self.session.render({**state, "graph_index": self._index(), "family": family, "show_individuals": individuals})
                         self._results.append(result)
                         items.append({**item, "result": result})

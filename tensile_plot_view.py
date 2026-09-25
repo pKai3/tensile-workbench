@@ -152,6 +152,11 @@ class PlotView:
                 thumb.on_click(lambda _, key=item['key']: self.open_focus(key))
                 card = self.w.VBox([heading, css, thumb], layout=self.w.Layout(width='100%', min_width='0'))
                 self._owned.extend([css, thumb, card])
+            if item.get('warning'):
+                warning = self.w.HTML('<div style="background:#fff7e6;border-left:3px solid #d97706;padding:8px;white-space:normal">'
+                                      + escape(item['warning']) + '</div>')
+                card.children = (card.children[0], warning, *card.children[1:])
+                self._owned.append(warning)
             self._cards.append(card)
         self.board.children = tuple(self._cards)
         self.empty.layout.display = 'none' if items else ''

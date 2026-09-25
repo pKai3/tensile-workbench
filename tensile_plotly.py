@@ -283,6 +283,11 @@ class PlotlyView:
                 message = self.w.HTML('Unavailable: ' + escape(item.get('error', 'No valid curves.')))
                 self._owned.append(message)
                 body = [heading, message]
+            if item.get('warning'):
+                warning = self.w.HTML('<div style="background:#fff7e6;border-left:3px solid #d97706;padding:8px;white-space:normal">'
+                                      + escape(item['warning']) + '</div>')
+                body.insert(1, warning)
+                self._owned.append(warning)
             card = self.w.VBox(body, layout=self.w.Layout(width='100%', min_width='0'))
             self._owned.append(card)
             cards.append(card)

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import uuid
 import json
-from tensile_selection import specimen_id, selection_state
+from tensile_selection import specimen_id, selection_state, DATA_MODES, property_allowed, analysis_properties
 from tensile_specimens import SpecimenTable
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 from tensile_fit import fit_display_places
@@ -162,9 +162,10 @@ def specimen_export_frame(samples, comparisons):
         {'Include': bool(row['Included']), 'Group': row['Group'], 'Specimen': specimen_label(row),
          'CSV file': Path(str(row['Source File'])).name, 'Instron row': row.get('Instron Row', np.nan),
          'Applies to': 'This graph only' if row['Inclusion Scope'] == 'graph' else 'Global default',
-         'Exclusion reason': row['Exclusion Reason']}
+         'Exclusion reason': row['Exclusion Reason'], 'Data use': row.get('Data use', 'Use all data'),
+         'Excluded properties': row.get('Excluded properties', '')}
         for _, row in samples.iterrows()
-    ], columns=['Include', 'Group', 'Specimen', 'CSV file', 'Instron row', 'Applies to', 'Exclusion reason'], index=samples.index)
+    ], columns=['Include', 'Group', 'Specimen', 'CSV file', 'Instron row', 'Applies to', 'Data use', 'Exclusion reason', 'Excluded properties'], index=samples.index)
     result = pd.concat([identity, specimen_display_frame(samples, comparisons)], axis=1)
     result['Specimen ID'] = samples.get('Specimen ID', pd.Series(index=samples.index, dtype=object))
     return result
@@ -189,10 +190,19 @@ def specimen_table_data(samples, comparisons):
 
     rows = []
     for position, (_, row) in enumerate(samples.iterrows()):
+        mode = row.get('Data use mode', 'all')
+        excluded_values, offset = [], 1
+        for label, _, field, _ in METRICS:
+            count = len(property_table_sources(label))
+            if not property_allowed(mode, field):
+                excluded_values.extend(range(offset, offset + count))
+            offset += count
         values = [('' if name == property_column('Failure elongation', '%', 'Reconstruct') and pd.isna(value) else
                    text_value(value, fit_display_places(name)))
                   for name, value in display.iloc[position].items()]
         rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
+                     'mode': mode, 'global_mode': row.get('Global data use mode', 'all'),
+                     'excluded_values': excluded_values,
                      'sample': specimen_label(row), 'reason': row['Exclusion Reason'],
                      'csv_filename': Path(str(row['Source File'])).name, 'source_file': str(row['Source File']),
                      'instron_row': str(int(row['Instron Row'])) if pd.notna(row.get('Instron Row')) else '',
@@ -225,10 +235,10 @@ def specimen_review_mask(samples):
     return flagged
 
 
-def specimen_check_failures(properties, reference, gauge=None):
+def specimen_check_failures(properties, reference, gauge=None, mode='all'):
     """One failure-only message column; retain numeric audit fields separately."""
     failures = list(reference.get('check_failures', []))
-    if properties.get('Fit review required'):
+    if property_allowed(mode, 'ys') and properties.get('Fit review required'):
         if properties.get('Yield status') != 'resolved':
             failures.append('Yield fit: ' + (properties.get('Notes') or 'unresolved fit.'))
         r2 = properties.get('Elastic fit R2', np.nan)
@@ -240,12 +250,12 @@ def specimen_check_failures(properties, reference, gauge=None):
         if str(properties.get('Override status', '')).startswith('Stale'):
             failures.append('Fit override: source changed; saved override was not applied.')
     gauge = gauge or {}
-    if properties.get('Fracture detection status') == 'Not detected':
+    if property_allowed(mode, 'el') and properties.get('Fracture detection status') == 'Not detected':
         failures.append('CSV fracture not detected: ' + properties.get('Fracture detection reason', '') +
                         '. Fracture EL/toughness unavailable; inspect the full curve.')
-    if properties.get('Fracture review required'):
+    if property_allowed(mode, 'el') and properties.get('Fracture review required'):
         failures.append(properties.get('Fracture review reason') or 'EL endpoint needs review.')
-    if gauge.get('Elongation basis') == 'Estimated standard gauge':
+    if property_allowed(mode, 'el') and gauge.get('Elongation basis') == 'Estimated standard gauge':
         if gauge.get('Gauge correction status') != 'Applied':
             failures.append('Gauge reconstruction: ' + gauge.get('Gauge correction status', 'unavailable'))
         for key in ('Gauge model warning', 'Gauge reconstruction notes'):
@@ -261,22 +271,31 @@ def property_tables(records, spec, engine, instron, project=None):
         properties, references = [], []
         elongations = []
         for row in rows:
-            p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING)
-            measured = engine.specimen_properties(row.get('_measured_record', row), fractions, engine.LANDMARK_YIELD_R2_WARNING)
+            p = engine.specimen_properties(row, fractions, engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)
+            measured = engine.specimen_properties(row.get('_measured_record', row), fractions, engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)
             reference = instron.match(group, row)
             selection = selection_state(row, spec, project)
             included = selection['included']
+            mode = selection['mode']
             el_report = elongation_report(row, reference, measured)
             if included:
-                properties.append(p)
-                references.append(reference)
-                elongations.append(el_report)
+                properties.append(analysis_properties({'_data_mode': mode}, p))
+                references.append({**reference, 'values': {
+                    key: value if property_allowed(mode, key) else np.nan
+                    for key, value in reference['values'].items()}})
+                elongations.append({key: value if property_allowed(mode, 'el') else np.nan
+                                    for key, value in el_report.items()})
             identity = {'Included': included, 'Group': group, 'Sample': row['sample'],
+                        'Data use mode': mode, 'Data use': DATA_MODES[mode],
+                        'Global data use mode': selection['global_mode'],
+                        'Excluded properties': ', '.join(label for label, _, field, _ in METRICS
+                                                        if not property_allowed(mode, field)),
                         'Specimen ID': specimen_id(row),
                         'Exclusion Reason': selection['reason'], 'Inclusion Scope': selection['scope'],
                         'Global Included': selection['global_included'], 'Global Exclusion Reason': selection['global_reason']}
-            checks = specimen_check_failures(p, reference, row.get('_gauge'))
+            checks = specimen_check_failures(p, reference, row.get('_gauge'), mode)
             fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
+            fit_fields['Fit review required'] &= property_allowed(mode, 'ys')
             saved_fit = row.get('_fit_override') or {}
             samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
                             'Instron Row': reference['index'] if reference.get('source') else None,
@@ -289,6 +308,8 @@ def property_tables(records, spec, engine, instron, project=None):
             samples[-1].update(row.get('_gauge', {}))
             samples[-1].pop('Estimated failure elongation (%)', None)
             samples[-1].update(el_report)
+            if not property_allowed(mode, 'el'):
+                samples[-1]['EL plot source'] = 'Excluded'
             samples[-1].update({'Measured failure elongation (%)': measured['Failure elongation (%)'],
                                'Measured toughness (MJ/m^3)': measured['Toughness (MJ/m^3)'],
                                'Width (mm)': reference['values'].get('width', np.nan),
@@ -319,13 +340,14 @@ def property_tables(records, spec, engine, instron, project=None):
                         not any(source == 'Instron' for source, _ in property_table_sources(label))):
                     continue
                 calculated, reported = measured[field], reference['values'].get(ref_key, np.nan)
-                paired = bool(np.isfinite(calculated) and np.isfinite(reported))
+                eligible = included and property_allowed(mode, field)
+                paired = bool(eligible and np.isfinite(calculated) and np.isfinite(reported))
                 difference = calculated - reported if paired else np.nan
                 comparison.append({**identity, 'Checks': checks, 'Property': label, 'Unit': unit, 'Calculated': calculated, 'Instron': reported,
                                    'Difference (calc - Instron)': difference,
                                    'Difference Unit': 'percentage points' if unit == '%' else unit,
                                    'Difference (%)': 100 * difference / reported if paired and reported != 0 else np.nan,
-                                   'Paired': paired, 'Instron Match': reference['status'],
+                                   'Paired': paired, 'Property included': eligible, 'Instron Match': reference['status'],
                                    'Instron Specimen Label': reference['label'], 'Instron Row': reference['index'],
                                    'Notes': ' '.join(filter(None, [p['Notes'] if ref_key in ('ys', 'e') else '', reference['notes']])),
                                    'Source File': row['source_file'], 'Instron Summary CSV': reference['source']})
@@ -358,10 +380,11 @@ def property_tables(records, spec, engine, instron, project=None):
     if not sample_frame.empty and 'Elongation basis' in sample_frame:
         for group, frame in sample_frame.groupby('Group', sort=False):
             mask = summary['Group'] == group
-            summary.loc[mask, 'Elongation basis'] = frame['Elongation basis'].iloc[0]
-            summary.loc[mask, 'Target gauge length (mm)'] = frame['Target gauge length (mm)'].iloc[0]
+            eligible = frame.loc[frame['Included'] & frame['Data use mode'].eq('all')]
+            summary.loc[mask, 'Elongation basis'] = eligible['Elongation basis'].iloc[0] if len(eligible) else 'Excluded'
+            summary.loc[mask, 'Target gauge length (mm)'] = eligible['Target gauge length (mm)'].iloc[0] if len(eligible) else np.nan
             for field in ('Measured toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)'):
-                for stat, value in _stats(frame.loc[frame['Included'], field]).items():
+                for stat, value in _stats(frame.loc[frame['Included'] & frame['Data use mode'].eq('all'), field]).items():
                     if stat in ('Mean', 'SD', 'n'):
                         summary.loc[mask, field + ' · ' + stat] = value
     return {'tensile_samples': sample_frame, 'tensile_summary': summary,
@@ -437,9 +460,10 @@ def summary_html(details):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None):
         from tensile_inspector import SpecimenInspector
         from tensile_comparison import ComparisonView
+        from tensile_group_review import GroupCurveReview
         w = widgets
         self.frames = {}
         self.color_map = {}
@@ -469,11 +493,13 @@ class PropertyTablesView:
         self.specimen_help.set_title(0, 'About the specimen table · inclusion, checks and data sources')
         specimen_panel = w.VBox([self.specimen_help, self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
         self.comparison = ComparisonView(w)
+        self.group_review = GroupCurveReview(w, loader=group_loader, on_selection=on_selection, on_inspect=self.open_inspector)
         summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
-        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui],
+        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui, self.group_review.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
-        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector']):
+        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector', 'Group curve review']):
             self.tabs.set_title(i, name)
+        self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons use CSV summaries, not PDFs.</p>'),
@@ -502,6 +528,8 @@ class PropertyTablesView:
     def set_frames(self, frames, color_map=None):
         self.frames = frames
         self.color_map = dict(color_map or {})
+        _, _, rows = specimen_table_data(frames['tensile_samples'], frames['instron_comparison'])
+        self.group_review.set_rows(rows)
         self.render()
 
     def open_inspector(self, ident):
@@ -520,6 +548,7 @@ class PropertyTablesView:
         self.specimens.context = uuid.uuid4().hex
         self.inspector.clear()
         self.comparison.clear()
+        self.group_review.clear()
 
     def _filtered(self, frame):
         if frame.empty:
@@ -601,9 +630,10 @@ class PropertyTablesView:
         if not samples.empty and 'Elongation basis' in samples:
             labels = []
             for group, frame in samples.groupby('Group', sort=False):
-                basis = str(frame['EL plot source'].iloc[0])
-                target = frame['Target gauge length (mm)'].iloc[0]
-                if frame['Elongation basis'].iloc[0] == 'Estimated standard gauge':
+                eligible = frame.loc[frame['Included'] & frame['Data use mode'].eq('all')]
+                basis = str(eligible['EL plot source'].iloc[0]) if len(eligible) else 'Excluded'
+                target = eligible['Target gauge length (mm)'].iloc[0] if len(eligible) else np.nan
+                if len(eligible) and eligible['Elongation basis'].iloc[0] == 'Estimated standard gauge':
                     if np.isfinite(target):
                         basis += f' ({target:.2f} mm)'
                 labels.append(escape(str(group)) + ': ' + escape(basis))
@@ -618,10 +648,15 @@ class PropertyTablesView:
                                'Results display two decimals; elastic-fit R² and fit-strain details display five. '
                                'Calculations and checks retain full precision.</p>'
                                + basis_note + summary_html(summary))
-        self.panels[1].value = ('<p><b>Include</b> changes the global default for statistics, averages, work hardening and all plots. '
+        self.panels[1].value = ('<p><b>Data use</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This graph only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
                                'Other graphs’ explicit overrides are preserved. '
-                               'Unchecked specimens stay here for review and in the specimen export. '
+                               'Excluded values stay visible, crossed out, and remain in the specimen export with their policy. '
+                               'After UTS: keep YS, UTS, E and uniform EL / pre-peak WH. After yield: keep YS, UTS and E only. '
+                               'Unreliable throughout: keep UTS only, assuming the stress record is sound. '
+                               '“After yield” requires trustworthy strain through the 0.2% offset intersection. '
+                               'Partial AVE failures do not contribute full tensile shapes or strength–EL pairs. '
+                               'Landmark shapes use eligible curves and are anchored to each property’s eligible group mean; counts may differ. '
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '
                                'Click a specimen name to inspect calculations and exact comparison values. '
@@ -651,4 +686,4 @@ class PropertyTablesView:
         included = int(samples['Included'].sum()) if not samples.empty else 0
         flagged = int(specimen_review_mask(samples).sum())
         self.status.value = (f'{len(samples)} displayed specimens · {included} included · {flagged} needing review. '
-                             'Search/sort only change the view; Include changes the analysis.')
+                             'Search/sort only change the view; Data use changes the analysis.')

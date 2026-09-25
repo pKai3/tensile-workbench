@@ -9,7 +9,7 @@ import os
 import re
 import tempfile
 import uuid
-from tensile_selection import valid_specimen_id
+from tensile_selection import valid_specimen_id, validate_data_mode
 from tensile_fit import validate_threshold, validate_override
 from tensile_gauge import validate_group_policy
 from tensile_fracture import validate_failure_override
@@ -25,6 +25,15 @@ def validate_project(project):
     if project.get('schema_version') != 1:
         raise ValueError('Unsupported workbench project schema; the existing file was not changed.')
     validate_threshold(project.get('yield_r2_warning', .98))
+    modes = project.get('specimen_data_modes', {})
+    if not isinstance(modes, dict):
+        raise ValueError('Specimen data-use modes must be a mapping.')
+    for ident, policy in modes.items():
+        if not valid_specimen_id(ident) or not isinstance(policy, dict) or not isinstance(policy.get('reason', ''), str):
+            raise ValueError('Invalid specimen data-use policy.')
+        validate_data_mode(policy.get('mode'))
+        if policy['mode'] == 'exclude':
+            raise ValueError('Whole-specimen exclusions belong in specimen_exclusions.')
     exclusions = project.get('specimen_exclusions', {})
     if not isinstance(exclusions, dict) or any(
             not valid_specimen_id(key) or not isinstance(reason, str)
@@ -118,6 +127,10 @@ def validate_project(project):
                 or not isinstance(value.get('reason', ''), str)
                 for key, value in selections.items()):
             raise ValueError('Graph specimen overrides require an Include value and optional reason.')
+        for policy in selections.values():
+            validate_data_mode(policy.get('mode', 'all' if policy['included'] else 'exclude'))
+            if 'mode' in policy and policy['included'] != (policy['mode'] != 'exclude'):
+                raise ValueError('Data-use mode conflicts with specimen inclusion.')
         for group, color in graph['definition'].get('color_overrides', {}).items():
             if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
                 raise ValueError(f'Colour override for {group} must be a six-digit hex colour, e.g. #1f77b4.')

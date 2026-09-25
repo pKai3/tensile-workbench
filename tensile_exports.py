@@ -151,7 +151,8 @@ def export_results(frames, path, metadata):
         'instron_comparison': 'Differences compare measured calculations with original Instron values, never reconstructed values.',
         'checks': 'Failure/review messages appear in the Specimens Checks column. Identity is verified by name/export row and original CSV UTS agreement within printed-digit rounding tolerance. EL is not an identity check and differences from Instron break EL are not matching failures. No automatic exclusion or numerical rematching.',
         'table_layout': 'Summary and Specimens share the viewer\'s property names, order, analysis basis and blank-value rules. Uniform elongation and tensile toughness retain Calc and Instron columns; unsupported or missing imports remain blank. Elongation has Instron, Calc and Reconstruct columns. Summary mean, SD and n are separate numeric columns. Specimens adds a stable Specimen ID to join Audit. Audit contains source, fit, gauge and comparison details, not an additional user table.',
-        'selection': 'Global specimen exclusions apply unless this graph contains an explicit inclusion override. Hard-ignored ! files never load.',
+        'selection': 'Global specimen data-use modes apply unless this graph explicitly overrides them. After-UTS AVE failure retains YS/UTS/E/uniform EL and pre-peak WH; after-yield failure retains YS/UTS/E; unreliable strain throughout retains UTS only. All partial modes exclude full tensile shape, failure EL and full-test toughness, including corresponding Instron properties. Specimens retains raw values and records exclusions; summary and comparison statistics use eligible values only. Hard-ignored ! files never load.',
+        'landmark_populations': 'Trusted eligible curves supply stage shapes, remapped between each property\'s eligible group mean coordinates. Strength and elongation may have different n. Error bars are coordinate-specific specimen SD, not fit uncertainty. No shape or invalid ordered mean landmarks means no curve. Pointwise curves use eligible shape specimens only; strength-EL scatter uses paired eligible specimens.',
         'gauge': 'Strain 1 gauge length is the AVE-measured initial dot spacing. Target and enabled state are per sample group within this graph.',
         'estimate': 'Post-peak reconstruction assumes both gauge intervals capture the localisation. Longer targets are allowed with warnings. Not a standards-compliant measurement.',
         'gauge_formula': 'r = L_dots / L_target; pre-peak strain unchanged; post-peak strain_est = strain_u + r * (strain_measured - strain_u). Failure EL_est = EL_u + r * (EL_measured - EL_u). All strains are total engineering strain in percent; stress unchanged throughout.',
@@ -236,13 +237,18 @@ def export_curves(results, engine, path):
                     if not len(curve.get('predicted_x', [])):
                         tail[:] = np.nan
                     extra = {'projected stress (MPa)': tail}
+                if method == 'landmark':
+                    info['Shape n'] = curve.get('shape_n', curve.get('n'))
+                    info['Property counts'] = json.dumps(curve.get('property_counts', {}), sort_keys=True)
                 add('Tensile ' + method, group + ' · ' + basis, x, y, extra=extra, info=info)
                 if method == 'landmark':
                     for point in curve.get('point_statistics', []):
                         entry = {'Sheet': 'Tensile landmark', 'Curve': group + ' · ' + basis,
                                  'Landmark': point['name'], 'Landmark strain (%)': point['x'],
                                  'Landmark stress (MPa)': point['y'], 'Strain SD (%)': point['x_sd'],
-                                 'Stress SD (MPa)': point['y_sd'], 'Basis': basis}
+                                 'Stress SD (MPa)': point['y_sd'], 'Basis': basis,
+                                 'Strain n': point.get('x_n', curve.get('n')),
+                                 'Stress n': point.get('y_n', curve.get('n'))}
                         if entry not in checks:
                             checks.append(entry)
         if family == 'representative':
@@ -260,7 +266,12 @@ def export_curves(results, engine, path):
                         record['strain_pct'], record['stress_mpa'], info={'Basis': basis, 'Specimen ID': record['specimen_id'], 'View': view_number})
         for sheet, group, index, x, y in getattr(view['figure'], '_export_wh', []):
             label = group if index is None else group + ' · ' + records[group][index]['sample']
-            add(sheet, label, x, y, info={'Basis': 'Measured pre-peak response', 'View': view_number})
+            info = {'Basis': 'Measured pre-peak response', 'View': view_number}
+            if sheet == 'WH landmark':
+                landmark = models.get(group, {}).get('landmark') or {}
+                info.update({'Shape n': landmark.get('shape_n'),
+                             'Property counts': json.dumps(landmark.get('property_counts', {}), sort_keys=True)})
+            add(sheet, label, x, y, info=info)
     if not sheets:
         return  # scatter plots already have their data in the results workbook
     frames = {name: pd.DataFrame(columns) for name, columns in sheets.items()}

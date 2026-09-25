@@ -1,6 +1,7 @@
 """Specimen properties, independent of every plot and averaging method."""
 import numpy as np
 import json
+from tensile_selection import analysis_properties
 from tensile_fit import validate_override, validate_threshold
 from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint, fracture_curve, fracture_audit, endpoint_available
 
@@ -52,14 +53,19 @@ def prepared_curve(record):
     return x, y
 
 
-def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98):
+def specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98, *, apply_policy=True):
+    properties = _specimen_properties(record, fit_fractions, r2_warning)
+    return analysis_properties(record, properties) if apply_policy else properties
+
+
+def _specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98):
     """Cache by specimen and elastic-fit settings; WH modulus is not used.
 
     A failed yield fit does not discard measured UTS/elongation/toughness.
     No post-UTS segment or landmark-aligned curve is needed for yield.
     """
     if '_measured_record' in record:
-        p = specimen_properties(record['_measured_record'], fit_fractions, r2_warning)
+        p = _specimen_properties(record['_measured_record'], fit_fractions, r2_warning)
         audit = record['_gauge']
         p['Measured failure elongation (%)'] = p['Failure elongation (%)']
         p['Measured toughness (MJ/m^3)'] = p['Toughness (MJ/m^3)']
@@ -129,6 +135,17 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
         if endpoint_available(endpoint):
             end_x, end_y, _ = fracture_curve(record)
             p['Toughness (MJ/m^3)'] = float(np.trapezoid(end_y, end_x / 100))
+    # UTS does not require a valid AVE reading at the maximum stress. Do not
+    # lose the true peak merely because strain/stress pairing discarded its row.
+    acquisition = record.get('_acquisition', {})
+    raw_stress = np.asarray(acquisition.get('stress', []), dtype=float)
+    valid_stress = np.flatnonzero(np.isfinite(raw_stress) & (raw_stress >= 0))
+    if len(valid_stress):
+        raw_peak = int(valid_stress[np.argmax(raw_stress[valid_stress])])
+        p['UTS (MPa)'] = float(raw_stress[raw_peak])
+        raw_strain = np.asarray(acquisition.get('strain', []), dtype=float)
+        p['Uniform elongation (%)'] = (float(raw_strain[raw_peak])
+            if raw_peak < len(raw_strain) and np.isfinite(raw_strain[raw_peak]) and raw_strain[raw_peak] >= 0 else np.nan)
     try:
         if len(x) < 20:
             raise ValueError('fewer than 20 valid strain points')

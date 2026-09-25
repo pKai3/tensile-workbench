@@ -50,7 +50,7 @@ Use one subfolder per sample group, with one raw curve CSV per specimen. Names d
 
 Nested export folders are supported. Keep original CSV headings and units; the reader recognises supported stress/strain columns and skips summary headers before the time-series data. Available Instron summary CSVs can remain with their dataset for comparison. PDF reports are not imported.
 
-Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Include** checkbox instead.
+Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Data use** dropdown instead.
 
 After adding or changing files, click **Reload data**. Cloud-hosted files must be downloaded and accessible locally.
 
@@ -58,7 +58,7 @@ After adding or changing files, click **Reload data**. Cloud-hosted files must b
 
 1. **Choose a graph definition.** Select an existing graph, duplicate one, or choose **＋ Create new graph…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
 2. **Review the data.** Expand **Specimen properties · tables and calculation inspector**. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint.
-3. **Resolve questionable results.** Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Untick Include to exclude an entire specimen. Exclusions are global unless you explicitly select a graph-only exception. Original data files are not altered.
+3. **Resolve questionable results.** Use **Group curve review** to overlay one group's raw specimen curves. Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Use **Data use** to exclude an entire specimen or only properties affected by AVE failure. Exclusions are global unless you explicitly select a graph-only exception. Original data files are not altered.
 4. **Choose plots.** Select **Static plots** or **Interactive Plotly**, tick the required plot types, and open their **Settings** for axes and plot-specific options. Choose whether to show individuals or both versions.
 5. **Click Update plots.** Live preview is off by default because recalculation can be slow. Set layout and size in the plot-view area. Static plots can be enlarged; Plotly supports zoom, pan and hover.
 6. **Export.** Use **Export plot set** for generated views, optionally with Excel tables. Use **Export tables only** when you do not need plots. Outputs go into graph-specific subfolders of your chosen output folder.
@@ -76,6 +76,24 @@ After adding or changing files, click **Reload data**. Cloud-hosted files must b
 For the last view, **Settings** include sample order, connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**), property colours, SD bars and **X-axis labels · this plot only**. Short axis labels here do not shorten names elsewhere.
 
 Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
+
+### Keep valid properties when the AVE fails
+
+The **Data use** dropdown is available in Specimens and Group curve review:
+
+| Mode | Properties retained | Curve contributions |
+|---|---|---|
+| Use all data | All available properties | All eligible curves |
+| AVE failed after UTS / Broke outside dots | YS, UTS, fitted E and uniform EL | Pre-peak work hardening only |
+| AVE failed after yield, before UTS | YS, UTS and fitted E | None |
+| AVE unreliable throughout | UTS only, if the stress record is sound | None |
+| Exclude specimen entirely | None | None |
+
+Retaining YS requires reliable strain through the **0.2% offset intersection**, not just through the elastic fit. All partial AVE-failure modes exclude failure EL, reconstructed EL, full-test toughness and full tensile shape. They also exclude the corresponding imported Instron properties from statistics. Original values remain visible (crossed out) and auditable in exports.
+
+Landmark curves use trusted curves for **shape**, then pass through each property's **eligible group mean**. Strength and elongation can therefore use different specimen counts. Pointwise averages use only eligible full curves. Strength–EL scatter plots require valid pairs; their means can differ from the overall summary, and an on-screen warning lists partial exclusions. Warnings are not added to publication plots.
+
+In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. The view shows untrimmed measured data even if fracture detection or reconstruction fails. Partial exclusions have distinct line styles and short labels beside each specimen above the plot. Toggle **YS**, **UTS** and **EL** markers independently; these are measured Calc values, including manual overrides. Excluded properties have hollow markers and an explicit hover label; unavailable values are omitted. A time-axis option helps when recorded strain itself is unreliable. Use **Broke outside dots** only when strain remains trustworthy through UTS.
 
 ## 4. Understand the results
 

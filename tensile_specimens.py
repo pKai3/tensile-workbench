@@ -1,6 +1,7 @@
 """Editable inclusion column; numerical properties stay read-only."""
 import anywidget
 import traitlets
+from tensile_selection import DATA_MODES
 
 
 class SpecimenTable(anywidget.AnyWidget):
@@ -8,6 +9,7 @@ class SpecimenTable(anywidget.AnyWidget):
     column_groups = traitlets.List(traitlets.Dict()).tag(sync=True)
     rows = traitlets.List(traitlets.Dict()).tag(sync=True)
     context = traitlets.Unicode('').tag(sync=True)
+    modes = traitlets.Dict(DATA_MODES).tag(sync=True)
 
     _css = """
     .tw-specimens {overflow:auto; max-height:510px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box;}
@@ -22,7 +24,8 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens tr.excluded td {background:#eef0f3; color:#737b86;}
     .tw-specimens tr.fit-warning td:first-child {border-left:4px solid #d97706;}
     .tw-specimens .fit-override {color:#175ca5;font-weight:bold;}
-    .tw-specimens thead tr:first-child th:first-child,.tw-specimens tbody td:first-child {position:sticky; left:0; min-width:62px; text-align:center; z-index:1;}
+    .tw-specimens thead tr:first-child th:first-child,.tw-specimens tbody td:first-child {position:sticky; left:0; min-width:210px; text-align:left; z-index:1;}
+    .tw-specimens .property-excluded {text-decoration:line-through;color:#88929e;}
     .tw-specimens thead tr:first-child th:first-child {z-index:3;}
     .tw-specimens td:nth-child(2),.tw-specimens td:nth-child(3) {text-align:left; min-width:130px; max-width:220px; overflow-wrap:anywhere;}
     .tw-specimens input[type=checkbox] {width:17px; height:17px; cursor:pointer; accent-color:#1767a5;}
@@ -60,7 +63,7 @@ class SpecimenTable(anywidget.AnyWidget):
         const head = table.createTHead(), header = head.insertRow();
         const grouped = groups.some(group => group.span > 1);
         const subheader = grouped ? head.insertRow() : null;
-        ['Include','Group','Specimen','Applies to','Exclusion reason (optional)'].forEach(label => {
+        ['Data use','Group','Specimen','Applies to','Reason (optional)'].forEach(label => {
           const th = document.createElement('th'); th.textContent = label; th.scope='col';
           th.rowSpan=grouped ? 2 : 1; header.append(th);
         });
@@ -87,9 +90,13 @@ class SpecimenTable(anywidget.AnyWidget):
           const tr = body.insertRow();
           if (!row.included) tr.className='excluded';
           if (row.check_warning || row.fit_warning) tr.classList.add('fit-warning');
-          const check = document.createElement('input'); check.type='checkbox'; check.checked=row.included;
-          check.setAttribute('aria-label', 'Include ' + row.group + ' / ' + row.sample);
-          tr.insertCell().append(check);
+          const mode = document.createElement('select');
+          Object.entries(model.get('modes')).forEach(([value,label]) => {
+            const option=document.createElement('option'); option.value=value; option.textContent=label; mode.append(option);
+          });
+          mode.value=row.mode || (row.included ? 'all' : 'exclude');
+          mode.setAttribute('aria-label', 'Data use for ' + row.group + ' / ' + row.sample);
+          tr.insertCell().append(mode);
           tr.insertCell().textContent=row.group;
           const inspect = document.createElement('button'); inspect.type='button'; inspect.className='inspect';
           inspect.textContent=(row.check_warning || row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';
@@ -117,11 +124,11 @@ class SpecimenTable(anywidget.AnyWidget):
           scope.setAttribute('aria-label','Inclusion scope for ' + row.group + ' / ' + row.sample);
           const scopeCell=tr.insertCell(); scopeCell.className='selection-scope'; scopeCell.append(scope);
           if (row.scope==='graph') {
-            const note=document.createElement('small'); note.textContent='Global: ' + (row.global_included ? 'included' : 'excluded');
+            const note=document.createElement('small'); note.textContent='Global: ' + (model.get('modes')[row.global_mode] || (row.global_included ? 'included' : 'excluded'));
             scopeCell.append(note);
           }
           const reason = document.createElement('input'); reason.type='text'; reason.value=row.reason;
-          reason.placeholder='Optional reason'; reason.disabled=row.included; reason.maxLength=2000;
+          reason.placeholder='Optional reason'; reason.disabled=mode.value==='all'; reason.maxLength=2000;
           reason.setAttribute('aria-label','Exclusion reason for ' + row.group + ' / ' + row.sample);
           tr.insertCell().append(reason);
           row.values.forEach((value, index) => {
@@ -129,17 +136,20 @@ class SpecimenTable(anywidget.AnyWidget):
             if (propertyStarts.has(index)) cell.classList.add('property-start');
             if (columns[index]==='Fit method' && value.startsWith('Manual')) cell.classList.add('fit-override');
             if (columns[index]==='Checks') cell.classList.add('checks');
+            if ((row.excluded_values || []).includes(index)) {
+              cell.classList.add('property-excluded'); cell.title='Excluded from statistics: ' + model.get('modes')[mode.value];
+            }
           });
           const submit = (action='selection') => {
             if (pending) return;
             pending = true;
-            const message = {type:'selection', context, id:row.id, included:check.checked,
+            const message = {type:'selection', context, id:row.id, included:mode.value!=='exclude', mode:mode.value,
                              reason:reason.value, scope:scope.value, action};
             // Wait for the Python-side save/validation; don't silently change statistics in the browser.
             container.querySelectorAll('input, select').forEach(input => {input.disabled=true;});
             model.send(message);
           };
-          check.addEventListener('change', () => submit());
+          mode.addEventListener('change', () => submit());
           scope.addEventListener('change', () => submit(scope.value==='global' ? 'inherit' : 'selection'));
           let edited = false;
           reason.addEventListener('input', () => {edited=true;});
@@ -186,5 +196,11 @@ class SpecimenTable(anywidget.AnyWidget):
                 or content.get('action', 'selection') not in ('selection', 'inherit')):
             return
         if self.on_selection:
-            self.on_selection(content['id'], content['included'], content['reason'][:2000],
-                              content.get('scope', 'global'), content.get('action', 'selection'))
+            args = (content['id'], content['included'], content['reason'][:2000],
+                    content.get('scope', 'global'), content.get('action', 'selection'))
+            if 'mode' in content:
+                if not isinstance(content['mode'], str) or content['mode'] not in DATA_MODES or content['included'] != (content['mode'] != 'exclude'):
+                    return
+                self.on_selection(*args, content['mode'])
+            else:
+                self.on_selection(*args)

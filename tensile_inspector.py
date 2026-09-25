@@ -457,6 +457,9 @@ def inspection_summary(payload):
               ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
     result.append('<p>Inclusion: ' + ('explicit override for this graph' if payload.get('selection_scope') == 'graph'
                                     else 'inherited from the global default') + '.</p>')
+    if payload.get('data_use'):
+        result.append('<p><b>Data use:</b> ' + escape(payload['data_use']) +
+                      '. Inspector values remain available for diagnosis, including excluded properties.</p>')
     if reference.get('label'):
         result.append('<p>Operator specimen/location label: <b>' + escape(reference['label']) + '</b></p>')
     result.append('<p><b>CSV:</b> ' + escape(Path(payload['source_file']).name) +

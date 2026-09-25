@@ -19,7 +19,7 @@ PYTHON_VERSION = (3, 13)
 
 def check_project_files(root):
     required = ('tensile_workbench.ipynb', 'tensile_workbench.py', 'tensile_core.py',
-                'tensile_plot_view.py', 'tensile_plotly.py', 'tensile_group_plot.py', 'tensile_comparison.py', 'tensile_colors.py', 'tensile_properties.py',
+                'tensile_plot_view.py', 'tensile_plotly.py', 'tensile_group_plot.py', 'tensile_group_review.py', 'tensile_comparison.py', 'tensile_colors.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_tables.py', 'tensile_gauge.py', 'tensile_fracture.py', 'tensile_exports.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_inspector.py', 'tensile_fit.py', 'tensile_startup.py',
                 'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
                 'workbench_environment.py', 'workbench_app.py', 'workbench_server.py',
