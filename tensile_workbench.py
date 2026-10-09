@@ -278,6 +278,28 @@ class PreviewSession:
                  '_review_properties': self.engine.specimen_properties(row, fractions,
                      self.engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)} for row in self._load(group)]
 
+    def group_review_landmark(self, group, state, spec):
+        """Only the selected group's diagnostic arrays; no figures or exports."""
+        if group not in self.visible_groups(state['groups']):
+            raise ValueError('This group is not selected in the current graph.')
+        key = json.dumps(['group-review-landmark', group, spec, state['landmark_points'],
+                          group_policy(state, spec, group), self.selection_signature(), self.fit_signature()], sort_keys=True)
+        if key not in self._models:
+            stream = io.StringIO()
+            with redirect_stdout(stream):
+                records = self.analysis_records({**state, 'groups': [group]}, spec)
+                result = self.engine.prepare_average_curves(spec, records,
+                    landmark_points_per_stage=state['landmark_points'], landmark_only=True,
+                    include_landmark_contributions=True)
+            self._models[key] = (result, stream.getvalue())
+            if len(self._models) > 8:
+                self._models.popitem(last=False)
+        self._models.move_to_end(key)
+        model = self._models[key][0][0].get(group, {})
+        return {'model': model.get('landmark'),
+                'diagnostic': model.get('landmark_diagnostic') or 'No eligible curve shapes.',
+                'basis': group_basis_label(state, spec, group)}
+
     def scatter_omission_warning(self, state, spec):
         omitted = [f"{group} / {r.get('specimen_label') or r['sample']}"
                    for group, rows in self.included_records(state['groups'], spec).items() for r in rows
@@ -310,7 +332,8 @@ class PreviewSession:
         result = {}
         for g, rows in records.items():
             policy = group_policy(state, spec, g)
-            result[g] = [gauge_record(r, self.instron.match(g, r), policy['enabled'] and curve_allowed(r),
+            # Shape exclusion must not disable reconstructed EL/toughness.
+            result[g] = [gauge_record(r, self.instron.match(g, r), policy['enabled'] and property_allowed(record_mode(r), 'el'),
                                       policy['target_gauge_mm']) for r in rows]
         if not include_excluded and require_curves:
             errors = [f"{g}/{r['sample']}: {r['_gauge']['Gauge correction status']}"
@@ -510,6 +533,18 @@ class PreviewSession:
                     result, model_log = self._models[key]
                     models = result[0]
                     print(model_log, end="")
+                if family in ('landmark', 'comparison') and models:
+                    # Property-only specimens can move the mean landmarks beyond
+                    # the shape cohort. Automatic axes must still show the mean.
+                    mean_curves = [(model[kind]['x'], model[kind]['y'])
+                                   for model in models.values() for kind in ('landmark', 'pointwise')
+                                   if model.get(kind) is not None]
+                    auto_x, auto_y = e.compute_axes({'curves': [curve for group in curves.values() for curve in group],
+                                                   'means': mean_curves})
+                    if state['tensile_xlim'] is None:
+                        xlim = auto_x
+                    if state['tensile_ylim'] is None:
+                        ylim = auto_y
                 variant = "with_individuals" if state["show_individuals"] else "without_individuals"
                 title_keys = {
                     "landmark": (f"tensile_landmark_{variant}", "tensile_landmark_aligned"),
@@ -794,7 +829,9 @@ class TensileWorkbench:
         self.tables = PropertyTablesView(w, on_selection=self._specimen_changed,
                                         inspect_loader=self._inspect_specimen, on_fit_apply=self._apply_specimen_fit,
                                         on_threshold=self._change_fit_threshold, on_failure_apply=self._apply_specimen_failure,
-                                        group_loader=lambda group: self.session.group_review_records(group, self._current()['definition']))
+                                        group_loader=lambda group: self.session.group_review_records(group, self._current()['definition']),
+                                        aligned_group_loader=lambda group: self.session.group_review_landmark(
+                                            group, self.state(), self._current()['definition']))
         self.fit_warning = w.HTML(layout=w.Layout(width='100%'))
         self.review_fits = w.Button(description='Review specimens', layout=w.Layout(width='145px', flex='0 0 145px'), disabled=True)
         self.review_fits.on_click(self._review_fits)

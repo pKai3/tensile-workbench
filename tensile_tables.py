@@ -380,11 +380,11 @@ def property_tables(records, spec, engine, instron, project=None):
     if not sample_frame.empty and 'Elongation basis' in sample_frame:
         for group, frame in sample_frame.groupby('Group', sort=False):
             mask = summary['Group'] == group
-            eligible = frame.loc[frame['Included'] & frame['Data use mode'].eq('all')]
+            eligible = frame.loc[frame['Included'] & frame['Data use mode'].map(lambda mode: property_allowed(mode, 'el'))]
             summary.loc[mask, 'Elongation basis'] = eligible['Elongation basis'].iloc[0] if len(eligible) else 'Excluded'
             summary.loc[mask, 'Target gauge length (mm)'] = eligible['Target gauge length (mm)'].iloc[0] if len(eligible) else np.nan
             for field in ('Measured toughness (MJ/m^3)', 'Estimated toughness (MJ/m^3)'):
-                for stat, value in _stats(frame.loc[frame['Included'] & frame['Data use mode'].eq('all'), field]).items():
+                for stat, value in _stats(eligible[field]).items():
                     if stat in ('Mean', 'SD', 'n'):
                         summary.loc[mask, field + ' · ' + stat] = value
     return {'tensile_samples': sample_frame, 'tensile_summary': summary,
@@ -460,7 +460,7 @@ def summary_html(details):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None, aligned_group_loader=None):
         from tensile_inspector import SpecimenInspector
         from tensile_comparison import ComparisonView
         from tensile_group_review import GroupCurveReview
@@ -493,7 +493,8 @@ class PropertyTablesView:
         self.specimen_help.set_title(0, 'About the specimen table · inclusion, checks and data sources')
         specimen_panel = w.VBox([self.specimen_help, self.specimens], layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0'))
         self.comparison = ComparisonView(w)
-        self.group_review = GroupCurveReview(w, loader=group_loader, on_selection=on_selection, on_inspect=self.open_inspector)
+        self.group_review = GroupCurveReview(w, loader=group_loader, aligned_loader=aligned_group_loader,
+                                           on_selection=on_selection, on_inspect=self.open_inspector)
         summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
         self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui, self.group_review.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
@@ -630,7 +631,7 @@ class PropertyTablesView:
         if not samples.empty and 'Elongation basis' in samples:
             labels = []
             for group, frame in samples.groupby('Group', sort=False):
-                eligible = frame.loc[frame['Included'] & frame['Data use mode'].eq('all')]
+                eligible = frame.loc[frame['Included'] & frame['Data use mode'].map(lambda mode: property_allowed(mode, 'el'))]
                 basis = str(eligible['EL plot source'].iloc[0]) if len(eligible) else 'Excluded'
                 target = eligible['Target gauge length (mm)'].iloc[0] if len(eligible) else np.nan
                 if len(eligible) and eligible['Elongation basis'].iloc[0] == 'Estimated standard gauge':
@@ -656,6 +657,8 @@ class PropertyTablesView:
                                'Unreliable throughout: keep UTS only, assuming the stress record is sound. '
                                '“After yield” requires trustworthy strain through the 0.2% offset intersection. '
                                'Partial AVE failures do not contribute full tensile shapes or strength–EL pairs. '
+                               '<b>Exclude from shape</b> keeps all valid properties and strength–EL pairs, but omits '
+                               'the specimen from tensile / work-hardening curve contributions and representative selection. '
                                'Landmark shapes use eligible curves and are anchored to each property’s eligible group mean; counts may differ. '
                                'Files/folders marked with ! are ignored entirely. '
                                '<b>Checks</b> shows failures/review items only; a blank cell means none were flagged. '

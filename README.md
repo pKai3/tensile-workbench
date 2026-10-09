@@ -77,13 +77,14 @@ For the last view, **Settings** include sample order, connecting lines (**Straig
 
 Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
 
-### Keep valid properties when the AVE fails
+### Control property and curve contributions
 
 The **Data use** dropdown is available in Specimens and Group curve review:
 
 | Mode | Properties retained | Curve contributions |
 |---|---|---|
 | Use all data | All available properties | All eligible curves |
+| Exclude from shape | All available properties, including EL and toughness | None; measured curve remains reviewable |
 | AVE failed after UTS / Broke outside dots | YS, UTS, fitted E and uniform EL | Pre-peak work hardening only |
 | AVE failed after yield, before UTS | YS, UTS and fitted E | None |
 | AVE unreliable throughout | UTS only, if the stress record is sound | None |
@@ -93,7 +94,12 @@ Retaining YS requires reliable strain through the **0.2% offset intersection**, 
 
 Landmark curves use trusted curves for **shape**, then pass through each property's **eligible group mean**. Strength and elongation can therefore use different specimen counts. Pointwise averages use only eligible full curves. Strength–EL scatter plots require valid pairs; their means can differ from the overall summary, and an on-screen warning lists partial exclusions. Warnings are not added to publication plots.
 
-In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. The view shows untrimmed measured data even if fracture detection or reconstruction fails. Partial exclusions have distinct line styles and short labels beside each specimen above the plot. Toggle **YS**, **UTS** and **EL** markers independently; these are measured Calc values, including manual overrides. Excluded properties have hollow markers and an explicit hover label; unavailable values are omitted. A time-axis option helps when recorded strain itself is unreliable. Use **Broke outside dots** only when strain remains trustworthy through UTS.
+In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. Exclusions have distinct line styles and short labels beside each specimen above the plot.
+
+- **Measured** shows untrimmed measured data even if fracture detection or reconstruction fails. Toggle **YS**, **UTS** and **EL** markers independently; these are measured Calc values, including manual overrides. Excluded properties have hollow markers; unavailable values are omitted. A time-axis option helps when recorded strain itself is unreliable.
+- **Landmark-aligned** shows the transformed shape contributions in colour and their landmark average in black, using the current graph's settings. Group-mean YS/UTS/EL markers start enabled. The display reports shape and property counts; property-only specimens stay listed without an invented curve. These are diagnostic synthetic curves, not additional measurements.
+
+Use **Exclude from shape** when the curve shape is unsuitable but its property values are sound. It removes the specimen from tensile/work-hardening curve contributions and representative selection, while retaining its valid properties in group means, comparisons and strength–EL scatter plots. It is global by default, with the same graph-only override as other data-use modes. Use an AVE-failure mode instead when strain-derived properties are unreliable; **Broke outside dots** assumes reliable strain through UTS.
 
 ## 4. Understand the results
 

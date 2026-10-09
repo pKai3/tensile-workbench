@@ -8,6 +8,7 @@ SAMPLE_ID_PREFIX = 'sample-data://'
 
 DATA_MODES = {
     'all': 'Use all data',
+    'exclude_shape': 'Exclude from shape',
     'after_uts': 'AVE failed after UTS / Broke outside dots',
     'after_yield': 'AVE failed after yield, before UTS',
     'no_strain': 'AVE unreliable throughout',
@@ -29,6 +30,8 @@ def property_allowed(mode, field):
     validate_data_mode(mode)
     if mode == 'exclude':
         return False
+    if mode == 'exclude_shape':
+        return True  # Properties stay valid; only curve contributions are excluded.
     if field in ('UTS (MPa)', 'uts', 'UTS'):
         return True
     if field in ('Yield (MPa)', 'Yield strain (%)', 'Fitted E (GPa)', 'ys', 'e',

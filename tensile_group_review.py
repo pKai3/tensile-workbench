@@ -1,4 +1,4 @@
-"""Lazy, measured-curve review. Display visibility never changes analysis policy."""
+"""Lazy measured/aligned curve review. Display controls never change analysis policy."""
 from html import escape
 import uuid
 import re
@@ -12,6 +12,7 @@ from tensile_fracture import fracture_endpoint, endpoint_available, prepared_poi
 # Short labels belong in the view's key; the exact saved policy stays in hover.
 MODE_STYLES = {
     'all': ('', 'solid', 1.),
+    'exclude_shape': ('Shape excluded', 'longdashdot', .9),
     'after_uts': ('EL excluded', 'dash', .9),
     'after_yield': ('Post-yield strain excluded', 'dot', .9),
     'no_strain': ('All strain excluded', 'dashdot', .8),
@@ -19,7 +20,8 @@ MODE_STYLES = {
 }
 # Fixed screen-pixel patterns shared with the specimen key. Plotly's named
 # dash patterns scale with stroke width, so highlighting used to change them.
-DASH_PIXELS = {'solid': '', 'dash': '8 4', 'dot': '2 4', 'dashdot': '8 3 2 3', 'longdash': '12 5'}
+DASH_PIXELS = {'solid': '', 'dash': '8 4', 'dot': '2 4', 'dashdot': '8 3 2 3', 'longdash': '12 5',
+              'longdashdot': '12 4 2 4'}
 MARKERS = {'YS': ('circle', 'ys'), 'UTS': ('triangle-up', 'uts'), 'EL': ('x', 'el')}
 
 
@@ -72,12 +74,18 @@ def review_marker_points(record, axis='strain'):
 
 
 class GroupCurveReview:
-    def __init__(self, widgets, loader=None, on_selection=None, on_inspect=None):
+    def __init__(self, widgets, loader=None, on_selection=None, on_inspect=None, aligned_loader=None):
         self.w, self.loader, self.on_inspect = widgets, loader, on_inspect
+        self.aligned_loader = aligned_loader
         self.rows, self.figure = [], None
         self.active, self.dirty, self.syncing = False, True, False
         self.selected, self.generation = None, None
         self._owned, self._legend_buttons, self._marker_data = [], {}, {}
+        self._aligned_model, self._contribution_notes = None, {}
+        self._marker_preferences = {'measured': dict.fromkeys(MARKERS, False), 'aligned': dict.fromkeys(MARKERS, True)}
+        self.view = widgets.ToggleButtons(description='View:',
+            options=[('Measured', 'measured'), ('Landmark-aligned', 'aligned')],
+            disabled=aligned_loader is None, style={'button_width': 'auto'})
         self.group = widgets.Dropdown(description='Group:', layout=widgets.Layout(width='350px'))
         self.axis = widgets.Dropdown(description='X axis:', options=[('Recorded strain (%)', 'strain'), ('Time (s)', 'time')],
                                      layout=widgets.Layout(width='260px'))
@@ -89,14 +97,15 @@ class GroupCurveReview:
         self.inspect = widgets.Button(description='Inspect highlighted specimen', disabled=True,
                                       layout=widgets.Layout(width='auto'))
         self.status = widgets.HTML()
+        self.notice = widgets.HTML()
+        self.marker_heading = widgets.HTML('<b>Markers:</b>')
         self.plot = widgets.VBox(layout=widgets.Layout(width='100%', min_width='0'))
         self.legend = widgets.GridBox(layout=widgets.Layout(width='100%', min_width='0', grid_gap='3px 14px',
             grid_template_columns='repeat(auto-fit, minmax(min(100%, 260px), 1fr))'))
         self.table = SpecimenTable(on_selection=on_selection, on_inspect=self.select,
                                    layout=widgets.Layout(width='100%'))
         self.ui = widgets.VBox([
-            widgets.HTML('<p>Raw measured curves. '
-                         'Click a curve or specimen name to highlight it, not exclude it. '
+            widgets.HTML('<p>Click a curve or specimen name to highlight it, not exclude it. '
                          'Use <b>Data use</b> in the table below to change analysis contributions. '
                          'Line styles and labels show exclusions.</p>'
                          '<details><summary>About this view and markers</summary><p>'
@@ -104,14 +113,23 @@ class GroupCurveReview:
                          'Markers show measured Calc values (including manual overrides), not reconstruction or Instron. '
                          'Hollow markers identify excluded properties; hover for the mode. Unavailable markers are omitted. '
                          '“Broke outside dots” assumes strain was reliable through UTS. '
-                         'This view does not require fracture detection or reconstruction.</p></details>'),
+                         'The Measured view does not require fracture detection or reconstruction.</p>'
+                         '<p>Landmark-aligned shows synthetic shape contributions using the current graph’s settings. '
+                         'Each section is mapped to the group’s landmark strains and receives the same stress adjustment '
+                         'as the mean shape. The coloured curves average to the black line; individual curves do not '
+                         'have to pass through the group-mean stresses. Stage boundaries are not bridged if that adjustment '
+                         'creates a discontinuity in an individual contribution. Group-mean markers default to on. '
+                         'Property-only and fully excluded specimens remain listed without an aligned curve. '
+                         'Gauge reconstruction, when enabled for this group, is applied before alignment.</p></details>'),
+            self.view,
             widgets.HBox([self.group, self.axis, self.show_excluded], layout=widgets.Layout(flex_flow='row wrap')),
-            widgets.HBox([widgets.HTML('<b>Markers:</b>'), *self.markers.values()],
+            widgets.HBox([self.marker_heading, *self.markers.values()],
                          layout=widgets.Layout(flex_flow='row wrap', align_items='center', gap='12px')),
-            self.status, widgets.HTML('<b>Specimens · click to highlight</b>'),
+            self.notice, self.status, widgets.HTML('<b>Specimens · click to highlight</b>'),
             self.legend, self.plot, self.inspect, self.table], layout=widgets.Layout(width='100%', min_width='0'))
         for control in (self.group, self.axis, self.show_excluded):
             control.observe(self._changed, names='value')
+        self.view.observe(self._view_changed, names='value')
         for control in self.markers.values():
             control.observe(lambda _: self._update_markers(), names='value')
         self.inspect.on_click(lambda _: self.on_inspect(self.selected) if self.selected and self.on_inspect else None)
@@ -145,6 +163,20 @@ class GroupCurveReview:
             if self.active:
                 self.render()
 
+    def _view_changed(self, change):
+        self._marker_preferences[change['old']] = {name: control.value for name, control in self.markers.items()}
+        self.syncing = True
+        try:
+            aligned = change['new'] == 'aligned'
+            self.axis.disabled = aligned  # preserve the measured time/strain choice
+            self.marker_heading.value = '<b>Group-mean markers:</b>' if aligned else '<b>Markers:</b>'
+            self.show_excluded.description = 'List fully excluded specimens' if aligned else 'Show fully excluded specimens'
+            for name, control in self.markers.items():
+                control.value = self._marker_preferences[change['new']][name]
+        finally:
+            self.syncing = False
+        self._changed(None)
+
     def clear(self):
         self.set_rows([])
         self._dispose()
@@ -152,6 +184,7 @@ class GroupCurveReview:
         self.table.context = uuid.uuid4().hex
         self.selected = None
         self.inspect.disabled = True
+        self.notice.value = ''
 
     def _dispose(self):
         self.plot.children = ()
@@ -159,6 +192,7 @@ class GroupCurveReview:
         for widget in reversed(self._owned):
             widget.close()
         self._owned, self._legend_buttons, self._marker_data = [], {}, {}
+        self._aligned_model, self._contribution_notes = None, {}
         if self.figure is not None:
             self.figure.close()
             self.figure = None
@@ -172,6 +206,8 @@ class GroupCurveReview:
         mode = row.get('mode', 'all' if row['included'] else 'exclude')
         self.status.value = ('<b>Highlighted:</b> ' + escape(row['sample']) + ' · ' + escape(row.get('csv_filename', ident))
                             + ' · <b>' + escape(DATA_MODES[mode]) + '</b>')
+        if ident in self._contribution_notes:
+            self.status.value += ' · ' + escape(self._contribution_notes[ident])
         for key, button in self._legend_buttons.items():
             if key == ident:
                 button.add_class('tw-review-highlighted')
@@ -183,9 +219,11 @@ class GroupCurveReview:
                     if trace.meta.get('kind') == 'curve':
                         trace.line.width = 3.5 if trace.meta['id'] == ident else 1.3
 
-    def _legend_entry(self, row, color, mode, token):
+    def _legend_entry(self, row, color, mode, token, *, has_curve=True):
         short, dash, _ = MODE_STYLES[mode]
         label = row['sample'] + (' · ' + short if short else '')
+        if row['id'] in self._contribution_notes:
+            label += ' · ' + self._contribution_notes[row['id']]
         button = self.w.Button(description=label,
             tooltip=DATA_MODES[mode] + '. Click to highlight, not exclude. Use Data use below for exclusions.',
             layout=self.w.Layout(width='100%', min_width='0', height='auto', min_height='28px'))
@@ -198,8 +236,8 @@ class GroupCurveReview:
                          'box-shadow:none;padding:3px 5px;}.' + scope + ':hover{background:#eef3f8;}.' + scope +
                          '.tw-review-highlighted{font-weight:600;background:#e8f0f8;border-color:#b9cede;}</style>',
                          layout=self.w.Layout(height='0px', width='0px', overflow='hidden'))
-        swatch = self.w.HTML('<svg width="30" height="16" aria-hidden="true"><line x1="0" x2="30" y1="8" y2="8" '
-            f'stroke="{color}" stroke-width="3" stroke-dasharray="{DASH_PIXELS[dash]}"/></svg>',
+        swatch = self.w.HTML(('<svg width="30" height="16" aria-hidden="true"><line x1="0" x2="30" y1="8" y2="8" '
+            f'stroke="{color}" stroke-width="3" stroke-dasharray="{DASH_PIXELS[dash]}"/></svg>') if has_curve else '',
             layout=self.w.Layout(width='32px', flex='0 0 32px'))
         def clicked(_):
             if token == self.generation:
@@ -218,6 +256,16 @@ class GroupCurveReview:
 
     def _marker_traces(self):
         import plotly.graph_objects as go
+        if self.view.value == 'aligned':
+            for point in (self._aligned_model or {}).get('point_statistics', []):
+                name = {'yield': 'YS', 'UTS': 'UTS', 'failure': 'EL'}[point['name']]
+                if self.markers[name].value:
+                    yield go.Scatter(x=[point['x']], y=[point['y']], mode='markers', name='Mean ' + name,
+                        showlegend=False, meta={'kind': 'mean_marker', 'property': name},
+                        marker={'symbol': MARKERS[name][0], 'size': 11, 'color': 'black'},
+                        hovertemplate='Group mean ' + name + '<br>Aligned strain: %{x:.3f}%'
+                            '<br>Stress: %{y:.2f} MPa<extra></extra>')
+            return
         if not any(control.value for control in self.markers.values()):
             return
         for ident, entry in self._marker_data.items():
@@ -241,15 +289,80 @@ class GroupCurveReview:
                         '<br>Stress: %{y:.2f} MPa<extra></extra>')
 
     def _update_markers(self):
-        if self.figure is None or self.generation is None:
+        if self.figure is None or self.generation is None or self.syncing:
             return
         # Keep the same figure and line traces: marker toggles must not reset
         # zoom or change specimen visibility or analysis settings.
         with self.figure.batch_update():
-            self.figure.data = tuple(t for t in self.figure.data if t.meta.get('kind') == 'curve')
+            self.figure.data = tuple(t for t in self.figure.data if t.meta.get('kind') not in ('marker', 'mean_marker'))
             for trace in self._marker_traces():
                 self.figure.add_trace(trace)
-                self._bind_click(self.figure.data[-1], trace.meta['id'], self.generation)
+                if trace.meta.get('id'):
+                    self._bind_click(self.figure.data[-1], trace.meta['id'], self.generation)
+
+    def _mount_figure(self, figure, legend, token, x_title, y_title):
+        import plotly.graph_objects as go
+        figure.update_layout(template='plotly_white', height=480, autosize=True,
+            margin={'l': 65, 'r': 20, 't': 15, 'b': 65}, hovermode='closest', dragmode='zoom',
+            showlegend=False, uirevision=token, xaxis={'automargin': True}, yaxis={'automargin': True},
+            xaxis_title=x_title, yaxis_title=y_title)
+        figure.add_traces(list(self._marker_traces()))
+        figure = go.FigureWidget(figure)
+        self.figure = figure
+        for trace in figure.data:
+            if trace.meta.get('id'):
+                self._bind_click(trace, trace.meta['id'], token)
+        from tensile_plotly import width_probe
+        def resize(width):
+            if token == self.generation and self.figure is figure:
+                figure.update_layout(width=max(200, int(width)), autosize=False)
+        probe = width_probe(resize)
+        self._owned.append(probe)
+        self.legend.children = tuple(legend)
+        self.plot.children = (probe, figure)
+        self.select(self.selected)
+
+    def _render_aligned(self, rows, token):
+        import plotly.graph_objects as go
+        from plotly.colors import qualitative
+        try:
+            payload = self.aligned_loader(self.group.value) if self.aligned_loader else {}
+        except ValueError as error:
+            payload = {'diagnostic': str(error)}
+        model = self._aligned_model = payload.get('model')
+        components = {item['specimen_id']: item for item in (model or {}).get('contributions', [])}
+        figure, legend = go.Figure(), []
+        for index, row in enumerate(rows):
+            mode = row.get('mode', 'all' if row['included'] else 'exclude')
+            if mode == 'exclude' and not self.show_excluded.value:
+                continue
+            component = components.get(row['id'])
+            color = qualitative.Dark24[index % len(qualitative.Dark24)]
+            if component is None:
+                self._contribution_notes[row['id']] = (
+                    'No contribution' if mode == 'exclude' else
+                    'Properties only; no aligned curve' if mode != 'all' else 'Aligned curve unavailable')
+            else:
+                figure.add_trace(go.Scatter(x=component['x'], y=component['y'], mode='lines',
+                    name=row['sample'], connectgaps=False, showlegend=False, visible=True,
+                    line={'color': color, 'width': 3.5 if row['id'] == self.selected else 1.3},
+                    meta={'id': row['id'], 'kind': 'curve', 'mode': mode, 'basis': 'aligned'},
+                    hovertemplate=escape(row['sample']) + ' · aligned contribution'
+                        '<br>Aligned strain: %{x:.3f}%<br>Aligned stress: %{y:.2f} MPa<extra></extra>'))
+            legend.append(self._legend_entry(row, color, mode, token, has_curve=component is not None))
+        if not model:
+            self.notice.value = '<b>Landmark alignment unavailable:</b> ' + escape(payload.get('diagnostic') or 'No eligible curve shapes.')
+            self.legend.children = tuple(legend)
+            self.select(self.selected)
+            return
+        figure.add_trace(go.Scatter(x=model['x'], y=model['y'], mode='lines', name='Landmark average',
+            line={'color': 'black', 'width': 4}, showlegend=False, meta={'kind': 'mean'},
+            hovertemplate='Landmark average<br>Aligned strain: %{x:.3f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
+        counts = model['property_counts']
+        self.notice.value = ('<b>Black line: landmark average.</b> Coloured lines: synthetic shape contributions, not measured curves. '
+            f"<b>{model['shape_n']} shapes</b> · YS n={counts['Yield (MPa)']} · UTS n={counts['UTS (MPa)']} · "
+            f"EL n={counts['Failure elongation (%)']}. Basis: " + escape(payload.get('basis', 'Calc')) + '.')
+        self._mount_figure(figure, legend, token, 'Landmark-aligned engineering strain (%)', 'Aligned engineering stress (MPa)')
 
     def render(self):
         self._dispose()
@@ -266,19 +379,23 @@ class GroupCurveReview:
         self.table.context = token
         self.table.rows = [{**r, 'values': r['values'][:1], 'excluded_values': []} for r in rows]
         self.status.value = ''
+        self.notice.value = ''
         if not rows or self.loader is None:
             self.inspect.disabled = True
             return
         import plotly.graph_objects as go
         from plotly.colors import qualitative
         try:
+            if self.selected not in {r['id'] for r in rows}:
+                self.selected = rows[0]['id']
+            if self.view.value == 'aligned':
+                self._render_aligned(rows, token)
+                return
             records = {specimen_id(r): r for r in self.loader(self.group.value)}
             # Serialize a complete initial figure. Updating an empty widget
             # before its front end mounts can lose the initial add/restyle
             # messages in Voilà and leave an empty or incorrectly sized plot.
             figure = go.Figure()
-            if self.selected not in {r['id'] for r in rows}:
-                self.selected = rows[0]['id']
             legend = []
             for index, row in enumerate(rows):
                 record = records.get(row['id'])
@@ -309,25 +426,8 @@ class GroupCurveReview:
                         '<br>Stress: %{y:.2f} MPa<extra></extra>'))
                 legend.append(self._legend_entry(row, color, mode, token))
                 self._marker_data[row['id']] = {'row': row, 'record': record, 'color': color, 'mode': mode}
-            figure.update_layout(template='plotly_white', height=480, autosize=True,
-                margin={'l': 65, 'r': 20, 't': 15, 'b': 65}, hovermode='closest', dragmode='zoom',
-                showlegend=False, uirevision=token,
-                xaxis={'automargin': True}, yaxis={'automargin': True},
-                xaxis_title='Recorded engineering strain (%)' if self.axis.value == 'strain' else 'Recorded time (s)',
-                yaxis_title='Engineering stress (MPa)')
-            figure.add_traces(list(self._marker_traces()))
-            figure = go.FigureWidget(figure)
-            self.figure = figure
-            for trace in figure.data:
-                self._bind_click(trace, trace.meta['id'], token)
-            from tensile_plotly import width_probe
-            def resize(width):
-                if token == self.generation and self.figure is figure:
-                    figure.update_layout(width=max(200, int(width)), autosize=False)
-            probe = width_probe(resize)
-            self._owned.append(probe)
-            self.legend.children = tuple(legend)
-            self.plot.children = (probe, figure)
-            self.select(self.selected)
+            self._mount_figure(figure, legend, token,
+                'Recorded engineering strain (%)' if self.axis.value == 'strain' else 'Recorded time (s)',
+                'Engineering stress (MPa)')
         except Exception as error:
             self.status.value = '<b>Curve review unavailable:</b> ' + escape(str(error))

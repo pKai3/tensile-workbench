@@ -1499,10 +1499,11 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
                         "Pre-break source strain (%)": clean_end, "Pre-break stress (MPa)": float(stages[2][-1])})
     return target_knots,np.array(stages),details
 
-def average_landmark_shapes(items, target_knots=None, target_stresses=None):
+def average_landmark_shapes(items, target_knots=None, target_stresses=None, *, return_contributions=False):
     """Equal specimen weights at equal progress within each deformation stage."""
     knots=np.mean([item[0] for item in items],axis=0)
     stages=np.mean([item[1] for item in items],axis=0)
+    contributions = np.array([item[1] for item in items], dtype=float) if return_contributions else None
     if target_knots is not None:
         knots = np.asarray(target_knots, dtype=float)
         stresses = np.asarray(target_stresses, dtype=float)
@@ -1515,8 +1516,14 @@ def average_landmark_shapes(items, target_knots=None, target_stresses=None):
             if abs(source_span) < 1e-10:
                 if abs(target_span) > 1e-10:
                     raise ValueError('Trusted shape has a flat stage that cannot reach the eligible group means')
+                if contributions is not None:
+                    contributions[:, j] = contributions[:, j] + stresses[j] - stage[0]
                 stages[j] = stage + stresses[j] - stage[0]
             else:
+                if contributions is not None:
+                    # Apply the MEAN's affine transform to every contribution,
+                    # not a separate endpoint normalization for each specimen.
+                    contributions[:, j] = stresses[j] + (contributions[:, j] - stage[0]) * target_span / source_span
                 stages[j] = stresses[j] + (stage - stage[0]) * target_span / source_span
     progress=np.linspace(0,1,stages.shape[1])
     xs=[];ys=[]
@@ -1524,10 +1531,24 @@ def average_landmark_shapes(items, target_knots=None, target_stresses=None):
         cut=slice(None) if j==0 else slice(1,None)
         xs.extend((knots[j]+progress*(knots[j+1]-knots[j]))[cut])
         ys.extend(stages[j][cut])
-    return np.array(xs),np.array(ys),knots
+    result = np.array(xs),np.array(ys),knots
+    if contributions is not None:
+        # Keep both endpoints of each stage. Different stage stress scales may
+        # give an individual a discontinuity at a shared knot; a NaN separator
+        # avoids inventing a steep joining segment. Their means coincide there.
+        cx, cy = [], []
+        for j in range(len(stages)):
+            if j:
+                cx.append(np.array([np.nan]))
+                cy.append(np.full((len(items), 1), np.nan))
+            cx.append(knots[j] + progress * (knots[j + 1] - knots[j]))
+            cy.append(contributions[:, j])
+        return (*result, {'x': np.concatenate(cx), 'y': np.concatenate(cy, axis=1)})
+    return result
 
 def prepare_average_curves(plot_spec, selected_records, *,
-                           landmark_points_per_stage=None, pointwise_points=None, prepeak_only=False):
+                           landmark_points_per_stage=None, pointwise_points=None, prepeak_only=False,
+                           landmark_only=False, include_landmark_contributions=False):
     """Compute each mean once for plots, comparisons, exports, and integration."""
     landmark_points = (LANDMARK_POINTS_PER_STAGE if landmark_points_per_stage is None
                        else landmark_points_per_stage)
@@ -1555,6 +1576,8 @@ def prepare_average_curves(plot_spec, selected_records, *,
         empty = np.array([], dtype=float)
         if prepeak_only:
             mx, my, px, py, diagnostic = empty, empty, empty, empty, 'WH: only start-to-UTS stages needed'
+        elif landmark_only:
+            mx, my, px, py, diagnostic = empty, empty, empty, empty, 'Landmark diagnostic: pointwise average not requested'
         elif tail_settings["enabled"]:
             mx, my, px, py, diagnostic = build_tensile_mean_tail(curves, points, tail_settings, fracture_ends=ends)
         else:
@@ -1612,7 +1635,9 @@ def prepare_average_curves(plot_spec, selected_records, *,
             targets.append(summary['Mean Failure elongation (%)'])
             stresses.append(summary['Mean Pre-break stress (MPa)'])
         try:
-            x,y,knots=average_landmark_shapes(items, targets, stresses)
+            aligned = average_landmark_shapes(items, targets, stresses,
+                return_contributions=include_landmark_contributions)
+            x,y,knots = aligned[:3]
         except ValueError as error:
             models[group]['landmark_diagnostic'] = str(error)
             print(f'[LANDMARK WARNING] {group}: {error}')
@@ -1622,6 +1647,12 @@ def prepare_average_curves(plot_spec, selected_records, *,
             'n': len(items), 'shape_n': len(items),
             'property_counts': {key: summary['n '+key] for key in fields},
             'shape_specimens': [r.get('specimen_id', r['source_file']) for r in records]}
+        if include_landmark_contributions:
+            components = aligned[3]
+            models[group]['landmark']['contributions'] = [
+                {'specimen_id': r.get('specimen_id', r['source_file']),
+                 'x': components['x'], 'y': components['y'][i]}
+                for i, r in enumerate(records)]
         if prepeak_only:
             print(f'[LANDMARK WH] {group}: n={len(items)}, pre-peak stages only; fracture detection not required')
             continue

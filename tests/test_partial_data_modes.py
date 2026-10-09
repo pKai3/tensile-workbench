@@ -45,7 +45,7 @@ class PartialDataTests(unittest.TestCase):
 
     def test_policy_matrix_and_legacy_graph_override(self):
         fields = ['ys', 'uts', 'uniform', 'el']
-        expected = {'all': [1,1,1,1], 'after_uts': [1,1,1,0], 'after_yield': [1,1,0,0],
+        expected = {'all': [1,1,1,1], 'exclude_shape': [1,1,1,1], 'after_uts': [1,1,1,0], 'after_yield': [1,1,0,0],
                     'no_strain': [0,1,0,0], 'exclude': [0,0,0,0]}
         for mode in DATA_MODES:
             self.assertEqual([property_allowed(mode, f) for f in fields], expected[mode])

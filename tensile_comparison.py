@@ -2,6 +2,7 @@
 from html import escape
 import numpy as np
 import pandas as pd
+from tensile_selection import property_allowed
 
 COMPARISON_COLUMNS = ['Group', 'Property', 'Unit', 'Paired n', 'Mean difference (%)',
                       'SD difference (%)', 'Mean Calc', 'Mean Instron', 'SD Calc', 'SD Instron',
@@ -27,7 +28,7 @@ def relative_comparison(frames):
         el = samples[el_columns].rename(columns={'CSV-derived fracture EL (%)': 'Calculated',
                                                 'Instron summary EL (%)': 'Instron'}).copy()
         el['Property'], el['Unit'] = 'Failure elongation', '%'
-        el['Property included'] = samples['Data use mode'].eq('all') if 'Data use mode' in samples else True
+        el['Property included'] = samples['Data use mode'].map(lambda mode: property_allowed(mode, 'el')) if 'Data use mode' in samples else True
         el['Checks'] = samples['Checks'] if 'Checks' in samples else ''
         pairs = pairs[pairs.Property.ne('Failure elongation')] if 'Property' in pairs else pairs
         pairs = pd.concat([pairs, el], ignore_index=True)
