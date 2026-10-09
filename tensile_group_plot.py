@@ -103,7 +103,7 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
                     for (_, value), name in zip(valid, names):
                         point, = ax.plot([x], [value], linestyle='None', marker=marker,
                                          color=color, alpha=.25, markersize=4)
-                        point._tensile_hover_label = f'{group} · {name} · {label}'
+                        point._tensile_hover_label = f'{e.get_display_name(group, name_overrides)} · {name} · {label}'
             print(f'[GROUP PROPERTIES] {group}: {label}; n={n}; mean={means[-1]:.2f}')
         means, deviations = np.asarray(means, float), np.asarray(deviations, float)
         if errors and any(n > 1 for n in counts):

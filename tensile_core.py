@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
 from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
-from tensile_selection import csv_files, curve_allowed
+from tensile_selection import curve_allowed, discover_sample_groups, group_display_name
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
@@ -113,9 +113,7 @@ STRAIN_COLS = [
 UNIT_ROW_PATTERN = re.compile(r"^\s*\([^)]+\)\s*$")
 
 def get_display_name(folder_name: str, overrides=None) -> str:
-    if overrides and folder_name in overrides:
-        return overrides[folder_name]
-    return NAME_LOOKUP.get(folder_name, folder_name)
+    return group_display_name(folder_name, NAME_LOOKUP, overrides)
 
 def find_first_col(df, candidates):
     for c in candidates:
@@ -706,15 +704,7 @@ def load_and_prepare_curve(csv_path, return_metadata=False):
     return s_sorted, st_sorted
 
 def find_sample_groups(root: Path):
-    groups = {}
-    for p in sorted([
-        d for d in root.iterdir()
-        if d.is_dir() and '!' not in d.name
-    ]):
-        csvs = csv_files(p)
-        if csvs:
-            groups[p.name] = csvs
-    return groups
+    return discover_sample_groups(root)
 
 def average_group_curves(curves, num_points=600):
     """Fixed-population mean over the interval shared by every valid curve."""
@@ -919,7 +909,7 @@ def render_average_plot(models, records, out_path, family, show_individual,
         if show_individual:
             for record, specimen in zip(records[group], scatter_specimen_labels(records[group])):
                 line, = ax.plot(record["strain_pct"], record["stress_mpa"], color=color, alpha=.18, lw=.7)
-                line._tensile_hover_label = f'{group} · {specimen}'
+                line._tensile_hover_label = f'{get_display_name(group, name_overrides)} · {specimen}'
         if family in ("pointwise", "comparison"):
             ax.plot(pointwise["measured_x"], pointwise["measured_y"], color=color, label=label, lw=1.8)
             if len(pointwise["predicted_x"]):
@@ -1047,7 +1037,7 @@ def render_representative_tensile_plot(
             for record, specimen in zip(groups_records[group_name], specimen_labels):
                 line, = plt.plot(record["strain_pct"], record["stress_mpa"],
                                  lw=.7, alpha=.18, color=color_map[group_name])
-                line._tensile_hover_label = f'{group_name} · {specimen}'
+                line._tensile_hover_label = f'{get_display_name(group_name, name_overrides)} · {specimen}'
         line, = plt.plot(
             representative["strain_pct"],
             representative["stress_mpa"],
@@ -1057,7 +1047,7 @@ def render_representative_tensile_plot(
         )
         for record, specimen in zip(groups_records[group_name], specimen_labels):
             if record is representative:
-                line._tensile_hover_label = f'{group_name} · {specimen} (representative)'
+                line._tensile_hover_label = f'{get_display_name(group_name, name_overrides)} · {specimen} (representative)'
                 break
         print(
             f"[REP] {out_path.stem}: {group_name} -> "
@@ -1171,7 +1161,7 @@ def render_work_hardening_plot(
             for specimen_index, (eps_p_pct, theta) in zip(wh_indices, wh_curves):
                 line, = plt.plot(eps_p_pct, theta, alpha=0.18, lw=0.7, color=color)
                 if specimen_index < len(labels):
-                    line._tensile_hover_label = f'{group_name} · {labels[specimen_index]}'
+                    line._tensile_hover_label = f'{get_display_name(group_name, name_overrides)} · {labels[specimen_index]}'
 
         plt.plot(
             grid_pct,
@@ -1269,7 +1259,7 @@ def render_strength_elongation_plot(
                                 color=color, alpha=.3)
                 # Preserve specimen identity in Plotly hover without a legend row
                 # per specimen or publishing absolute source-file paths.
-                line._tensile_hover_label = f'{group} · {short_label}'
+                line._tensile_hover_label = f'{display} · {short_label}'
         n = len(paired)
         x_sd = float(np.std(xs, ddof=1)) if n > 1 else None
         y_sd = float(np.std(ys, ddof=1)) if n > 1 else None
@@ -1378,7 +1368,7 @@ def render_landmark_work_hardening_plot(
                     iv = np.isfinite(ix) & np.isfinite(iy)
                     line, = ax.plot(ix[iv], iy[iv], color=color, alpha=.18, lw=.7)
                     if specimen_index < len(labels):
-                        line._tensile_hover_label = f'{group} · {labels[specimen_index]}'
+                        line._tensile_hover_label = f'{get_display_name(group, name_overrides)} · {labels[specimen_index]}'
                     if not hasattr(figure, '_export_wh'):
                         figure._export_wh = []
                     figure._export_wh.append(('WH individuals', group, specimen_index, ix[iv], iy[iv]))

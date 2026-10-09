@@ -36,23 +36,39 @@ To explore first, leave **Show sample data** enabled and select **Demo compariso
 
 ### Add your own data
 
-Use one subfolder per sample group, with one raw curve CSV per specimen. Names do **not** need to follow a B-number format.
+Use one folder per sample group, with one raw curve CSV per specimen. Groups can sit directly in the data folder or inside **any number of organisational folders** (colleague, project, material, etc.). Names do **not** need to follow a B-number format.
 
     data/
     ├── As built/
     │   ├── specimen_1.csv
     │   ├── specimen_2.csv
     │   └── summary.csv
-    └── Heat treated/
-        └── instrument_exports/
-            ├── specimen_1.csv
-            └── specimen_2.csv
+    ├── Heat treated/
+    │   └── instrument_exports/
+    │       ├── specimen_1.csv
+    │       └── specimen_2.csv
+    └── Guofang/
+        └── Project A/
+            └── Batch 1/
+                ├── Sample X/
+                │   ├── specimen_A.csv
+                │   └── specimen_B.csv
+                └── Sample Y/
+                    └── specimen_A.csv
+
+In **Sample groups**, tick a folder to select all groups below it. Expand it with the arrow to select individual groups or subfolders; a mixed checkbox shows partial selection. Selecting a folder does **not** pool its groups into one average. Graph definitions save the selected groups, so newly added groups are not silently added to existing graphs.
+
+Keep organisational folders as containers of other folders. A folder containing CSVs, an Instron `.is_tens`/`.id_tens` file, or an export subfolder (such as `instrument_exports` or `*.is_tens_Exports`) is treated as a sample group; its nested exports belong to that group. Keep summary CSVs inside their sample group, not in a parent organisational folder.
 
 Nested export folders are supported. Keep original CSV headings and units; the reader recognises supported stress/strain columns and skips summary headers before the time-series data. Available Instron summary CSVs can remain with their dataset for comparison. PDF reports are not imported.
 
 Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Data use** dropdown instead.
 
 After adding or changing files, click **Reload data**. Cloud-hosted files must be downloaded and accessible locally.
+
+Group identities include their relative folder path, so different colleagues can use the same sample names without their data being merged. Existing flat layouts still work.
+
+**Moving groups:** open this version once before reorganising existing data, so it can remember file fingerprints for groups with saved selections/settings. After moving folders, use **Reload data** or **Check for moved groups**. Each verified move is flagged beside the selector with its old/new paths and a separate **OK, migrate settings** button. Approving it carries saved graph selections, specimen overrides/exclusions and group settings to the new location; nothing transfers without your OK. The workbench does not move source files itself. Ambiguous duplicates or conflicting settings are blocked. See [move protection](WORKBENCH_GUIDE.md#moving-data-and-retaining-settings) for limitations.
 
 ## 3. Everyday workflow
 

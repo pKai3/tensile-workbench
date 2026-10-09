@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
+from tensile_move_review import MoveReview
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView, specimen_review_mask
 from tensile_properties import specimen_calculation
@@ -139,9 +140,12 @@ class PreviewSession:
             raise FileNotFoundError(f"Tensile data directory not found: {self.data_dir}")
         # This is the existing script's scoped data-folder discovery, not a
         # search of the user's home or thesis directories.
-        # Separate namespaces prevent samples ever merging with a research group
-        # of the same name. A real directory name cannot contain the '/' prefix.
+        # Relative paths keep groups in different organisational folders separate.
+        # Preserve the reserved bundled-data namespace used by saved definitions.
         research = self.engine.find_sample_groups(self.data_dir) if self.data_dir != self.sample_data_dir else {}
+        if any(group.startswith(SAMPLE_GROUP_PREFIX) for group in research):
+            raise ValueError('The group prefix "Sample data / " is reserved for bundled examples. '
+                             'Rename that organisational folder (remove its trailing space).')
         samples = (self.engine.find_sample_groups(self.sample_data_dir)
                    if self.show_sample_data and self.sample_data_dir.is_dir() else {})
         files = {**research, **{SAMPLE_GROUP_PREFIX + group: paths for group, paths in samples.items()}}
@@ -720,6 +724,9 @@ class TensileWorkbench:
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
+        self.move_review = MoveReview(w, self.store, self.session, before_apply=self.save_current,
+            after_apply=self._move_applied, reload_data=lambda: self._reload_data(plots=False),
+            after_forget=lambda: self._move_applied('Removed group forgotten'))
         self.sample_data_toggle = w.Checkbox(value=self.session.show_sample_data, description='Show sample data',
             indent=False, tooltip='Show or hide bundled synthetic groups alongside your own data',
             layout=w.Layout(width='auto'))
@@ -917,7 +924,9 @@ class TensileWorkbench:
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
-            w.HTML("Tick the exact sample groups to include, regardless of their naming format."),
+            w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
+                   "A mixed tick means only some groups are selected. Groups are still analysed separately."),
+            self.move_review.ui,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
@@ -957,6 +966,7 @@ class TensileWorkbench:
         self.tables_update_button.on_click(self._update_tables)
         self.table_export_button.on_click(self._export_properties)
         self._paused = False
+        self.move_review.refresh()
         self._show_saved()
         if not self.session.files:
             self.tables.clear('No tensile sample groups found in the selected data folder.')
@@ -1145,6 +1155,7 @@ class TensileWorkbench:
             # current controls (which no longer contain graph-wide gauge fields).
             project = migrate_group_gauges(self.store.data)
             graph = project["graphs"][self._index()]
+            previous_groups = list(graph['settings']['groups'])
             graph["name"] = self.name.value.strip()
             # Hiding samples is not a graph edit. Keep their previous selections
             # while saving changes to the visible research groups/settings.
@@ -1168,6 +1179,8 @@ class TensileWorkbench:
                     self._refresh_graph_options()
                 finally:
                     self._paused = old
+            if previous_groups != graph['settings']['groups']:
+                self.move_review.refresh()
             self._show_saved()
             if tuple(self.override_group.options) != tuple(state["groups"]):
                 self.override_group.options = state["groups"]
@@ -1465,7 +1478,7 @@ class TensileWorkbench:
         if group is None:
             return
         spec = self._current()["definition"]
-        self.override_name.value = spec.get("name_overrides", {}).get(group, self.store.data.get("display_names", {}).get(group, group))
+        self.override_name.value = self.session.engine.get_display_name(group, spec.get('name_overrides'))
         from matplotlib.colors import to_hex
         color = spec.get('color_overrides', {}).get(group)
         self.override_color_enabled.value = color is not None
@@ -1527,6 +1540,8 @@ class TensileWorkbench:
         self.tables.clear('Reloading source CSVs and summaries…')
         try:
             self.session.reload_data()
+            self.move_review.refresh()
+            self._show_saved()
             self._apply_graph(self.graph.value)
             if plots:
                 self.update(save=False)
@@ -1539,6 +1554,15 @@ class TensileWorkbench:
             self.tables.status.value = self.status.value
         finally:
             self.reload_button.disabled = self.tables_reload_button.disabled = False
+
+    def _move_applied(self, action='Group move approved'):
+        """Refresh saved identities after one explicitly approved migration."""
+        self.group_picker.display_names = self.store.data.get('display_names', {})
+        self._apply_graph(self.store.data['selected_graph'])
+        self._show_saved()
+        self.viewer.clear(action + '. Click Update plots when ready.')
+        self.tables.clear(action + '. Click Update tables when ready.')
+        self.status.value = action + '; saved references updated and previous results cleared.'
 
     def _sample_data_note(self):
         if not self.session.sample_data_dir.is_dir():
@@ -1727,7 +1751,10 @@ class TensileWorkbench:
         try:
             with redirect_stdout(io.StringIO()):
                 frames = self.session.property_tables(state, self._current()['definition'])
-            self.tables.set_frames(frames, color_map=self.session.color_map(state, self._current()['definition']))
+            spec = self._current()['definition']
+            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec),
+                group_labels={group: self.session.engine.get_display_name(group, spec.get('name_overrides'))
+                              for group in state['groups']})
             self._update_fit_warning(frames)
             self.table_export_button.disabled = frames['tensile_samples'].empty
         except Exception as error:

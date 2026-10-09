@@ -1,10 +1,22 @@
 """Portable specimen identities and hard-ignore rules shared by all data readers."""
 import os
+import re
 from copy import deepcopy
 from pathlib import Path, PurePosixPath
 
 SAMPLE_GROUP_PREFIX = 'Sample data / '
 SAMPLE_ID_PREFIX = 'sample-data://'
+
+
+def group_display_name(group, display_names=None, overrides=None):
+    """Folder paths are identities, not publication labels. Keep explicit labels."""
+    leaf = group.rsplit('/', 1)[-1]
+    for labels in (overrides or {}, display_names or {}):
+        if group in labels:
+            # Older colour/label editors sometimes saved the automatic full ID.
+            return leaf if labels[group] == group else labels[group]
+    return leaf
+
 
 DATA_MODES = {
     'all': 'Use all data',
@@ -68,6 +80,34 @@ def csv_files(root):
         found.extend(Path(directory) / name for name in sorted(files)
                      if '!' not in name and name.lower().endswith('.csv'))
     return sorted(found)
+
+
+def discover_sample_groups(root):
+    """Discover groups under any number of organisational folders.
+
+    A group owns direct CSVs or instrument files/export folders. Its nested
+    exports stay together, as in the original flat layout. Directories holding
+    only other group directories are containers, never combined datasets.
+    Keys are full POSIX paths relative to the selected data root, so identical
+    leaf names under different owners cannot merge.
+    """
+    root = Path(root)
+    groups = {}
+    pending = sorted((p for p in root.iterdir() if p.is_dir() and '!' not in p.name), reverse=True)
+    while pending:
+        directory = pending.pop()
+        entries = sorted(p for p in directory.iterdir() if '!' not in p.name)
+        files = [p for p in entries if p.is_file()]
+        folders = [p for p in entries if p.is_dir() and not p.is_symlink()]
+        has_data = any(p.suffix.lower() in ('.csv', '.is_tens', '.id_tens') for p in files)
+        has_exports = any(re.search(r'(?:^|[._ -])exports?$', p.name, re.I) for p in folders)
+        if has_data or has_exports:
+            sources = csv_files(directory)
+            if sources:
+                groups[directory.relative_to(root).as_posix()] = sources
+        else:
+            pending.extend(reversed(folders))
+    return groups
 
 
 def valid_specimen_id(value):

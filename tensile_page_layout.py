@@ -3,12 +3,12 @@ import anywidget
 
 
 class ContentWidth(anywidget.AnyWidget):
-    """Wrap prose, but reserve the natural width of visible tables/plot cards."""
+    """Size to the summary and plot cards; wide specimen columns scroll locally."""
     _esm = """
     export default {render({el}) {
       Object.assign(el.style, {height:'0px', minHeight:'0px', width:'100%',
         margin:'0', padding:'0', overflow:'hidden', flex:'0 0 0px'});
-      let page, timer, disposed=false;
+      let page, timer, summaryTable, summaryWidth=0, disposed=false;
       const pixels = value => Number.parseFloat(value) || 0;
       const visible = node => node.getClientRects().length && node.getBoundingClientRect().height > 0;
       // Include accordion/tab padding and borders, not the stretched widths
@@ -27,8 +27,9 @@ class ContentWidth(anywidget.AnyWidget):
         if (!disposed && timer===undefined) timer=setTimeout(measure, 80);
       };
       const mutations = new MutationObserver(changes => {
-        // Our own width update is not a new content requirement.
-        if (changes.some(c => !(c.target===page && c.attributeName==='style'))) schedule();
+        // Ignore our width update and off-screen measurement probe.
+        if (changes.some(c => !el.contains(c.target) &&
+          !(c.target===page && c.attributeName==='style'))) schedule();
       });
       const resize = new ResizeObserver(schedule);
       const measure = () => {
@@ -44,9 +45,24 @@ class ContentWidth(anywidget.AnyWidget):
         // Existing settings are capped at 980px; long explanatory paragraphs
         // should wrap there rather than dictate the whole page's width.
         let wanted=980+pixels(css.paddingLeft)+pixels(css.paddingRight);
-        page.querySelectorAll('.tw-summary table, .tw-specimens table').forEach(table => {
-          if (visible(table)) wanted=Math.max(wanted, table.getBoundingClientRect().width+surround(table));
-        });
+        const table=page.querySelector('.tw-summary table');
+        if (table!==summaryTable) {
+          summaryTable=table; summaryWidth=0;
+          if (table) {
+            // Measure intrinsic summary width even when another tab is active.
+            // Never measure the specimen table to set the page width: its many
+            // columns belong in its own scrolling panel, not a wider page.
+            const probe=document.createElement('div'); probe.className='tw-summary';
+            Object.assign(probe.style, {position:'fixed', left:'-100000px', top:'0',
+              visibility:'hidden', pointerEvents:'none', width:'max-content',
+              maxWidth:'none', maxHeight:'none', overflow:'visible'});
+            probe.setAttribute('aria-hidden','true');
+            const copy=table.cloneNode(true); probe.append(copy); el.append(probe);
+            summaryWidth=copy.getBoundingClientRect().width;
+            probe.remove();
+          }
+        }
+        if (table) wanted=Math.max(wanted, summaryWidth+surround(table));
         page.querySelectorAll('.tw-plot-board').forEach(board => {
           if (!visible(board)) return;
           const cards=Array.from(board.children).filter(visible);

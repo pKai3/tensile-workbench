@@ -1,5 +1,6 @@
 """Paired, measured Calc–Instron agreement; independent of publication plots."""
 from html import escape
+from tensile_selection import group_display_name
 import numpy as np
 import pandas as pd
 from tensile_selection import property_allowed
@@ -78,7 +79,7 @@ def size_comparison(figure, width):
                          margin={'l': 58, 'r': 12, 't': 40, 'b': 60})
 
 
-def comparison_figure(summary, *, width=360, groups=None, color_map=None):
+def comparison_figure(summary, *, width=360, groups=None, color_map=None, group_labels=None):
     """One compact independent property panel; SD comparison lives below it."""
     import plotly.graph_objects as go
     from plotly.colors import qualitative
@@ -88,25 +89,32 @@ def comparison_figure(summary, *, width=360, groups=None, color_map=None):
     prop = summary['Property'].iloc[0]
     groups = summary['Group'].drop_duplicates().tolist() if groups is None else list(groups)
     data = summary.set_index('Group').reindex(groups)
+    labels = [group_display_name(group, group_labels) for group in groups]
     custom = [[int(row['Paired n']), row['Mean Calc'], row['Mean Instron'], escape(str(row['Unit'])),
                int(row['Pairs with checks']),
                f"{row['SD difference (%)']:.5g}%" if np.isfinite(row['SD difference (%)']) else 'Unavailable (n=1)']
               if pd.notna(row['Paired n']) else [None] * 6 for _, row in data.iterrows()]
+    for row, label in zip(custom, labels):
+        row.append(escape(label))
     figure = go.Figure(go.Bar(name=PROPERTY_LABELS.get(prop, prop), showlegend=False,
-        x=[wrapped(str(group), 16) for group in groups], meta={'property': prop},
+        x=groups, meta={'property': prop},
         y=[v if np.isfinite(v) else None for v in data['Mean difference (%)']],
         marker={'color': [(color_map or {}).get(group, qualitative.Plotly[i % len(qualitative.Plotly)])
                           for i, group in enumerate(groups)]},
         error_y={'type': 'data', 'array': [v if np.isfinite(v) else None for v in data['SD difference (%)']],
                  'visible': True, 'thickness': 1.2, 'width': 4}, customdata=custom,
-        hovertemplate=PROPERTY_LABELS.get(prop, prop) + '<br>%{x}<br>Mean paired difference: %{y:.5g}%'
+        hovertemplate=PROPERTY_LABELS.get(prop, prop) + '<br>%{customdata[6]}<br>Mean paired difference: %{y:.5g}%'
             '<br>SD of differences: %{customdata[5]}<br>Paired n: %{customdata[0]}'
             '<br>Mean Calc: %{customdata[1]:.2f} %{customdata[3]}'
             '<br>Mean Instron: %{customdata[2]:.2f} %{customdata[3]}'
             '<br>Pairs with review checks: %{customdata[4]}<extra></extra>'))
     figure.update_yaxes(title_text='Difference (%)', title_standoff=8, automargin=True,
         zeroline=True, zerolinewidth=2, zerolinecolor='#475569', rangemode='tozero', matches=None)
-    figure.update_xaxes(title_text='Sample group', title_standoff=8, automargin=True, tickangle=0)
+    # Full internal IDs keep equally named groups in separate categories; only
+    # tick/hover labels are shortened, never the data used for grouping.
+    figure.update_xaxes(title_text='Sample group', title_standoff=8, automargin=True, tickangle=0,
+                       type='category', tickmode='array', tickvals=groups,
+                       ticktext=[wrapped(label, 16) for label in labels])
     figure.update_layout(template='plotly_white', bargap=.4, showlegend=False,
                          title={'text': escape(PROPERTY_LABELS.get(prop, prop)), 'x': .5, 'font': {'size': 14}},
                          font={'family': 'Arial, sans-serif', 'size': 11}, hovermode='closest', dragmode='zoom')
@@ -147,6 +155,7 @@ class ComparisonView:
         self.w = widgets
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
         self.color_map = {}
+        self.group_labels = {}
         self.charts, self.probe, self._owned = {}, None, []
         self.box = widgets.VBox(layout=widgets.Layout(width='100%', min_width='0'))
         self.grid = widgets.GridBox(layout=widgets.Layout(width='100%', min_width='0', grid_gap='12px',
@@ -182,14 +191,16 @@ class ComparisonView:
         self._dispose()
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
 
-    def set_frames(self, frames, groups, color_map=None):
+    def set_frames(self, frames, groups, color_map=None, group_labels=None):
         summary = relative_comparison(frames)
         summary = summary[summary['Group'].isin(groups)].reset_index(drop=True)
         colors = dict(color_map or {})
-        if summary.equals(self.summary) and colors == self.color_map:
+        labels = dict(group_labels or {})
+        if summary.equals(self.summary) and colors == self.color_map and labels == self.group_labels:
             return
         self.summary = summary
         self.color_map = colors
+        self.group_labels = labels
         self._dispose()
         if self.ui.selected_index is not None:
             self._render()
@@ -212,7 +223,8 @@ class ComparisonView:
             cards = []
             for prop in properties:
                 data = self.summary[self.summary['Property'].eq(prop)]
-                chart = go.FigureWidget(comparison_figure(data, groups=groups, color_map=self.color_map))
+                chart = go.FigureWidget(comparison_figure(data, groups=groups, color_map=self.color_map,
+                                                        group_labels=self.group_labels))
                 chart._config = {**chart._config, 'displaylogo': False, 'responsive': True}
                 spread = self.w.HTML(spread_table(data), layout=self.w.Layout(width='100%', min_width='0'))
                 card = self.w.VBox([chart, spread], layout=self.w.Layout(

@@ -15,6 +15,7 @@ from tensile_gauge import validate_group_policy
 from tensile_fracture import validate_failure_override
 from tensile_group_plot import validate_group_display
 from tensile_colors import DEFAULT_PALETTE, validate_palette
+from tensile_moves import validate_tracking
 
 
 class ProjectConflict(RuntimeError):
@@ -24,6 +25,7 @@ class ProjectConflict(RuntimeError):
 def validate_project(project):
     if project.get('schema_version') != 1:
         raise ValueError('Unsupported workbench project schema; the existing file was not changed.')
+    validate_tracking(project)
     validate_threshold(project.get('yield_r2_warning', .98))
     modes = project.get('specimen_data_modes', {})
     if not isinstance(modes, dict):

@@ -7,63 +7,7 @@ from base64 import b64encode
 from html import escape
 import uuid
 
-
-class GroupCheckboxes:
-    """Checkbox presentation of the existing exact-group selection model."""
-    def __init__(self, widgets, selection, display_names=None):
-        self.w, self.selection = widgets, selection
-        self.display_names = display_names or {}
-        self.boxes = {}
-        self._syncing = False
-        scope = 'tensile-groups-' + uuid.uuid4().hex
-        self.summary = widgets.HTML()
-        self.clear_button = widgets.Button(description='Clear selection', layout=widgets.Layout(width='auto'))
-        # CSS columns preserve sequential top-to-bottom reading order and
-        # naturally reduce the column count in narrower notebook panels.
-        self.grid = widgets.Box(layout=widgets.Layout(display='block', width='100%', max_width='760px'))
-        self.grid.add_class(scope)
-        compact = widgets.HTML('<style>.' + scope + '{column-width:150px;column-gap:16px;column-fill:balance;}'
-            '.' + scope + '>.widget-checkbox{break-inside:avoid;page-break-inside:avoid;'
-            'width:100%;height:auto;min-height:0;margin:0;padding:2px 0;line-height:1.1;}'
-            '.' + scope + '>.widget-checkbox label,.' + scope + '>.widget-checkbox span{line-height:1.1;}'
-            '</style>', layout=widgets.Layout(height='0px', min_height='0px', margin='0', overflow='hidden'))
-        self.ui = widgets.VBox([
-            widgets.HTML('<b>Sample groups</b>'), compact, self.grid,
-            widgets.HBox([self.summary, self.clear_button], layout=widgets.Layout(flex_flow='row wrap', gap='12px', align_items='center')),
-        ], layout=widgets.Layout(width='100%'))
-        selection.observe(self._options_changed, names='options')
-        selection.observe(self._value_changed, names='value')
-        self.clear_button.on_click(lambda _: setattr(selection, 'value', ()))
-        self._options_changed()
-
-    def _options_changed(self, _=None):
-        for box in self.boxes.values():
-            box.close()
-        self.boxes = {}
-        for option in self.selection.options:
-            label, group = option if isinstance(option, tuple) else (option, option)
-            box = self.w.Checkbox(value=group in self.selection.value, description=label, indent=False,
-                                 tooltip=self.display_names.get(group, label), layout=self.w.Layout(width='auto'))
-            box.observe(self._checked, names='value')
-            self.boxes[group] = box
-        self.grid.children = tuple(self.boxes.values())
-        self._value_changed()
-
-    def _value_changed(self, _=None):
-        self._syncing = True
-        try:
-            for group, box in self.boxes.items():
-                box.value = group in self.selection.value
-        finally:
-            self._syncing = False
-        selected = self.selection.value
-        self.summary.value = ('<b>Selected (' + str(len(selected)) + '):</b> ' +
-                              escape(' · '.join(selected) if selected else 'None'))
-        self.clear_button.disabled = not selected
-
-    def _checked(self, _):
-        if not self._syncing:
-            self.selection.value = tuple(group for group, box in self.boxes.items() if box.value)
+from tensile_group_picker import GroupCheckboxes
 
 
 class PlotView:

@@ -1,5 +1,35 @@
 # Implementation record
 
+## Change notes — 2026-10-09
+
+### Nested groups and move review — implemented, runtime verification deferred
+
+- Discover/select sample groups in arbitrarily nested organisational folders.
+  Preserve full relative paths as identities, but default publication labels to
+  the final group name; retain explicit custom labels.
+- Require approval for content-verified moves before transferring saved settings.
+  For deliberately removed groups, a compact **Forget group** button opens a
+  confirmation and clears references, overrides and tracking without a deletion
+  log. Never delete source data or exports.
+- Keep page width stable across specimen-table tabs; wide tables scroll within
+  their panel rather than expanding the page.
+
+### Saved specimen overrides page — approved for implementation
+
+- Show current overrides across all specimens and graphs, including unavailable
+  data, independently of the current graph selection. This is a settings view,
+  not an event/history log.
+- One row per override: group, specimen, type, global/graph scope, setting,
+  reason, active/disabled status and data availability. Search and filter rows.
+- Provide selection tickboxes, select/clear visible selection, and bulk Disable,
+  Enable and Remove actions. Disable must retain values while preventing their
+  use in calculations; Remove requires confirmation and restores inheritance or
+  automatic behaviour. Never modify raw data.
+- Persist disabled settings in the ignored personal project file; cover move
+  migration and forgetting as well as cache invalidation and refreshed UI.
+- Keep graph-wide colour/gauge settings in their existing editors.
+- Do not regenerate research outputs or run tests under the current instruction.
+
 ## Change notes — 2026-09-24
 
 ### Property-specific specimen exclusions — requested for later

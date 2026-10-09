@@ -12,7 +12,7 @@ class SpecimenTable(anywidget.AnyWidget):
     modes = traitlets.Dict(DATA_MODES).tag(sync=True)
 
     _css = """
-    .tw-specimens {overflow:auto; max-height:510px; width:100%; border:1px solid #cbd5e1; box-sizing:border-box;}
+    .tw-specimens {overflow:auto; max-height:510px; width:100%; min-width:0; max-width:100%; border:1px solid #cbd5e1; box-sizing:border-box;}
     .tw-specimens table {border-collapse:separate; border-spacing:0; width:100%; font:12px/1.4 Arial,sans-serif;}
     .tw-specimens th,.tw-specimens td {padding:7px 9px; border-bottom:1px solid #dce3e9; text-align:right; min-width:100px;}
     .tw-specimens th {position:sticky; top:0; z-index:2; background:#e8eef4; color:#152c3f; text-align:left;}
@@ -49,8 +49,9 @@ class SpecimenTable(anywidget.AnyWidget):
     export default {render({model, el}) {
       const container = document.createElement('div');
       container.className = 'tw-specimens';
+      container.tabIndex = 0;
       container.setAttribute('role','region');
-      container.setAttribute('aria-label','Specimen inclusion and properties');
+      container.setAttribute('aria-label','Specimen inclusion and properties; scroll horizontally for additional columns');
       el.append(container);
       let headerObserver;
       function render() {
