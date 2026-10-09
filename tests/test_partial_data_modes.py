@@ -148,6 +148,41 @@ class PartialDataTests(unittest.TestCase):
         self.assertFalse(any('coupon_2' in line._tensile_hover_label for line in individuals))
         self.assertFalse((self.root / 'output').exists())
 
+    def test_independent_scatter_uses_summary_means_and_property_sds(self):
+        self.mode(2, 'after_uts')
+        details = self.frames()['tensile_summary_details']
+        for family, prop, short in [('ys_vs_el', '0.2% yield strength', 'YS'),
+                                    ('uts_vs_el', 'UTS', 'UTS')]:
+            state = {**self.state, 'family': family, family + '_mean_population': 'independent'}
+            strength = details[(details.Property == prop) & (details.Source == 'Calculated')].iloc[0]
+            el = details[(details.Property == 'Failure elongation') & (details.Source == 'Calc')].iloc[0]
+            results = [self.session.render({**state, 'show_individuals': show}) for show in (False, True)]
+            for result in results:
+                ax = result['figure'].axes[0]
+                mean = next(line for line in ax.lines if not line.get_label().startswith('_'))
+                self.assertAlmostEqual(mean.get_xdata()[0], el['Mean'])
+                self.assertAlmostEqual(mean.get_ydata()[0], strength['Mean'])
+                self.assertIn(f'n {short}=3; n EL=2', mean.get_label())
+                xseg, yseg = (collection.get_segments()[0] for collection in ax.containers[0].lines[2])
+                self.assertAlmostEqual(np.ptp(xseg[:, 0]) / 2, el['SD'])
+                self.assertAlmostEqual(np.ptp(yseg[:, 1]) / 2, strength['SD'])
+            individuals = [line for line in results[1]['figure'].axes[0].lines
+                           if hasattr(line, '_tensile_hover_label')]
+            self.assertEqual(len(individuals), 2)
+            self.assertFalse(any('coupon_2' in line._tensile_hover_label for line in individuals))
+            np.testing.assert_allclose(results[0]['figure'].axes[0].get_xlim(), results[1]['figure'].axes[0].get_xlim())
+            np.testing.assert_allclose(results[0]['figure'].axes[0].get_ylim(), results[1]['figure'].axes[0].get_ylim())
+            warning = self.session.scatter_omission_warning(state, self.session.graphs[0], family)
+            self.assertIn('coupon_2', warning)
+            self.assertIn('all eligible values', warning)
+            self.assertNotIn('may differ from the summary', warning)
+        # The warning must use the current plot, not the other plot's setting.
+        warning = self.session.scatter_omission_warning(
+            {**self.state, 'ys_vs_el_mean_population': 'independent', 'uts_vs_el_mean_population': 'paired'},
+            self.session.graphs[0], 'uts_vs_el')
+        self.assertIn('paired specimens only', warning)
+        self.assertFalse((self.root / 'output').exists())
+
     def test_group_review_is_lazy_keeps_untrimmed_points_and_excluded_curves(self):
         self.project['specimen_exclusions'] = {'Alloy A/coupon_1.csv': ''}
         self.session.set_project(self.project)

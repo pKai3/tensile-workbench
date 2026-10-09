@@ -90,6 +90,15 @@ class RelativeComparisonTests(unittest.TestCase):
         self.assertIsNone(el.layout.yaxis.matches)
         self.assertEqual(el.data[0].y[0], 25.)
 
+    def test_comparison_labels_ignore_publication_aliases(self):
+        summary = relative_comparison(frames())
+        ys = summary[summary.Property.eq('0.2% yield strength')].copy()
+        ys['Group'] = 'Colleague/Project/B09-SR'
+        figure = comparison_figure(ys, group_labels={'Colleague/Project/B09-SR':'Pretty publication label'})
+        self.assertEqual(list(figure.layout.xaxis.ticktext), ['B09-SR'])
+        self.assertEqual(figure.data[0].customdata[0][6], 'B09-SR')
+        self.assertEqual(list(figure.data[0].x), ['Colleague/Project/B09-SR'])
+
     def test_spread_table_same_pairs_units_escaping_and_undefined_change(self):
         summary = relative_comparison(frames())
         ys = summary[summary.Property.eq('0.2% yield strength')].copy()

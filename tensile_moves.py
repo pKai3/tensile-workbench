@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 
 from tensile_selection import SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX, valid_specimen_id
+from tensile_overrides import DISABLED
 
 GROUP_MAPS = ('name_overrides', 'color_overrides', 'youngs_modulus_overrides',
               'representative_overrides', 'gauge_reconstruction')
@@ -36,6 +37,7 @@ def references(project):
     for block in [project, *(g.get('definition', {}) for g in graph_blocks(project))]:
         for key in SPECIMEN_MAPS:
             specimens.update(block.get(key, {}))
+            specimens.update(block.get(DISABLED, {}).get(key, {}))
     for key in HISTORIES:
         specimens.update(e['specimen_id'] for e in project.get(key, []))
     for graph in graph_blocks(project):
@@ -106,7 +108,8 @@ def seed_legacy(project, history):
     """
     groups, _ = references(project)
     for key in ('specimen_fit_overrides', 'specimen_failure_overrides'):
-        for ident, override in project.get(key, {}).items():
+        overrides = {**project.get(DISABLED, {}).get(key, {}), **project.get(key, {})}
+        for ident, override in overrides.items():
             if ident.startswith(SAMPLE_ID_PREFIX) or not valid_hash(override.get('source_sha256')):
                 continue
             owners = [g for g in groups if under(ident, g)]
@@ -263,6 +266,7 @@ def migrate_settings(project, proposal, *, audit=True):
     remap_keys(result, 'display_names', groups)
     for key in SPECIMEN_MAPS:
         remap_keys(result, key, specimens)
+        remap_keys(result.get(DISABLED, {}), key, specimens)
     for key in HISTORIES:
         for event in result.get(key, []):
             if event['specimen_id'] in specimens:
@@ -286,6 +290,11 @@ def migrate_settings(project, proposal, *, audit=True):
             remap_keys(definition, key, groups)
         for key in SPECIMEN_MAPS:
             remap_keys(definition, key, specimens)
+            remap_keys(definition.get(DISABLED, {}), key, specimens)
+    for block in [result, *(g.get('definition', {}) for g in graph_blocks(result))]:
+        for key in SPECIMEN_MAPS:
+            if set(block.get(key, {})) & set(block.get(DISABLED, {}).get(key, {})):
+                raise ValueError(f'Conflicting active and disabled {key} settings after move.')
     if audit:
         result.setdefault('data_move_history', []).append({
             'approved_at': datetime.now(timezone.utc).isoformat(),
@@ -315,6 +324,13 @@ def forget_group(project, group, *, live_groups=()):
         for key in SPECIMEN_MAPS:
             if key in block:
                 block[key] = {ident: value for ident, value in block[key].items() if not owned(ident)}
+            parked = block.get(DISABLED, {})
+            if key in parked:
+                parked[key] = {ident: value for ident, value in parked[key].items() if not owned(ident)}
+                if not parked[key]:
+                    parked.pop(key)
+            if not parked:
+                block.pop(DISABLED, None)
     for graph in graph_blocks(result):
         settings, definition = graph.get('settings', {}), graph.get('definition', {})
         for key in ('groups', 'properties_by_group_order'):

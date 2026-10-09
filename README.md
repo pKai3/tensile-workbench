@@ -4,6 +4,8 @@ Analyse tensile-test CSV exports in a local browser app. Compare sample groups, 
 
 The workbench includes stress–strain curves, work-hardening plots, strength–elongation comparisons, specimen statistics and comparisons with available Instron summary CSVs. Three small synthetic datasets let you try it before adding your own data.
 
+Use **Analysis** for graphs and specimen review. **Saved specimen overrides** lists manual fits, failure endpoints and data-use/exclusion settings across all your specimens and saved graphs. Tick rows to disable, re-enable or remove settings; you do not need to select those groups in the current graph.
+
 ## 1. Install and launch
 
 You need **standard Python 3.13, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). If Python is not installed, follow the platform-specific links in [SETUP.md](SETUP.md#first-use).
@@ -36,7 +38,7 @@ To explore first, leave **Show sample data** enabled and select **Demo compariso
 
 ### Add your own data
 
-Use one folder per sample group, with one raw curve CSV per specimen. Groups can sit directly in the data folder or inside **any number of organisational folders** (colleague, project, material, etc.). Names do **not** need to follow a B-number format.
+Use one folder per sample group, with one raw curve CSV per specimen. Groups can sit directly in the data folder or inside **any number of organisational folders** (colleague, project, material, etc.). Use descriptive names that suit your experiments.
 
     data/
     ├── As built/
@@ -108,7 +110,7 @@ The **Data use** dropdown is available in Specimens and Group curve review:
 
 Retaining YS requires reliable strain through the **0.2% offset intersection**, not just through the elastic fit. All partial AVE-failure modes exclude failure EL, reconstructed EL, full-test toughness and full tensile shape. They also exclude the corresponding imported Instron properties from statistics. Original values remain visible (crossed out) and auditable in exports.
 
-Landmark curves use trusted curves for **shape**, then pass through each property's **eligible group mean**. Strength and elongation can therefore use different specimen counts. Pointwise averages use only eligible full curves. Strength–EL scatter plots require valid pairs; their means can differ from the overall summary, and an on-screen warning lists partial exclusions. Warnings are not added to publication plots.
+Landmark curves use trusted curves for **shape**, then pass through each property's **eligible group mean**. Strength and elongation can therefore use different specimen counts. Pointwise averages use only eligible full curves. Strength–EL scatter plots default to **All eligible values per property** for group means and SDs, matching the summary. Individual dots still require valid pairs. Each scatter plot's **Settings → Group means** also offers **Paired specimens only**; this can give different means from the summary. An on-screen warning lists partial exclusions; warnings are not added to publication plots.
 
 In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. Exclusions have distinct line styles and short labels beside each specimen above the plot.
 

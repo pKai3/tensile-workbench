@@ -3,6 +3,7 @@ from copy import deepcopy
 from html import escape
 
 from tensile_moves import scan_moves, migrate_settings, references, forget_group
+from tensile_activity import busy
 
 
 class MoveReview:
@@ -29,6 +30,7 @@ class MoveReview:
                 flex_flow='row wrap', align_items='center', gap='8px')),
             self.message, self.confirmation, self.rows], layout=widgets.Layout(width='100%'))
 
+    @busy('Checking for moved sample groups…')
     def refresh(self):
         self._cancel_forget()
         self.check.disabled = True
@@ -116,6 +118,7 @@ class MoveReview:
         self._pending_forget = None
         self.confirmation.layout.display = 'none'
 
+    @busy('Clearing removed-group settings…')
     def _forget(self):
         group = self._pending_forget
         if group is None:
@@ -138,6 +141,7 @@ class MoveReview:
         except Exception as error:
             self.message.value = '<b>Group forgotten.</b> Reload the workbench to refresh the view: ' + escape(str(error))
 
+    @busy('Verifying move and migrating settings…')
     def _approve(self, proposal, button):
         button.disabled = self.check.disabled = True
         try:

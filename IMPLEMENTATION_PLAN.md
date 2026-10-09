@@ -2,6 +2,46 @@
 
 ## Change notes — 2026-10-09
 
+### Strength–EL mean populations — implemented, not runtime-tested
+
+- Add **Group means** to each YS–EL / UTS–EL plot's Settings, independently
+  persisted per graph: all eligible values per property (default), consistent
+  with summary-table means, or paired specimens. Apply the default to fresh
+  graphs and missing settings; preserve explicit saved choices. Update the
+  starter definitions, renderer/UI fallbacks and export documentation together.
+- Remove the README's B-number naming reference; describe arbitrary sample
+  names and the new scatter default for external users.
+- Keep individual dots paired in both modes. Independent means use each axis's
+  own count and sample SD; omit that axis's SD below n=2, and omit the group
+  marker if either coordinate has no eligible values. Show separate counts.
+- Apply identically to static/Plotly and with/without-individuals views; preserve
+  shared axis limits. Update omission warnings, export provenance and guide.
+- Leave tables, landmark anchors and exclusions unchanged. Add regression
+  coverage for differing populations, SDs, empty/disjoint populations, plot
+  caching, settings persistence and exports. Source review only; no tests run
+  or research plots/tables generated.
+
+### Stable sizing, loading feedback and comparison identities — implemented, not runtime-tested
+
+- Replace intrinsic table/plot width measurement with an explicit **Page width**
+  selector (default 1600 px, capped to the viewport). Remember the selection in
+  browser storage for this app address. Loading, clearing and switching samples
+  must never change the preferred page width; wide tables scroll locally.
+- Give the outer Analysis / Saved specimen overrides tabs content-sized labels;
+  retain horizontal navigation scrolling for narrow windows. Follow-up: increase
+  selector specificity above ipywidgets' fixed-width tab and clipping rules so
+  the full label fits regardless of stylesheet load order; inner tabs unchanged.
+- Add a shared loading overlay for long UI operations: folder changes, data
+  reloads, property/plot calculation, inspector previews, comparisons, group
+  review, move checks and exports. Use nested exception-safe scopes; lock
+  pointer/keyboard interaction while active and restore previous focus/state.
+  Delay the visible spinner briefly to avoid flicker for quick actions. Do not
+  alter measurement calculations or generate outputs merely to show activity.
+- Use formal sample-group names in Calc–Instron chart ticks/hover, ignoring
+  publication aliases. Preserve full internal IDs for grouping and leave
+  publication labels and comparison numbers unchanged.
+- Source review only; no tests, app launch or research outputs generated.
+
 ### Nested groups and move review — implemented, runtime verification deferred
 
 - Discover/select sample groups in arbitrarily nested organisational folders.
@@ -14,7 +54,7 @@
 - Keep page width stable across specimen-table tabs; wide tables scroll within
   their panel rather than expanding the page.
 
-### Saved specimen overrides page — approved for implementation
+### Saved specimen overrides page — implemented, runtime verification deferred
 
 - Show current overrides across all specimens and graphs, including unavailable
   data, independently of the current graph selection. This is a settings view,
@@ -28,6 +68,16 @@
 - Persist disabled settings in the ignored personal project file; cover move
   migration and forgetting as well as cache invalidation and refreshed UI.
 - Keep graph-wide colour/gauge settings in their existing editors.
+- Add a top-level **Saved specimen overrides** page beside **Analysis**. Opening
+  it reads settings and cached identities only, without processing specimen data.
+  Refresh on entry; clearly distinguish unavailable data and CSV-name fallbacks.
+- Disabled entries are moved out of active maps into a per-scope
+  `disabled_specimen_overrides` mapping. Existing calculations, tables and exports
+  therefore see only active policies; re-enabling preserves the original values
+  and source fingerprint. A new explicit edit replaces any parked old setting.
+- Confirm bulk removal, reject stale selections/conflicting re-enables, use the
+  existing atomic save, and clear stale previews after changes. Do not trigger
+  plotting or export from the settings page, even with live preview enabled.
 - Do not regenerate research outputs or run tests under the current instruction.
 
 ## Change notes — 2026-09-24

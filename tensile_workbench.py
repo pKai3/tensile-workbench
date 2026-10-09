@@ -15,6 +15,9 @@ from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_move_review import MoveReview
+from tensile_overrides import clear_disabled
+from tensile_override_view import SavedOverridesView
+from tensile_activity import BusyOverlay, busy
 from tensile_instron import InstronSummaries
 from tensile_tables import property_tables, PropertyTablesView, specimen_review_mask
 from tensile_properties import specimen_calculation
@@ -96,6 +99,7 @@ FAMILIES = [
 
 PROPERTY_FAMILIES = ('ys_vs_el', 'uts_vs_el')
 PROPERTY_DEFAULTS = {'property_error_bars': True,
+                     **{family + '_mean_population': 'independent' for family in PROPERTY_FAMILIES},
                      **{family + suffix: None for family in PROPERTY_FAMILIES
                         for suffix in ('_xlim', '_ylim')}}
 AXIS_DEFAULTS = {'tensile_xlim': [0, 30], 'tensile_ylim': [0, 1000],
@@ -304,15 +308,21 @@ class PreviewSession:
                 'diagnostic': model.get('landmark_diagnostic') or 'No eligible curve shapes.',
                 'basis': group_basis_label(state, spec, group)}
 
-    def scatter_omission_warning(self, state, spec):
+    def scatter_omission_warning(self, state, spec, family=None):
         omitted = [f"{group} / {r.get('specimen_label') or r['sample']}"
                    for group, rows in self.included_records(state['groups'], spec).items() for r in rows
                    if not property_allowed(record_mode(r), 'el')]
         if not omitted:
             return ''
+        family = family or state.get('family', 'ys_vs_el')
+        population = state.get(family + '_mean_population', 'independent')
+        explanation = ('Scatter means use paired specimens only, so they may differ from the summary means.'
+                       if population == 'paired' else
+                       'Scatter means and SDs use all eligible values separately for each property, as in the summary. '
+                       'Only individual dots require both values; the group marker need not be the centre of those dots.')
         return ('Omitted from strength–EL pairs because elongation is excluded: ' + '; '.join(omitted) +
                 '. Eligible strength results still contribute to the group statistics and landmark anchors. '
-                'Scatter means use paired specimens only, so they may differ from the summary means.')
+                + explanation)
 
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
@@ -424,6 +434,9 @@ class PreviewSession:
     def _validate(state):
         validate_palette(state.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(state)
+        for family in PROPERTY_FAMILIES:
+            if state.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
+                raise ValueError(f'{family}: mean population must be paired or independent.')
         if not state["groups"]:
             raise ValueError("Select at least one sample group.")
         if state["family"] not in dict((value, label) for label, value in FAMILIES):
@@ -575,6 +588,7 @@ class PreviewSession:
                 elif family in PROPERTY_FAMILIES:
                     fig = e.render_strength_elongation_plot(records, family=family,
                         error_bars=state.get('property_error_bars', True),
+                        mean_population=state.get(family + '_mean_population', 'independent'),
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
                         **common)
                 elif family in ("landmark", "pointwise", "comparison"):
@@ -692,9 +706,10 @@ class PreviewSession:
 class TensileWorkbench:
     """Graph editor and multi-plot board. Definitions autosave independently of previews."""
 
-    def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None):
+    def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None, activity=None):
         import ipywidgets as w
         self.w = w
+        self.activity = activity if activity is not None else BusyOverlay()
         self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
                                   self.project_dir / "tensile_workbench_defaults.json")
@@ -738,6 +753,13 @@ class TensileWorkbench:
         self._check("show_both_versions", "Display both with/without-individuals versions")
         self._check("landmark_error_bars", "Landmark ±1 SD bars")
         self._check("property_error_bars", "Group mean ±1 SD bars · strength–EL plots")
+        for family in PROPERTY_FAMILIES:
+            self.controls[family + '_mean_population'] = w.Dropdown(
+                description='Group means:',
+                options=[('All eligible values per property', 'independent'),
+                         ('Paired specimens only', 'paired')],
+                value='independent', style={'description_width': 'initial'},
+                layout=w.Layout(width='450px', max_width='100%'))
         self._check('properties_by_group_error_bars', 'Group mean ±1 SD bars')
         self.controls['properties_by_group_line_style'] = w.Dropdown(
             description='Connecting lines:', options=[('Straight / solid', 'solid'), ('Dash', 'dash'),
@@ -887,9 +909,12 @@ class TensileWorkbench:
                                  'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
                                  'Show individuals adds faint specimen points. Colours here identify properties, not groups.')]
             if property_plot:
-                local += [self.controls['property_error_bars'],
+                local += [self.controls[family + '_mean_population'], self.controls['property_error_bars'],
                           w.HTML('EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
                                  'Group means use calculated specimen properties, not an average curve. '
+                                 'Paired specimens uses the same specimens for both means and SDs. All eligible values '
+                                 'uses each property’s own eligible values, matching the summary, with separate counts. '
+                                 'Individual dots always require both values; independent means need not centre on those dots. '
                                  'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.')]
             if family in ("landmark", "comparison", "work_hardening_landmark", "work_hardening_comparison"):
                 local.append(self.controls["landmark_points"])
@@ -919,7 +944,7 @@ class TensileWorkbench:
         self.plot_options = w.VBox(list(self.plot_selectors.values()), layout=w.Layout(width="100%", max_width="980px", gap="8px"))
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
-        self.ui = w.VBox([
+        self.analysis_ui = w.VBox([
             w.HTML("<h2>Analysis workspace</h2><p>Choose a graph and its sample groups. Changes save automatically; export when you are ready.</p>"),
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
@@ -937,6 +962,29 @@ class TensileWorkbench:
             self.status, general, self.viewer.ui,
             self._row([self.export_button, self.controls["export_tables"]]), log,
         ], layout=w.Layout(width="100%", min_width="0"))
+        self.saved_overrides = SavedOverridesView(w, self.store, self.session,
+            before_apply=self.save_current, after_apply=self._saved_overrides_applied)
+        for component in (self.move_review, self.saved_overrides, self.tables.inspector,
+                          self.tables.group_review, self.tables.comparison, self.viewer):
+            component.activity = self.activity
+        self.pages = w.Tab(children=[self.analysis_ui, self.saved_overrides.ui],
+                           layout=w.Layout(width='100%', min_width='0'))
+        self.pages.add_class('tw-page-tabs')
+        self.pages.set_title(0, 'Analysis')
+        self.pages.set_title(1, 'Saved specimen overrides')
+        self.pages.observe(lambda change: self.saved_overrides.refresh() if change['new'] == 1 else None,
+                           names='selected_index')
+        # The launcher owns the shared overlay when embedded; standalone
+        # notebook use gets its own indicator and width control.
+        if activity is None:
+            from tensile_page_layout import ContentWidth
+            contents = [self.activity, ContentWidth(), self.pages]
+        else:
+            contents = [self.pages]
+        self.ui = w.VBox(contents, layout=w.Layout(
+            width='var(--tw-content-width, 1600px)' if activity is None else '100%',
+            min_width='0', max_width='100%'))
+        self.ui.add_class('tw-workbench')
         self._refresh_graph_options()
         self._apply_graph(self.store.data["selected_graph"])
         self.sample_data_toggle.observe(self._sample_data_changed, names='value')
@@ -1191,6 +1239,7 @@ class TensileWorkbench:
             self.export_button.disabled = True
             return False
 
+    @busy('Updating selected samples…')
     def _changed(self, _=None):
         if self._paused:
             return
@@ -1231,6 +1280,7 @@ class TensileWorkbench:
         if change and change.get('owner') is self.controls['live_update'] and change['new'] and not ready:
             self.update(save=False)
 
+    @busy('Loading graph and sample groups…')
     def _graph_changed(self, change):
         if self._paused:
             return
@@ -1261,6 +1311,7 @@ class TensileWorkbench:
             self._paused = False
             self.save_status.value = "<b>Could not switch:</b> " + escape(str(error))
 
+    @busy('Preparing graph…')
     def new_graph(self, duplicate=False):
         if not self.save_current():
             return
@@ -1281,6 +1332,7 @@ class TensileWorkbench:
             self._paused = False
             self.save_status.value = "<b>Could not create graph:</b> " + escape(str(error))
 
+    @busy('Loading saved graph definitions…')
     def reload_definitions(self, _=None):
         try:
             self.store.reload()
@@ -1352,6 +1404,7 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = '<b>Could not restore graph:</b> ' + escape(str(error))
 
+    @busy('Applying specimen data-use settings…')
     def _specimen_changed(self, ident, included, reason, scope='global', action='selection', mode=None):
         if self._paused:
             return
@@ -1369,6 +1422,7 @@ class TensileWorkbench:
             validate_data_mode(mode)
             included = mode != 'exclude'
             overrides = spec.setdefault('specimen_inclusion_overrides', {})
+            clear_disabled(spec, ('specimen_inclusion_overrides', 'specimen_exclusions'), ident)
             if action == 'inherit':
                 overrides.pop(ident, None)
             elif scope == 'graph':
@@ -1376,6 +1430,7 @@ class TensileWorkbench:
             else:
                 # Normal Include changes are global. Existing explicit overrides
                 # in other graphs remain deliberate exceptions.
+                clear_disabled(project, ('specimen_exclusions', 'specimen_data_modes'), ident)
                 exclusions = project.setdefault('specimen_exclusions', {})
                 modes = project.setdefault('specimen_data_modes', {})
                 if mode in ('all', 'exclude'):
@@ -1446,6 +1501,7 @@ class TensileWorkbench:
         for control in previous:
             control.close()
 
+    @busy('Updating gauge reconstruction…')
     def _gauge_row_changed(self, group, graph_id):
         if self._paused or self._gauge_sync or graph_id != self.graph.value or group not in self._gauge_rows:
             return
@@ -1473,6 +1529,7 @@ class TensileWorkbench:
                 self._gauge_sync = False
             self.gauge_message.value = '<b>Not saved:</b> ' + escape(str(error))
 
+    @busy('Loading sample-group settings…')
     def _load_overrides(self, _=None):
         group = self.override_group.value
         if group is None:
@@ -1495,6 +1552,7 @@ class TensileWorkbench:
         self.override_rep.options = choices
         self.override_rep.value = saved
 
+    @busy('Applying graph settings…')
     def _apply_overrides(self, _=None):
         if not self.save_current() or self.override_group.value is None:
             return
@@ -1529,6 +1587,7 @@ class TensileWorkbench:
         except Exception as error:
             self.save_status.value = "<b>Override not saved:</b> " + escape(str(error))
 
+    @busy('Reloading source data…')
     def _reload_data(self, _=None, *, plots=True):
         if self._busy or not self.save_current():
             return
@@ -1573,6 +1632,7 @@ class TensileWorkbench:
             message = 'Synthetic examples only—not experimental measurements.'
         self.sample_data_note.value = '<small>' + escape(message) + '</small>'
 
+    @busy('Loading sample groups…')
     def _sample_data_changed(self, change):
         if self._paused:
             return
@@ -1624,6 +1684,19 @@ class TensileWorkbench:
         self._show_saved()
         self._refresh_properties()
 
+    def _saved_overrides_applied(self):
+        """Invalidate results without doing expensive calculations on the settings page."""
+        self.session.set_project(self.store.data)
+        self._results, self._signature = [], None
+        self.export_button.disabled = True
+        self.table_export_button.disabled = True
+        message = 'Saved specimen overrides changed. Update tables or plots to use the new settings.'
+        self.viewer.clear(message)
+        self.tables.clear(message)
+        self._update_fit_warning()
+        self._show_saved()
+        self.status.value = message
+
     def _change_fit_threshold(self, value):
         threshold = validate_threshold(value)
         if not self.save_current():
@@ -1634,6 +1707,7 @@ class TensileWorkbench:
             self.store.save(project)
             self._fit_settings_saved()
 
+    @busy('Applying elastic-fit override…')
     def _apply_specimen_fit(self, ident, source_sha256, override, reason):
         """Validate preview and source, then atomically save a project-wide override."""
         if not self.save_current():
@@ -1645,6 +1719,7 @@ class TensileWorkbench:
             raise ValueError('Source data changed during review. Reload data before applying a fit.')
         project = deepcopy(self.store.data)
         before = deepcopy(project.get('specimen_fit_overrides', {}).get(ident))
+        clear_disabled(project, ('specimen_fit_overrides',), ident)
         timestamp = datetime.now().astimezone().isoformat()
         if override is not None:
             candidate = deepcopy(override)
@@ -1666,12 +1741,16 @@ class TensileWorkbench:
             candidate = None
             project.setdefault('specimen_fit_overrides', {}).pop(ident, None)
         if before == candidate:
+            if project != self.store.data:
+                self.store.save(project)
+                self._fit_settings_saved()
             return
         project.setdefault('specimen_fit_history', []).append({'specimen_id': ident, 'saved_at': timestamp,
             'action': 'apply' if candidate else 'restore automatic', 'before': before, 'after': candidate})
         self.store.save(project)
         self._fit_settings_saved()
 
+    @busy('Applying failure-elongation override…')
     def _apply_specimen_failure(self, ident, source_sha256, override, reason):
         """Validate against unchanged raw data, then save an endpoint for all graphs."""
         if not self.save_current():
@@ -1683,6 +1762,7 @@ class TensileWorkbench:
             raise ValueError('Source data changed during review. Reload data before changing failure EL.')
         project = deepcopy(self.store.data)
         before = deepcopy(project.get('specimen_failure_overrides', {}).get(ident))
+        clear_disabled(project, ('specimen_failure_overrides',), ident)
         timestamp = datetime.now().astimezone().isoformat()
         candidate = None
         if override is not None:
@@ -1703,6 +1783,9 @@ class TensileWorkbench:
         else:
             project.setdefault('specimen_failure_overrides', {}).pop(ident, None)
         if before == candidate:
+            if project != self.store.data:
+                self.store.save(project)
+                self._fit_settings_saved()
             return
         project.setdefault('specimen_failure_history', []).append({'specimen_id': ident, 'saved_at': timestamp,
             'action': 'apply' if candidate else 'restore automatic', 'before': before, 'after': candidate})
@@ -1739,6 +1822,7 @@ class TensileWorkbench:
         with redirect_stdout(io.StringIO()):
             return self.session.specimen_inspection(self.state(), self._current()['definition'], ident)
 
+    @busy('Calculating specimen properties and tables…')
     def _refresh_properties(self):
         self.table_export_button.disabled = True
         self.tables.set_threshold(self.store.data.get('yield_r2_warning', .98))
@@ -1752,9 +1836,7 @@ class TensileWorkbench:
             with redirect_stdout(io.StringIO()):
                 frames = self.session.property_tables(state, self._current()['definition'])
             spec = self._current()['definition']
-            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec),
-                group_labels={group: self.session.engine.get_display_name(group, spec.get('name_overrides'))
-                              for group in state['groups']})
+            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec))
             self._update_fit_warning(frames)
             self.table_export_button.disabled = frames['tensile_samples'].empty
         except Exception as error:
@@ -1766,6 +1848,7 @@ class TensileWorkbench:
         if self.save_current():
             self._refresh_properties()
 
+    @busy('Exporting specimen tables…')
     def _export_properties(self, _=None):
         if not self.save_current():
             return
@@ -1778,6 +1861,7 @@ class TensileWorkbench:
         finally:
             self.table_export_button.disabled = False
 
+    @busy('Preparing selected plots…')
     def update(self, save=True):
         if self._busy or (save and not self.save_current()):
             return
@@ -1802,7 +1886,7 @@ class TensileWorkbench:
                     item = {"key": family + ("_with" if individuals else "_without"), "label": label + " · " + subtitle}
                     try:
                         if family in PROPERTY_FAMILIES:
-                            item['warning'] = self.session.scatter_omission_warning(state, self._current()['definition'])
+                            item['warning'] = self.session.scatter_omission_warning(state, self._current()['definition'], family)
                         result = self.session.render({**state, "graph_index": self._index(), "family": family, "show_individuals": individuals})
                         self._results.append(result)
                         items.append({**item, "result": result})
@@ -1821,6 +1905,7 @@ class TensileWorkbench:
             self._busy = False
             self.update_button.disabled = False
 
+    @busy('Exporting plots and results…')
     def _export(self, _=None):
         if not self._results or self._signature != self._current_signature() or not self.save_current():
             self.status.value = "Update the visible plots before exporting."

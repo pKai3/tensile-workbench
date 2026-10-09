@@ -16,6 +16,7 @@ from tensile_fracture import validate_failure_override
 from tensile_group_plot import validate_group_display
 from tensile_colors import DEFAULT_PALETTE, validate_palette
 from tensile_moves import validate_tracking
+from tensile_overrides import DISABLED, validate_disabled
 
 
 class ProjectConflict(RuntimeError):
@@ -26,6 +27,7 @@ def validate_project(project):
     if project.get('schema_version') != 1:
         raise ValueError('Unsupported workbench project schema; the existing file was not changed.')
     validate_tracking(project)
+    validate_disabled(project)
     validate_threshold(project.get('yield_r2_warning', .98))
     modes = project.get('specimen_data_modes', {})
     if not isinstance(modes, dict):
@@ -87,8 +89,12 @@ def validate_project(project):
         if not isinstance(graph.get('settings'), dict) or not isinstance(graph.get('definition'), dict):
             raise ValueError('Each graph needs calculation settings and a definition.')
         settings = graph['settings']
+        validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(settings)
+        for family in ('ys_vs_el', 'uts_vs_el'):
+            if settings.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
+                raise ValueError(f'{family}: mean population must be paired or independent.')
         order = settings.get('properties_by_group_order', [])
         if (not isinstance(order, list) or any(not isinstance(g, str) or not g for g in order)
                 or len(set(order)) != len(order)):
@@ -222,6 +228,7 @@ class ProjectStore:
         project = deepcopy(self.data)
         base = deepcopy(template or project['new_graph_defaults'])
         if template is None:
+            base['definition'].pop(DISABLED, None)
             base['definition'].pop('specimen_exclusions', None)
             base['definition'].pop('specimen_inclusion_overrides', None)
             # Older personal projects retain their own new-graph template.
@@ -251,6 +258,7 @@ class ProjectStore:
             draft['definition']['name'] = draft['name']
             draft['definition'].pop('specimen_exclusions', None)
             draft['definition'].pop('specimen_inclusion_overrides', None)
+            draft['definition'].pop(DISABLED, None)
             draft['settings'].update(groups=[], live_update=False)
             project['graphs'].append(draft)
             entry['replacement'] = deepcopy(draft)

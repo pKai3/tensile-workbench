@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from tensile_activity import BusyOverlay, busy
+from tensile_page_layout import ContentWidth
 
 SETTINGS_NAME = '.tensile-paths.json'
 DEFAULT_FOLDERS = {'data_directory': './data', 'output_directory': './output'}
@@ -107,6 +109,7 @@ class WorkbenchLauncher:
         import ipywidgets as w
         self.root = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self.factory = factory
+        self.activity = BusyOverlay()
         self.app = None
         self.w = w
         values = dict(DEFAULT_FOLDERS)
@@ -148,7 +151,9 @@ class WorkbenchLauncher:
         ])
         self.folders = w.Accordion(children=[content], selected_index=0)
         self.folders.set_title(0, 'Folders · first-run setup' if not saved else 'Folders · data and output locations')
-        self.ui = w.VBox([self.folders, self.body], layout=w.Layout(width='100%'))
+        self.ui = w.VBox([self.activity, ContentWidth(), self.folders, self.body], layout=w.Layout(
+            width='var(--tw-content-width, 1600px)', max_width='100%', min_width='0'))
+        self.ui.add_class('tw-launcher')
         self.save_button.on_click(self._save)
         self.defaults_button.on_click(self._defaults)
         for field in self.fields.values():
@@ -182,12 +187,15 @@ class WorkbenchLauncher:
             self.fields[key].value = value
         self.message.value = 'Defaults selected. Save folders to apply them.'
 
+    @busy('Opening Tensile Workbench…')
     def _open(self, paths, save_values=None):
         factory = self.factory
+        kwargs = {}
         if factory is None:
             from tensile_workbench import TensileWorkbench
             factory = TensileWorkbench
-        candidate = factory(self.root, data_dir=paths['data_directory'], output_dir=paths['output_directory'])
+            kwargs['activity'] = self.activity
+        candidate = factory(self.root, data_dir=paths['data_directory'], output_dir=paths['output_directory'], **kwargs)
         try:
             if save_values is not None:
                 save_folders(self.root, save_values)
@@ -200,6 +208,7 @@ class WorkbenchLauncher:
         if previous is not None:
             previous.ui.close()
 
+    @busy('Applying folders and loading data…')
     def _save(self, _=None):
         self.save_button.disabled = True
         try:

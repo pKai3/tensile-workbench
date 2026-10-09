@@ -26,7 +26,25 @@ class StrengthElongationTests(unittest.TestCase):
         self.session = self.app.session
 
     def state(self, family='ys_vs_el', **kwargs):
-        return {**self.app.state(), 'graph_index': 0, 'family': family, **kwargs}
+        # Most existing cases specifically cover the optional paired behaviour.
+        return {**self.app.state(), 'graph_index': 0, 'family': family,
+                'ys_vs_el_mean_population': 'paired', 'uts_vs_el_mean_population': 'paired', **kwargs}
+
+    def test_default_is_independent_and_missing_settings_use_it(self):
+        for family in PROPERTY_FAMILIES:
+            self.assertEqual(self.app.controls[family + '_mean_population'].value, 'independent')
+            self.assertEqual(self.session.defaults()[family + '_mean_population'], 'independent')
+        project = deepcopy(self.session.project)
+        for graph in project['graphs']:
+            for family in PROPERTY_FAMILIES:
+                graph['settings'].pop(family + '_mean_population', None)
+        self.session.set_project(project)
+        state = self.session.defaults()
+        for family in PROPERTY_FAMILIES:
+            self.assertEqual(state.pop(family + '_mean_population'), 'independent')
+        state.update(family='ys_vs_el', show_individuals=False)
+        result = self.session.render(state)
+        self.assertIn('n YS=3; n EL=3', self.mean_line(result).get_label())
 
     @staticmethod
     def mean_line(result):
@@ -172,11 +190,57 @@ class StrengthElongationTests(unittest.TestCase):
             tail_enabled=False, smooth=False, tensile_xlim=[0, 5]))
         self.assertIs(first['figure'], second['figure'])
 
+    def test_mean_population_is_independent_per_plot_and_invalidates_only_that_plot(self):
+        ys = self.session.render(self.state())
+        uts = self.session.render(self.state('uts_vs_el'))
+        self.assertIsNot(ys['figure'], self.session.render(
+            self.state(ys_vs_el_mean_population='independent'))['figure'])
+        self.assertIs(uts['figure'], self.session.render(
+            self.state('uts_vs_el', ys_vs_el_mean_population='independent'))['figure'])
+        with self.assertRaisesRegex(ValueError, 'mean population'):
+            self.session.render(self.state(ys_vs_el_mean_population='unknown'))
+
+    def test_independent_means_allow_disjoint_populations_and_single_axis_sd(self):
+        # No individual is eligible for both coordinates; the independent group
+        # summary remains meaningful. n=1 must not fabricate an SD on that axis.
+        values = {'coupon_1': (10., np.nan), 'coupon_2': (np.nan, 600.),
+                  'coupon_3': (np.nan, 900.)}
+        def properties(record, *args):
+            x, y = values[record['sample']]
+            return {'Failure elongation (%)': x, 'Yield (MPa)': y}
+        with patch.object(self.session.engine, 'specimen_properties', side_effect=properties):
+            results = [self.session.render(self.state(show_individuals=show,
+                ys_vs_el_mean_population='independent')) for show in (False, True)]
+            with self.assertRaisesRegex(ValueError, 'No valid paired'):
+                self.session.render(self.state())
+        for result in results:
+            mean = self.mean_line(result)
+            self.assertAlmostEqual(mean.get_xdata()[0], 10.)
+            self.assertAlmostEqual(mean.get_ydata()[0], 750.)
+            self.assertIn('n YS=2; n EL=1', mean.get_label())
+            self.assertEqual(len(self.individual_lines(result)), 0)
+            bars = result['figure'].axes[0].containers[0]
+            self.assertFalse(bars.has_xerr)
+            self.assertTrue(bars.has_yerr)
+            trace = next(t for t in figure_to_plotly(result['figure']).data if t.showlegend)
+            self.assertIsNone(trace.error_x.array)
+            self.assertAlmostEqual(trace.error_y.array[0], np.std([600., 900.], ddof=1))
+        np.testing.assert_allclose(results[0]['figure'].axes[0].get_xlim(),
+                                   results[1]['figure'].axes[0].get_xlim())
+        np.testing.assert_allclose(results[0]['figure'].axes[0].get_ylim(),
+                                   results[1]['figure'].axes[0].get_ylim())
+        self.session._previews.clear()
+        values['coupon_1'] = (np.nan, np.nan)
+        with patch.object(self.session.engine, 'specimen_properties', side_effect=properties):
+            with self.assertRaisesRegex(ValueError, 'No valid independently eligible'):
+                self.session.render(self.state(ys_vs_el_mean_population='independent'))
+
     def test_controls_save_reopen_and_export_all_four_variants(self):
         self.app.family_boxes['ys_vs_el'].value = True
         self.app.family_boxes['uts_vs_el'].value = True
         self.app.controls['show_both_versions'].value = True
         self.app.controls['property_error_bars'].value = False
+        self.app.controls['ys_vs_el_mean_population'].value = 'paired'
         auto, low, high, _ = self.app.axes['ys_vs_el_xlim']
         low.value, high.value, auto.value = 5, 25, False
         self.app.title_inputs['ys_vs_el'].value = 'Yield map'
@@ -186,6 +250,8 @@ class StrengthElongationTests(unittest.TestCase):
         self.assertTrue(reopened.family_boxes['ys_vs_el'].value)
         self.assertTrue(reopened.family_boxes['uts_vs_el'].value)
         self.assertFalse(reopened.controls['property_error_bars'].value)
+        self.assertEqual(reopened.controls['ys_vs_el_mean_population'].value, 'paired')
+        self.assertEqual(reopened.controls['uts_vs_el_mean_population'].value, 'independent')
         self.assertEqual(reopened.state()['ys_vs_el_xlim'], [5, 25])
         self.assertIsNone(reopened.state()['uts_vs_el_xlim'])
         self.assertEqual(reopened.title_inputs['ys_vs_el'].value, 'Yield map')
@@ -201,6 +267,8 @@ class StrengthElongationTests(unittest.TestCase):
             self.assertTrue(any(expected in name for name in names))
         metadata = json.loads((folder / 'settings.json').read_text())
         self.assertEqual(len(metadata['views']), 4)
+        self.assertTrue(all(view['ys_vs_el_mean_population'] == 'paired' for view in metadata['views']))
+        self.assertTrue(all(view['uts_vs_el_mean_population'] == 'independent' for view in metadata['views']))
 
 
 if __name__ == '__main__':

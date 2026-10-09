@@ -11,6 +11,7 @@ from tensile_fracture import (endpoint_available, automatic_fracture_endpoint, f
                               ISO_DROP_RATIO, ISO_CONFIRM_FRACTION, ASTM_END_FRACTION,
                               RAPID_RATE_CONTRAST)
 from tensile_gauge import gauge_record
+from tensile_activity import busy
 
 # Stable display-layer IDs: visibility never changes measurements/calculations.
 INSPECTOR_LAYERS = {
@@ -919,6 +920,7 @@ class SpecimenInspector:
         if 0 <= index + direction < len(ids):
             self.choice.value = ids[index + direction]
 
+    @busy('Loading specimen inspector…')
     def _selected(self, _=None):
         if self._updating:
             return
@@ -986,6 +988,7 @@ class SpecimenInspector:
             self._painting = False
         self._failure_preview(keep_zoom=False)
 
+    @busy('Updating failure-elongation preview…')
     def _failure_preview(self, *, from_strain=False, keep_zoom=True):
         if self._failure_sync or self._payload is None or not self.failure_enabled.value:
             return
@@ -1135,6 +1138,7 @@ class SpecimenInspector:
                 self._painting = False
             self._preview(keep_zoom=False)
 
+    @busy('Updating elastic-fit preview…')
     def _preview(self, *, keep_zoom=True):
         if self._editing or self._payload is None or self.mode.value == 'inspect':
             return
@@ -1182,6 +1186,7 @@ class SpecimenInspector:
                 self._painting = False
         self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
 
+    @busy('Drawing specimen inspector…')
     def _paint(self, payload, edit=None, keep_zoom=False):
         import plotly.graph_objects as go
         from tensile_plotly import width_probe

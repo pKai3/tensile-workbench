@@ -8,6 +8,7 @@ from html import escape
 import uuid
 
 from tensile_group_picker import GroupCheckboxes
+from tensile_activity import busy
 
 
 class PlotView:
@@ -181,6 +182,7 @@ class DualPlotView:
     def active(self):
         return self.plotly if self.renderer.value == 'plotly' and self.plotly else self.static
 
+    @busy('Preparing plot view…')
     def _switch(self, _=None):
         if self.renderer.value == 'plotly':
             if self.plotly is None:

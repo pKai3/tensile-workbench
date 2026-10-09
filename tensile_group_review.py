@@ -7,6 +7,7 @@ from tensile_selection import specimen_id, DATA_MODES, property_allowed
 from tensile_specimens import SpecimenTable
 from tensile_properties import specimen_properties
 from tensile_fracture import fracture_endpoint, endpoint_available, prepared_points
+from tensile_activity import busy
 
 
 # Short labels belong in the view's key; the exact saved policy stays in hover.
@@ -364,6 +365,7 @@ class GroupCurveReview:
             f"EL n={counts['Failure elongation (%)']}. Basis: " + escape(payload.get('basis', 'Calc')) + '.')
         self._mount_figure(figure, legend, token, 'Landmark-aligned engineering strain (%)', 'Aligned engineering stress (MPa)')
 
+    @busy('Loading sample-group curves…')
     def render(self):
         self._dispose()
         self.dirty = False

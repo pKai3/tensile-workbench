@@ -1,6 +1,7 @@
 """Paired, measured Calc–Instron agreement; independent of publication plots."""
 from html import escape
 from tensile_selection import group_display_name
+from tensile_activity import busy
 import numpy as np
 import pandas as pd
 from tensile_selection import property_allowed
@@ -80,7 +81,7 @@ def size_comparison(figure, width):
 
 
 def comparison_figure(summary, *, width=360, groups=None, color_map=None, group_labels=None):
-    """One compact independent property panel; SD comparison lives below it."""
+    """Use formal group names, never publication aliases (group_labels is ignored)."""
     import plotly.graph_objects as go
     from plotly.colors import qualitative
     from tensile_plotly import wrapped
@@ -89,7 +90,7 @@ def comparison_figure(summary, *, width=360, groups=None, color_map=None, group_
     prop = summary['Property'].iloc[0]
     groups = summary['Group'].drop_duplicates().tolist() if groups is None else list(groups)
     data = summary.set_index('Group').reindex(groups)
-    labels = [group_display_name(group, group_labels) for group in groups]
+    labels = [group_display_name(group) for group in groups]
     custom = [[int(row['Paired n']), row['Mean Calc'], row['Mean Instron'], escape(str(row['Unit'])),
                int(row['Pairs with checks']),
                f"{row['SD difference (%)']:.5g}%" if np.isfinite(row['SD difference (%)']) else 'Unavailable (n=1)']
@@ -155,7 +156,6 @@ class ComparisonView:
         self.w = widgets
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
         self.color_map = {}
-        self.group_labels = {}
         self.charts, self.probe, self._owned = {}, None, []
         self.box = widgets.VBox(layout=widgets.Layout(width='100%', min_width='0'))
         self.grid = widgets.GridBox(layout=widgets.Layout(width='100%', min_width='0', grid_gap='12px',
@@ -195,16 +195,15 @@ class ComparisonView:
         summary = relative_comparison(frames)
         summary = summary[summary['Group'].isin(groups)].reset_index(drop=True)
         colors = dict(color_map or {})
-        labels = dict(group_labels or {})
-        if summary.equals(self.summary) and colors == self.color_map and labels == self.group_labels:
+        if summary.equals(self.summary) and colors == self.color_map:
             return
         self.summary = summary
         self.color_map = colors
-        self.group_labels = labels
         self._dispose()
         if self.ui.selected_index is not None:
             self._render()
 
+    @busy('Preparing Calc–Instron comparisons…')
     def _render(self):
         if self.charts:
             return
@@ -223,8 +222,7 @@ class ComparisonView:
             cards = []
             for prop in properties:
                 data = self.summary[self.summary['Property'].eq(prop)]
-                chart = go.FigureWidget(comparison_figure(data, groups=groups, color_map=self.color_map,
-                                                        group_labels=self.group_labels))
+                chart = go.FigureWidget(comparison_figure(data, groups=groups, color_map=self.color_map))
                 chart._config = {**chart._config, 'displaylogo': False, 'responsive': True}
                 spread = self.w.HTML(spread_table(data), layout=self.w.Layout(width='100%', min_width='0'))
                 card = self.w.VBox([chart, spread], layout=self.w.Layout(
