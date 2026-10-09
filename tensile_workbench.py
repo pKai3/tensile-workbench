@@ -845,7 +845,8 @@ class TensileWorkbench:
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
             self._row([self.tables_reload_button, self.tables_update_button, self.table_export_button]), self.tables.ui
-        ])], selected_index=None, layout=w.Layout(width='100%'))
+        ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,
+            layout=w.Layout(width='100%', min_width='0'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
         general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
                              self.override_group, self.override_name,
@@ -926,7 +927,7 @@ class TensileWorkbench:
             self._row([self.update_button, self.reload_button, self.controls["live_update"]]),
             self.status, general, self.viewer.ui,
             self._row([self.export_button, self.controls["export_tables"]]), log,
-        ], layout=w.Layout(width="100%"))
+        ], layout=w.Layout(width="100%", min_width="0"))
         self._refresh_graph_options()
         self._apply_graph(self.store.data["selected_graph"])
         self.sample_data_toggle.observe(self._sample_data_changed, names='value')

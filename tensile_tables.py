@@ -415,8 +415,12 @@ def summary_html(details):
     if details.empty:
         return '<p>No matching groups.</p>'
     result = ['''<style>
-      .tw-summary {overflow:auto;max-height:510px;border:1px solid #cbd5e1;}
-      .tw-summary table {border-collapse:separate;border-spacing:0;font:12px/1.4 Arial,sans-serif;width:100%;}
+      .tw18-table-panel {max-width:100%;box-sizing:border-box;}
+      .tw18-table-panel .widget-html-content {width:100%;min-width:0;max-width:100%;flex:1 1 0%;box-sizing:border-box;white-space:normal;}
+      .tw18-table-panel p {white-space:normal;line-height:1.4;}
+      .tw-summary {overflow:auto;width:max-content;min-width:0;max-width:100%;max-height:510px;box-sizing:border-box;border:1px solid #cbd5e1;}
+      .tw-summary:focus-visible {outline:2px solid #1767a5;outline-offset:-2px;}
+      .tw-summary table {border-collapse:separate;border-spacing:0;font:12px/1.4 Arial,sans-serif;width:max-content;}
       .tw-summary th,.tw-summary td {padding:8px 10px;border-bottom:1px solid #dce3e9;white-space:nowrap;text-align:right;}
       .tw-summary th {background:#e8eef4;color:#152c3f;text-align:center;position:sticky;top:0;z-index:2;}
       .tw-summary thead tr:nth-child(2) th {top:33px;}
@@ -426,7 +430,7 @@ def summary_html(details):
       .tw-summary th:first-child[rowspan] {left:0;z-index:3;}
       .tw-summary small {display:block;color:#526170;}
       .tw-summary .property-start {border-left:1px solid #cbd5e1;}
-      </style><div class="tw-summary"><table><thead><tr>
+      </style><div class="tw-summary" tabindex="0" role="region" aria-label="Summary properties; scroll horizontally for additional columns"><table><thead><tr>
       <th rowspan="2" scope="col">Group</th><th rowspan="2" scope="col">Included n</th>''']
     for label, unit, _, _ in METRICS:
         result.append(f'<th colspan="{len(property_table_sources(label))}" scope="colgroup" class="property-start">{escape(property_title(label))} ({escape(unit)})</th>')
@@ -482,7 +486,7 @@ class PropertyTablesView:
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
                               'UTS (MPa)'], layout=w.Layout(width='300px'))
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
-        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', overflow='hidden', margin='0')) for _ in range(2)]
+        self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', max_width='100%', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
         self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply, on_failure_apply=on_failure_apply)

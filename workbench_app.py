@@ -15,12 +15,14 @@ if str(root) not in sys.path:
 
 from migrate_tensile_project import migrate
 from tensile_startup import launch
+from tensile_page_layout import ContentWidth
 
 display(w.HTML('''<style>
 body { background: #f5f7fa; }
 .jp-VoilaCell { padding: 0 !important; }
-.jp-OutputArea-output { width: 100%; }
-.tw-webapp { max-width: 1600px; margin: 0 auto; padding: 16px 24px 32px; box-sizing: border-box; }
+.jp-OutputArea-output { width: 100%; min-width: 0; box-sizing: border-box; }
+.tw-webapp { width: var(--tw-content-width, 1028px); max-width: 100%; min-width: 0; margin: 0 auto; padding: 16px 24px 32px; box-sizing: border-box; }
+.tw-webapp .tw-specimens table { width: max-content; }
 .tw-webapp .widget-label { color: #26374a; }
 .tw-webapp h1 { font-size: 28px; margin-bottom: 4px; color: #203650; }
 .tw-webapp h2 { font-size: 21px; }
@@ -51,10 +53,11 @@ footer = w.HTML('<footer class="tw-copyright">' + escape(copyright_notice.replac
     + '<p>Third-party dependencies retain their own licences. This software licence does not change '
       'the rights applying to imported datasets or generated results.</p></details></footer>')
 page = w.VBox([
+    ContentWidth(),
     w.HTML('<h1>Tensile Workbench</h1><p>Select your folders, choose a graph, and analyse your samples. '
            'No notebook commands are needed. Keep the launcher window open while you work.</p>'),
     workbench.ui,
     footer,
-], layout=w.Layout(width='100%'))
+], layout=w.Layout(width='var(--tw-content-width, 1028px)', max_width='100%', min_width='0'))
 page.add_class('tw-webapp')
 display(page)

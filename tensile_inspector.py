@@ -339,7 +339,7 @@ def fracture_detection_help():
           <b>terminal estimate</b>. It remains usable for EL, toughness and reconstruction, but needs
           review because actual separation is not established.</li>
         <li><b>Insufficient evidence:</b> an ordinary rising curve/plateau, missing required measurements
-          or an acquisition gap does not justify using the final point. Review or override the endpoint.</li>
+          or a gap spanning the fracture does not justify inventing an endpoint. Review or override it.</li>
         <li><b>Manual override:</b> a saved, valid specimen-wide override takes precedence. Calc EL,
           toughness, tensile curves and gauge reconstruction all use that selected endpoint.</li>
       </ol>
@@ -350,6 +350,12 @@ def fracture_detection_help():
       When strain is available, the event's load loss per additional strain must exceed its local
       pre-event value by more than {RAPID_RATE_CONTRAST:g}×. A force fall with no additional strain
       supports a sharp collapse. An unusable pre-event strain baseline requires review.
+      Acquisition gaps split the record into uninterrupted sections: searching resumes after each gap,
+      but drop comparisons, local baselines and confirmation never cross it. All sections retain the
+      original test's peak load. A gap before a clearly recorded fracture does not by itself invalidate EL.
+      Substantial load loss across a gap requires review; if readings resume already below 10% of peak,
+      the missing crossing is not assigned an endpoint. Only the actual final section can supply a
+      terminal estimate, with its preceding eight increments uninterrupted.
       Stop searching for sudden drops at the first 10% crossing, excluding the unloaded tail.
       Post-crossing recovery requires review. See <i>Fracture detection details</i> below the chart for
       this specimen’s criterion, selected row and evidence.</p>

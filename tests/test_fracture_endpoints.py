@@ -281,9 +281,71 @@ class EndpointRegressionTests(unittest.TestCase):
         end = automatic_fracture_endpoint(record_for([0, 20, 40, 60, 80, 100, 99, 20, 99, 98, 97]))
         self.assertEqual(end['status'], 'Not detected')
 
-    def test_missing_force_cannot_be_bridged(self):
+    def test_missing_force_before_supported_terminal_section_does_not_end_search(self):
         record = record_for(gradual_tail())
         record['_acquisition']['force'][30] = np.nan
+        end = automatic_fracture_endpoint(record)
+        self.assertEqual(end['status'], 'Estimated')
+        self.assertEqual(end['row_before'], len(record['strain_pct']))
+        self.assertEqual(end['search_segment_first_row'], 32)
+        self.assertEqual(end['post_peak_gaps_skipped'], 1)
+
+    def test_missing_force_during_fracture_cannot_be_bridged(self):
+        record = record_for(sudden_tail())
+        record['_acquisition']['force'][-2] = np.nan
+        end = automatic_fracture_endpoint(record)
+        self.assertEqual(end['status'], 'Not detected')
+        self.assertIn('gap', end['reason'])
+
+    def test_time_gaps_before_collapse_restart_search_with_original_rows(self):
+        load, onset_row = distributed_drop(5)
+        record = record_for(load)
+        clock = record['_acquisition']['time'] * .001
+        # The short gaps that used to truncate high-rate exports.
+        clock[550:] += .010
+        clock[650:] += .010
+        record['_acquisition']['time'] = clock
+        end = automatic_fracture_endpoint(record)
+        self.assertEqual(end['status'], 'Detected')
+        self.assertEqual(end['row_before'], onset_row)
+        self.assertEqual(end['post_peak_gaps_skipped'], 2)
+        self.assertFalse(end['review_required'])
+        self.assertGreaterEqual(end['search_segment_first_row'], 651)
+        self.assertEqual(end['time_s'], clock[onset_row - 1])
+
+    def test_after_gap_crossing_uses_whole_test_peak_not_segment_maximum(self):
+        load = np.r_[np.linspace(0., 100., 21), np.linspace(99., 8., 101)]
+        record = record_for(load)
+        record['_acquisition']['time'][60:] += 100
+        end = automatic_fracture_endpoint(record)
+        crossing = np.flatnonzero((np.arange(len(load)) > np.argmax(load)) & (load < 10.))[0]
+        self.assertEqual(end['status'], 'Detected')
+        self.assertEqual(end['ten_percent_row'], crossing + 1)
+        self.assertEqual(end['row_before'], crossing)
+        self.assertFalse(end['iso_confirmation_observed'])
+
+    def test_confirmation_beyond_gap_does_not_confirm_earlier_small_drop(self):
+        record = record_for([0., 20., 40., 60., 80., 100., 99.9, 97.9, 1., .5, .2])
+        record['_acquisition']['time'][8:] += 100
+        end = automatic_fracture_endpoint(record)
+        self.assertEqual(end['status'], 'Not detected')
+        self.assertFalse(end['iso_confirmation_observed'])
+        self.assertIn('gap', end['reason'])
+
+    def test_substantial_unobserved_gap_loss_requires_review_of_later_event(self):
+        load = np.r_[np.linspace(0., 100., 21), np.linspace(99., 90., 20),
+                     np.linspace(70., 60., 20), 20.]
+        record = record_for(load)
+        record['_acquisition']['time'][41:] += 100
+        end = automatic_fracture_endpoint(record)
+        self.assertEqual(end['status'], 'Detected')
+        self.assertEqual(end['row_before'], len(load) - 1)
+        self.assertTrue(end['review_required'])
+        self.assertIn('acquisition gap', end['review_reason'])
+
+    def test_short_final_section_cannot_borrow_terminal_window_across_gap(self):
+        record = record_for(gradual_tail())
+        record['_acquisition']['time'][-4:] += 100
         end = automatic_fracture_endpoint(record)
         self.assertEqual(end['status'], 'Not detected')
         self.assertIn('gap', end['reason'])

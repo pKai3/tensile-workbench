@@ -226,6 +226,7 @@ class PlotlyView:
                           'View changes do not change averages or publication exports.')
         self.empty = w.HTML('Choose plots and click Update plots.')
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
+        self.board.add_class('tw-plot-board')
         self.back = w.Button(description='Back to all plots', layout=w.Layout(width='auto'))
         self.choice = w.Dropdown(description='Plot:', layout=w.Layout(width='min(100%, 650px)'))
         self.focus_content = w.VBox(layout=w.Layout(width='100%'))

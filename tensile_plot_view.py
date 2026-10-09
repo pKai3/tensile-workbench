@@ -75,6 +75,7 @@ class PlotView:
         self._focused_key = None
         self._scope = 'tensile-view-' + uuid.uuid4().hex
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
+        self.board.add_class('tw-plot-board')
         self.empty = w.HTML('Choose plots and click <b>Update plots</b> to see them here.')
         self.back = w.Button(description='Back to all plots', icon='th-large', layout=w.Layout(width='auto'))
         self.choice = w.Dropdown(description='Plot:', layout=w.Layout(width='min(100%, 560px)'))

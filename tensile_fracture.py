@@ -2,7 +2,7 @@
 import numpy as np
 import re
 
-FRACTURE_METHOD = 'Acquisition-order endpoint selection (v8)'
+FRACTURE_METHOD = 'Acquisition-order endpoint selection (v9)'
 ISO_DROP_RATIO = 5.0
 ISO_CONFIRM_FRACTION = .02
 ASTM_END_FRACTION = .10
@@ -286,35 +286,90 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
     if clock_ok:
         dt = np.diff(clock[ids])
         contiguous &= dt <= MAX_TIME_GAP_RATIO * np.median(dt)
-    gaps = np.r_[0, np.cumsum(~contiguous)]
-    # Do not silently skip missing load rows or a major time gap after peak.
-    interrupted = np.flatnonzero(gaps[peak:] != gaps[peak])
-    segment_end = peak + int(interrupted[0]) if len(interrupted) else n
-    crossing10 = np.flatnonzero(z[peak + 1:segment_end] < ASTM_END_FRACTION) + peak + 1
-    crossing2 = np.flatnonzero(z[peak + 1:segment_end] < ISO_CONFIRM_FRACTION) + peak + 1
-    first10 = int(crossing10[0]) if len(crossing10) else None
-    first2 = int(crossing2[0]) if len(crossing2) else None
     # Robust noise estimate from contiguous three-reading differences only.
     second = np.diff(z, n=2)[contiguous[:-1] & contiguous[1:]]
     noise = (float(1.4826 * np.median(np.abs(second - np.median(second))) / np.sqrt(6))
              if len(second) >= 5 else 0.)
+    boundaries = np.r_[0, np.flatnonzero(~contiguous) + 1, n]
+    peak_strain = x[ids[peak]]
+    notes = []
+    if not clock_ok:
+        notes.append('No complete increasing time channel; original measurement order used.')
+    post_peak_gaps = 0
+    gap_loss_unresolved = False
+    last_result = dict(result)
+    for start, stop in zip(boundaries[:-1], boundaries[1:]):
+        if stop <= peak:
+            continue
+        if start > peak:
+            post_peak_gaps += 1
+            # This is uncertainty evidence only, never a cross-gap drop candidate.
+            gap_loss_unresolved |= z[start - 1] - z[start] >= max(PARTIAL_DROP_MIN_FRACTION, 12 * noise)
+            if z[start] < ASTM_END_FRACTION:
+                # The first recorded low-load reading is beyond a gap. Neither
+                # the preceding row nor a later unloaded-tail event can locate
+                # the missing crossing/separation.
+                last_result = dict(result, reason=(
+                    'Load is already below 10% of peak after an acquisition gap; '
+                    'the crossing is not resolved. Review or set a manual EL endpoint.'))
+                break
+        segment_notes = list(notes)
+        if post_peak_gaps:
+            segment_notes.append(
+                f'Search resumed after {post_peak_gaps} post-peak acquisition gap(s); '
+                'drop comparisons and local baselines stay within uninterrupted sections. '
+                'All load thresholds use the original test maximum.')
+        candidate = _detect_uninterrupted_endpoint(
+            x, y, ids[start:stop], z[start:stop], max(0, peak - start), peak_strain,
+            clock, clock_ok, noise, dict(result), segment_notes,
+            allow_terminal=(stop == n and ids[-1] == len(load) - 1), after_gap=(start > peak))
+        candidate.update(search_segment_first_row=int(ids[start]) + 1,
+                         search_segment_last_row=int(ids[stop - 1]) + 1,
+                         post_peak_gaps_skipped=post_peak_gaps)
+        if endpoint_available(candidate):
+            if gap_loss_unresolved:
+                candidate.update(review_required=True, review_reason=' '.join(filter(None, [
+                    candidate.get('review_reason'),
+                    'Substantial load loss spans an earlier acquisition gap; the later endpoint '
+                    'may follow an unrecorded fracture onset. Review Failure detail.'])))
+            return candidate
+        # A supported load event with missing/inconsistent strain must remain
+        # unavailable, not be replaced by a more convenient later measurement.
+        if candidate['reason'].startswith('Load criterion met'):
+            return candidate
+        last_result = candidate
+    if post_peak_gaps:
+        last_result['reason'] += '; acquisition gaps were not bridged'
+        last_result['post_peak_gaps_skipped'] = post_peak_gaps
+    return last_result
+
+
+def _detect_uninterrupted_endpoint(x, y, ids, z, peak, peak_strain, clock, clock_ok,
+                                   noise, result, notes, *, allow_terminal, after_gap):
+    """Search one section, keeping original row IDs and whole-test load scaling.
+
+    `peak` is the local search start, not a newly calculated section maximum.
+    No event window, preceding increment or confirmation crosses a boundary.
+    Only the final section can supply a terminal estimate.
+    """
+    n = len(z)
+    crossing10 = np.flatnonzero(z[peak + 1:] < ASTM_END_FRACTION) + peak + 1
+    crossing2 = np.flatnonzero(z[peak + 1:] < ISO_CONFIRM_FRACTION) + peak + 1
+    first10 = int(crossing10[0]) if len(crossing10) else None
+    first2 = int(crossing2[0]) if len(crossing2) else None
     floor = max(NOISE_MULTIPLIER * noise, 64 * np.finfo(float).eps)
     drops = -np.diff(z)
     # Stop at the first 10% crossing: later fluctuations in the unloaded tail
     # must not replace the main event. Confirmation may occur later, at <2%.
-    starts = np.arange(max(peak, 1), first10 if first10 is not None else segment_end - 1)
+    starts = np.arange(max(peak, 1), first10 if first10 is not None else n - 1)
     previous = np.abs(drops[starts - 1])
-    eligible = ((gaps[starts - 1] == gaps[starts + 1])
-                & (drops[starts] > ISO_DROP_RATIO * previous) & (drops[starts] > floor))
+    eligible = (drops[starts] > ISO_DROP_RATIO * previous) & (drops[starts] > floor)
     possible = starts[eligible]
-    confirmation = first2 if first2 is not None else segment_end - 1
+    confirmation = first2 if first2 is not None else n - 1
     future_max = np.maximum.accumulate(z[:confirmation + 1][::-1])[::-1]
     # Reject transient pings that subsequently recover more than half their
     # loss, allowing three noise units. This safeguard is not an ISO clause.
     possible = possible[future_max[possible + 1] <= z[possible] - .5 * drops[possible] + 3 * noise]
-    notes = []
-    if not clock_ok:
-        notes.append('No complete increasing time channel; original measurement order used.')
     result.update(noise_floor_fraction=floor, candidate_count=int(len(possible)),
                   ten_percent_row=int(ids[first10]) + 1 if first10 is not None else np.nan,
                   confirmation_row=int(ids[first2]) + 1 if first2 is not None else np.nan)
@@ -327,10 +382,12 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
     # sampling artefact with evidence for a purely progressive terminal event.
     rapid = None
     if not ((len(possible) and first2 is not None) or len(partial)):
-        segment_time = clock[ids[:segment_end]] if clock_ok else ids[:segment_end].astype(float)
-        rapid = _multi_reading_drop(z[:segment_end], segment_time, peak, noise,
-                                    first10 if first10 is not None else segment_end - 1,
-                                    x[ids[:segment_end]])
+        segment_time = clock[ids] if clock_ok else ids.astype(float)
+        # After a gap, the first increment has no preceding local rate. Do
+        # not compare it against an invented zero-rate background.
+        rapid_start = max(peak, 1) if after_gap else peak
+        rapid = _multi_reading_drop(z, segment_time, rapid_start, noise,
+                                    first10 if first10 is not None else n - 1, x[ids])
     selected_status = 'Detected'
     if (len(possible) and first2 is not None) or len(partial):
         # Largest supported consecutive loss, with the later reading breaking
@@ -386,14 +443,12 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
         end = n - 1
         recent = end - TERMINAL_DECLINE_WINDOW
         terminal_supported = (
-            segment_end == n and recent >= peak
+            allow_terminal and recent >= peak
             and 0 <= z[end] <= TERMINAL_LOAD_FRACTION
             and z[recent] - z[end] > max(6 * noise, .0001)
             and np.max(np.diff(z[recent:end + 1])) <= max(12 * noise, .02))
         if not terminal_supported:
             result['reason'] = 'No confirmed crossing, supported rapid collapse or terminal unloading'
-            if segment_end < n:
-                result['reason'] += '; acquisition gap prevents continuing the search'
             result['notes'] = ' '.join(notes + ['No unconditional final-reading fallback. Review or set a manual EL endpoint.'])
             return result
         onset = end
@@ -409,12 +464,17 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
     if not np.isfinite(x[row]) or not np.isfinite(y[row]):
         result['reason'] = 'Load criterion met, but the selected strain/stress reading is missing'
         return result
-    if x[row] <= 0 or y[row] < 0 or (np.isfinite(x[ids[peak]]) and x[row] < x[ids[peak]]):
+    if x[row] <= 0 or y[row] < 0 or (np.isfinite(peak_strain) and x[row] < peak_strain):
         result['reason'] = 'Load criterion met, but endpoint strain/stress is inconsistent; review tracking'
         return result
-    if first10 is not None and np.any(z[first10 + 1:segment_end] > ASTM_END_FRACTION + floor):
+    if first10 is not None and np.any(z[first10 + 1:] > ASTM_END_FRACTION + floor):
         result.update(review_required=True, review_reason=(
             'Load recovers above 10% of peak after the crossing; review the selected EL endpoint.'))
+    if after_gap and onset == 0:
+        result.update(review_required=True, review_reason=' '.join(filter(None, [
+            result.get('review_reason'),
+            'EL event begins at the first reading after an acquisition gap; '
+            'its preceding local baseline is unavailable. Review Failure detail.'])))
     result.update(status=selected_status, reason='', strain_pct=float(x[row]), stress_mpa=float(y[row]),
                   row_before=row + 1, row_after=next_row + 1 if next_row is not None else np.nan, fraction=0.,
                   time_s=float(clock[row]) if clock.shape == x.shape and np.isfinite(clock[row]) else np.nan,
@@ -536,6 +596,9 @@ def fracture_audit(record):
             'Fracture confirmation row (1-based)': end.get('confirmation_row', np.nan),
             'Fracture below-10% row (1-based)': end.get('ten_percent_row', np.nan),
             'Fracture qualifying sudden-drop candidates': end.get('candidate_count', np.nan),
+            'Fracture search segment first row': end.get('search_segment_first_row', np.nan),
+            'Fracture search segment last row': end.get('search_segment_last_row', np.nan),
+            'Fracture post-peak gaps skipped': end.get('post_peak_gaps_skipped', 0),
             'Fracture noise floor (% of peak)': 100 * end.get('noise_floor_fraction', np.nan),
             'Fracture unconfirmed sudden-drop minimum (% of peak)': 100 * PARTIAL_DROP_MIN_FRACTION,
             'Fracture terminal estimate load ceiling (% of peak)': 100 * TERMINAL_LOAD_FRACTION,
