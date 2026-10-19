@@ -2,7 +2,7 @@
 set -u
 PROJECT_DIR="${0:A:h:h}"
 ACTION="${1:-}"
-[[ "$ACTION" == setup || "$ACTION" == launch ]] || exit 2
+[[ "$ACTION" == setup || "$ACTION" == launch || "$ACTION" == app ]] || exit 2
 export PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1
 ENV_DIR="${TENSILE_ENV_DIR:-$HOME/Library/Application Support/Tensile Workbench/venv}"
 # Finder may not inherit Homebrew's PATH. Prefer the existing environment,
@@ -27,13 +27,25 @@ if [[ -z "$PYTHON_BIN" ]]; then
     print -r -- "Choose the macOS 64-bit universal2 installer (Apple Silicon and Intel). See SETUP.md."
     RESULT=1
 else
-    "$PYTHON_BIN" "$PROJECT_DIR/workbench_environment.py" "$ACTION"
-    RESULT=$?
+    if [[ "$ACTION" == app ]]; then
+        "$PYTHON_BIN" "$PROJECT_DIR/tools/install_macos_app.py"
+        RESULT=$?
+    else
+        "$PYTHON_BIN" "$PROJECT_DIR/workbench_environment.py" "$ACTION"
+        RESULT=$?
+        if [[ "$ACTION" == setup && "$RESULT" == 0 ]]; then
+            if ! "$PYTHON_BIN" "$PROJECT_DIR/tools/install_macos_app.py"; then
+                print -r -- "Python setup succeeded, but the Dock app was not installed/updated."
+                print -r -- "Follow the message above, then run Install_Tensile_Workbench_App.command."
+                print -r -- "Launch_Tensile_Workbench.command remains available."
+            fi
+        fi
+    fi
 fi
 if (( RESULT != 0 )); then
     print -r -- "Setup/launch stopped. Read the error above and SETUP.md."
 fi
-if [[ "$ACTION" == setup || "$RESULT" != 0 ]]; then
+if [[ "$ACTION" == setup || "$ACTION" == app || "$RESULT" != 0 ]]; then
     read -r "reply?Press Return to close. "
 fi
 exit "$RESULT"

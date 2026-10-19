@@ -229,7 +229,9 @@ def main(argv=None, root=None):
     env = child_environment(folder)
     verify(python, root, env, full=action == 'check')
     if action == 'launch':
-        print('The web app opens automatically. Leave this window open; Ctrl-C stops the server.', flush=True)
+        print('The web app opens automatically. '
+              + ('Use the Dock app to view logs or stop the server.' if os.environ.get('TENSILE_DESKTOP_APP') == '1'
+                 else 'Leave this window open; Ctrl-C stops the server.'), flush=True)
         run([python, root / 'launch_workbench.py'], root, env)
     return 0
 

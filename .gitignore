@@ -29,6 +29,11 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+# Locally built Mac launchers, compiler caches and runtime logs.
+*.app/
+*.dSYM/
+*.log
+module-cache/
 *.project.previous.json
 *.project.lock
 # Each installation owns its personal graph definitions; defaults are shared.

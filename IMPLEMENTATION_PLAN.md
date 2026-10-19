@@ -1,5 +1,32 @@
 # Implementation record
 
+## Change notes — 2026-10-19
+
+### Reproducible Mac Dock launcher — implemented
+
+- Track the native launcher/live-log source, generic bundle metadata and icon.
+  Keep machine-specific launcher/environment paths out of shared source; fill
+  them in only when building the local app. Ignore built apps and runtime logs.
+- Mac Setup attempts app installation after successful Python setup. Add a
+  separate Install_Tensile_Workbench_App.command to rebuild/update the app
+  without installing dependencies, starting servers or reading research data.
+- Build on macOS 13+ for the current Mac architecture using Apple Command Line
+  Tools/Xcode. Missing tools do not invalidate successful Python setup; explain
+  installation and retain the existing Terminal launcher as a fallback.
+- Install under the current user's Applications folder, preserve the app
+  directory for Dock references, refuse running/unrecognised app replacements,
+  back up old Contents and roll back failed replacement. Remove temporary
+  compilation caches. Preserve data, environments and private settings.
+- Retain the launcher controls, owned-process shutdown and in-app live log
+  (auto-scroll toggle, jump to latest, copying and bounded recent text).
+- Document installation, Dock usage, updates, moving the checkout and custom
+  environment paths. Windows setup/launch remains unchanged.
+- Verification: ten focused installer tests and two existing shell-wrapper
+  tests passed. Native Apple Silicon compilation, local installation and
+  signature verification succeeded; the temporary compiler cache was removed.
+  No server launch, research plots or table generation. Intel compilation and
+  interactive runtime testing remain unverified.
+
 ## Change notes — 2026-10-09
 
 ### Strength–EL mean populations — implemented, not runtime-tested

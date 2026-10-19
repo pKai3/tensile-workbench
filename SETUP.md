@@ -11,12 +11,27 @@
    | System | Setup once / install missing dependencies | Open normally |
    | --- | --- | --- |
    | Windows | `Setup_Tensile_Workbench.bat` | `Launch_Tensile_Workbench.bat` |
-   | Mac | `Setup_Tensile_Workbench.command` | `Launch_Tensile_Workbench.command` |
+   | Mac | `Setup_Tensile_Workbench.command` | `Tensile Workbench.app` in your user Applications folder, or `Launch_Tensile_Workbench.command` |
 
 4. Wait for **Setup complete**. Internet access is needed for package installation. Setup checks imports and graph-definition validity but does not load research datasets, create plots, change definitions or start Jupyter.
-5. Open the Launch file. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. Leave the launcher console open; Ctrl-C stops the server. The server listens on this computer only (`127.0.0.1`).
+5. Open the Dock app on Mac, or the Launch file on either platform. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. With the Terminal/console launcher, leave its window open; Ctrl-C stops the server. With the Dock app, use Stop or Quit. The server listens on this computer only (`127.0.0.1`).
 
 Python itself is installed separately, not silently downloaded by these scripts. On a managed computer, ask IT to approve Python/package access if blocked. The scripts do not require changing PowerShell execution policy or disabling security protections.
+
+## Mac Dock app
+
+The optional native launcher requires **macOS 13 or newer** and **Apple Command Line Tools** (or Xcode). Setup builds it after Python setup succeeds. If the build tools are missing, run `xcode-select --install` in Terminal and complete Apple's installer, then double-click **Install_Tensile_Workbench_App.command**. Full Xcode is not required. This adds a build-tool download; it is not needed if you prefer the existing Terminal launcher. On older macOS, the Dock app is unavailable; use the Terminal launcher if the Python/dependency installation supports your system.
+
+- The app is installed in **~/Applications/Tensile Workbench.app**, without administrator privileges. In Finder, choose Go → Go to Folder and enter `~/Applications`, then drag the app to your Dock.
+- **Open Workbench** reopens the browser using the current server's authenticated address.
+- **View log** opens a resizable window inside the app, updating twice a second. Untick Auto-scroll to inspect earlier messages; Jump to latest resumes following. Copy log copies the displayed text. The viewer keeps a bounded recent tail; logs may contain a local access token, so check them before sharing.
+- Closing the launcher/log window does **not** stop the server. **Stop** or **Quit** asks for confirmation and stops only the server started by this app, allowing its kernels to close. Save work before stopping.
+- A server already running from this same checkout in Terminal is not adopted or stopped automatically. Stop it with Ctrl-C, then click Start in the app.
+- Quit the Dock app before installing an update. The installer refuses to replace a running launcher. Existing app contents are backed up under **~/Library/Application Support/Tensile Workbench/launcher-backups/**. No source data or personal settings are moved.
+
+The installed app uses your existing checkout and Python environment. It is **not a portable copy of the whole workbench**. Git contains `macos/Launcher.swift`, a generic `macos/Info.plist`, the icon and the installer; installation fills in local paths only in the built app. Build/signing is local (ad-hoc), not an Apple-notarised downloadable binary. Keep normal macOS security protections enabled.
+
+After pulling/unzipping updates, run **Install_Tensile_Workbench_App.command** to update just the launcher; it neither installs packages nor starts the server. Rerunning Setup also updates it. If the checkout moves, rerun the installer from the new location. Apple Silicon and Intel Macs build for their own architecture. Temporary compiler caches are removed after the build, including on failure.
 
 ## Existing installations and updates
 
@@ -36,16 +51,19 @@ Normal Launch checks installed package versions and saved definitions without im
 | Existing environment reused | Original `%LOCALAPPDATA%\TensileWorkbench\v17-py313-<fingerprint>\venv`, if present and no new default environment exists | Same path as above |
 | Jupyter/configuration caches | Beside the selected environment | Beside the selected environment |
 | Code and graph definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
+| Dock app (optional) | Not applicable | `~/Applications/Tensile Workbench.app` |
+| Dock app logs | Not applicable | `~/Library/Logs/Tensile Workbench/launcher.log` (one previous launch retained) |
 | Data and output | Your chosen folders | Your chosen folders |
 
 No environment is created in the repository or OneDrive. Setup also refuses known cloud-storage locations or an environment overlapping the code folder. Do not set a custom environment inside a differently named synced folder; the scripts cannot discover every third-party sync configuration. Environments are local installations, not files to copy between computers. See Python's [virtual-environment documentation](https://docs.python.org/3.13/library/venv.html).
 
-Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. Ordinary users do not need this setting.
+Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. On Mac, when set for Setup or Install_Tensile_Workbench_App.command, it is also recorded in the locally built Dock app so Finder launches use the same environment. Rerun that installer with the new value to change it; omit the variable to return the Dock app to the default environment. Ordinary users do not need this setting.
 
 ## Troubleshooting
 
 - **Missing Python:** install the supported Python version above, then rerun Setup. Windows first tries `py -3.13`, then a compatible `python` on PATH. The Mac launcher first tries the existing workbench environment, then supported system install locations.
 - **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag the Setup `.command` file into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
+- **Mac Dock app was not installed:** Python setup can still succeed. Follow the build-tool message above, quit any running Dock app and run Install_Tensile_Workbench_App.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. The installer never launches the server or changes your environment.
 - **Network/package failure:** retry Setup when network access is restored. Packages are installed without a persistent pip download cache; setup uses binary wheels and will report an error instead of starting a lengthy source build. Do not disable certificate verification. For Python.org certificate errors on Mac, follow the Python installer's certificate instructions or ask IT.
 - **Partial installation:** if the environment's Python exists, Setup can retry missing packages. If the interpreter is missing/broken but the directory contains files, the script stops instead of overwriting it. Close all workbench sessions; rename that **specific environment folder** as a backup and rerun Setup. Keep the backup until the replacement works; do not rename/delete research folders.
 - **App fails to load / missing kernel:** rerun Setup, then close and reopen Launch. The app runs automatically through Voilà using the environment's `python3` kernel. Users do not need to choose a kernel. Advanced notebook access is still available with `python launch_workbench.py --notebook`; in that mode select **Tensile Workbench** and Run All Cells. Kernel registration uses `--sys-prefix`, not a global user kernel. See [IPython's kernel documentation](https://ipython.readthedocs.io/en/stable/install/kernel_install.html).
