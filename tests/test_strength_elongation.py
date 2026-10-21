@@ -44,7 +44,7 @@ class StrengthElongationTests(unittest.TestCase):
             self.assertEqual(state.pop(family + '_mean_population'), 'independent')
         state.update(family='ys_vs_el', show_individuals=False)
         result = self.session.render(state)
-        self.assertIn('n YS=3; n EL=3', self.mean_line(result).get_label())
+        self.assertIn('(n=3)', self.mean_line(result).get_label())
 
     @staticmethod
     def mean_line(result):
@@ -199,6 +199,30 @@ class StrengthElongationTests(unittest.TestCase):
             self.state('uts_vs_el', ys_vs_el_mean_population='independent'))['figure'])
         with self.assertRaisesRegex(ValueError, 'mean population'):
             self.session.render(self.state(ys_vs_el_mean_population='unknown'))
+
+    def test_legends_split_counts_only_when_different(self):
+        rows = [{'sample': f'coupon_{i}'} for i in range(3)]
+        engine = self.session.engine
+        for family, strength in [('ys_vs_el', 'YS'), ('uts_vs_el', 'UTS')]:
+            for missing_el in (False, True):
+                def properties(record, *args):
+                    return {'Failure elongation (%)': np.nan if missing_el and record is rows[-1] else 10.,
+                            'Yield (MPa)': 600., 'UTS (MPa)': 800.}
+                for population in ('paired', 'independent'):
+                    suffix = ('(n=3)' if not missing_el else '(n=2)' if population == 'paired'
+                              else f'(n {strength}=3; n EL=2)')
+                    for show in (False, True):
+                        with patch.object(engine, 'specimen_properties', side_effect=properties), redirect_stdout(io.StringIO()):
+                            figure = engine.render_strength_elongation_plot({'Alloy A': rows},
+                                self.root / 'not-written.png', {'Alloy A': '#336699'}, family,
+                                show_individual=show, mean_population=population, preview=True)
+                        expected = 'Alloy A ' + suffix
+                        self.assertEqual(figure.axes[0].get_legend_handles_labels()[1], [expected])
+                        chart = figure_to_plotly(figure)
+                        self.assertEqual([trace.meta['legend_label'] for trace in chart.data if trace.showlegend],
+                                         [expected])
+                        engine.plt.close(figure)
+        self.assertFalse((self.root / 'not-written.png').exists())
 
     def test_independent_means_allow_disjoint_populations_and_single_axis_sd(self):
         # No individual is eligible for both coordinates; the independent group

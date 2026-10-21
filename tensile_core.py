@@ -863,6 +863,27 @@ def fit_adaptive_tensile_tail(x, y, target, points, settings):
                 return x,y,px,predicted,f"adaptive order {degree}, fit {span:.2f} pp; join {end:.2f}%, mean end {target:.2f}%"
     return x,y,empty,empty,"adaptive fit lacks support or fails shape checks; estimate omitted"
 
+def landmark_population_suffix(landmark, *, prepeak_only=False):
+    """Keep equal counts compact; distinguish shapes from eligible properties.
+
+    Test both coordinates before displaying an unqualified n. The short split
+    form names the three main properties; coordinate-specific n stays in hover
+    and exports. Old models without property metadata used the shape cohort.
+    """
+    shape_n = landmark.get('shape_n', landmark.get('n', 0))
+    counts = landmark.get('property_counts') or {}
+    primary = ('Yield (MPa)', 'UTS (MPa)',
+               'Uniform elongation (%)' if prepeak_only else 'Failure elongation (%)')
+    coordinates = (*primary, 'Yield strain (%)', 'Uniform elongation (%)')
+    if not prepeak_only:
+        coordinates += ('Pre-break stress (MPa)',)
+    if all(counts.get(key, shape_n) == shape_n for key in coordinates):
+        return f'(n={shape_n})'
+    names = 'YS/UTS/UE' if prepeak_only else 'YS/UTS/EL'
+    values = '/'.join(str(counts.get(key, shape_n)) for key in primary)
+    return f'(shape n={shape_n}; {names} n={values})'
+
+
 def draw_landmark_points(ax, landmark, color, error_bars, comparison=False):
     """Draw specimen scatter at fixed mean landmarks, not curve-fit uncertainty."""
     for point in landmark["point_statistics"]:
@@ -870,14 +891,21 @@ def draw_landmark_points(ax, landmark, color, error_bars, comparison=False):
         if comparison and not error_bars and point["name"] != "failure":
             continue
         if error_bars and (np.isfinite(point['x_sd']) or np.isfinite(point['y_sd'])):
-            ax.errorbar(point["x"], point["y"], xerr=point["x_sd"] if np.isfinite(point['x_sd']) else None,
+            bars = ax.errorbar(point["x"], point["y"], xerr=point["x_sd"] if np.isfinite(point['x_sd']) else None,
                         yerr=point["y_sd"] if np.isfinite(point['y_sd']) else None, fmt=point["marker"],
                         color=color, ecolor=color, ms=point["marker_size"],
                         elinewidth=.9, capsize=3, capthick=.9, linestyle="none",
                         label="_nolegend_", zorder=4)
+            line = bars.lines[0]
         else:
-            ax.plot(point["x"], point["y"], point["marker"], color=color,
+            line, = ax.plot(point["x"], point["y"], point["marker"], color=color,
                     ms=point["marker_size"], label="_nolegend_", zorder=4)
+        # Keep this separate from specimen hover labels: a landmark is not an
+        # individual curve, and strain/stress can have different populations.
+        line._tensile_landmark_counts = {
+            'x': point.get('x_n', landmark.get('n')),
+            'y': point.get('y_n', landmark.get('n')),
+        }
 
 def finish_plot(figure, out_path, preview=False):
     """Return a live figure for previews; save/close only for batch calls."""
@@ -905,7 +933,9 @@ def render_average_plot(models, records, out_path, family, show_individual,
         if not comparison and model[family] is None:
             continue
         color = color_map[group]
-        label = f"{get_display_name(group, name_overrides)} (n={len(records[group])})"
+        population = (landmark_population_suffix(landmark) if family in ('landmark', 'comparison')
+                      else f'(n={len(records[group])})')
+        label = f"{get_display_name(group, name_overrides)} {population}"
         if show_individual:
             for record, specimen in zip(records[group], scatter_specimen_labels(records[group])):
                 line, = ax.plot(record["strain_pct"], record["stress_mpa"], color=color, alpha=.18, lw=.7)
@@ -1278,7 +1308,7 @@ def render_strength_elongation_plot(
         x_sd = float(np.std(xs, ddof=1)) if nx > 1 else None
         y_sd = float(np.std(ys, ddof=1)) if ny > 1 else None
         strength_name = 'YS' if family == 'ys_vs_el' else 'UTS'
-        label = (f'{display} (n={len(paired)})' if mean_population == 'paired' else
+        label = (f'{display} (n={nx})' if nx == ny else
                  f'{display} (n {strength_name}={ny}; n EL={nx})')
         if error_bars and (nx > 1 or ny > 1):
             bars = ax.errorbar([np.mean(xs)], [np.mean(ys)],
@@ -1397,12 +1427,14 @@ def render_landmark_work_hardening_plot(
         if not hasattr(figure, '_export_wh'):
             figure._export_wh = []
         figure._export_wh.append(('WH landmark', group, None, x, theta))
+        shape_n = landmark.get('shape_n', landmark.get('n', 0))
         ax.plot(x, theta, color=color, lw=1.8,
-                label=f"{get_display_name(group, name_overrides)} (n={landmark['n']})")
+                label=f"{get_display_name(group, name_overrides)} (shape n={shape_n})")
         all_rates.extend(theta[theta >= 0].tolist())
         x_max = max(x_max, float(x[-1]))
         plotted = True
         print(f"[WH LANDMARK] {Path(out_path).stem} / {group}: derivative of aligned mean; "
+              f"input populations={landmark_population_suffix(landmark, prepeak_only=True)}; "
               f"mean uniform elongation={landmark['knots'][2]:.2f}%; "
               f"ends at true plastic strain={x[-1]:.2f}%; "
               f"E={settings['youngs_modulus_mpa']:.2f} MPa.")

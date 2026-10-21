@@ -262,10 +262,12 @@ class GroupCurveReview:
                 name = {'yield': 'YS', 'UTS': 'UTS', 'failure': 'EL'}[point['name']]
                 if self.markers[name].value:
                     yield go.Scatter(x=[point['x']], y=[point['y']], mode='markers', name='Mean ' + name,
+                        customdata=[[point.get('x_n'), point.get('y_n')]],
                         showlegend=False, meta={'kind': 'mean_marker', 'property': name},
                         marker={'symbol': MARKERS[name][0], 'size': 11, 'color': 'black'},
                         hovertemplate='Group mean ' + name + '<br>Aligned strain: %{x:.3f}%'
-                            '<br>Stress: %{y:.2f} MPa<extra></extra>')
+                            '<br>Stress: %{y:.2f} MPa<br>Strain n=%{customdata[0]}'
+                            '<br>Stress n=%{customdata[1]}<extra></extra>')
             return
         if not any(control.value for control in self.markers.values()):
             return

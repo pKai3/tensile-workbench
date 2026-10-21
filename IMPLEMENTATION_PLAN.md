@@ -1,5 +1,45 @@
 # Implementation record
 
+## Change notes — 2026-10-21
+
+### Excel export performance and compact scatter counts — implemented
+
+- Stream workbook rows with shared immutable styles and per-column number
+  formats. Remove the second cell-formatting pass and omit styled blank
+  padding between unequal-length curves. Retain all numerical points, full
+  precision, sheet/column order, headings, filters and freeze panes.
+- Preserve literal text (including formula-like labels), native booleans and
+  dates, missing-value handling and atomic replacement. Clean streaming XML
+  and incomplete workbook files on failure. No new dependency or progress UI.
+- Scatter legends use one n when strength and EL counts match; split counts
+  only when they differ. Applies to YS–EL and UTS–EL, static/Plotly and both
+  individual-display variants. Means, SDs and population selection unchanged.
+- Verification: 12 focused synthetic writer/plot/export checks passed.
+  A 24-curve, 5,000-row, 48-column benchmark (171,000 populated values) fell
+  from 4.777 s to 1.459 s on this machine, about 3.3× faster. This is not a
+  timing guarantee for research datasets. No research outputs regenerated.
+
+### Landmark population labels — implemented
+
+- Show a single n only when the shape population and all relevant landmark
+  coordinate counts match. Otherwise use shape n plus separate YS/UTS/EL n
+  in tensile landmark/comparison legends, identically with/without individuals.
+- Follow-up: landmark-derived WH legends show only shape n, including the WH
+  comparison view. Keep YS/UTS/UE input-population counts in the calculation
+  log and curve export; do not add anchor error bars to WH plots. Apply to both
+  static/Plotly and with/without-individuals views. Pointwise-only labels unchanged.
+- Attach strain/stress counts to landmark marker artists for Plotly hover,
+  regardless of whether SD bars are shown. Also expose them on group-review
+  aligned mean markers. Preserve existing Curve checks count columns.
+- Display-only change: no alterations to eligibility, calculations, curve
+  geometry, error bars, saved definitions or property/shape populations.
+- Verification: eight new display/hover tests and two existing population/
+  unchanged-shape regression tests passed using synthetic data only. No
+  research plots/tables regenerated and no workbench server started.
+- WH simplification follow-up: all nine updated count/hover tests passed,
+  covering equal/split/legacy populations and the WH comparison legend in
+  static and Plotly views, with and without individuals. Synthetic data only.
+
 ## Change notes — 2026-10-19
 
 ### Reproducible Mac Dock launcher — implemented

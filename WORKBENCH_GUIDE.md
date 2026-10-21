@@ -116,6 +116,8 @@ Each specimen's three sections are mapped to the group's landmark strains. The s
 
 Research exclusions use file paths relative to the data folder, not absolute machine paths or B-number names. Bundled samples use a separate `sample-data://` identity so they cannot collide with real specimens having the same names. Both survive moving their source folder to another computer. Renaming/moving individual CSVs **or their sample-group folders** within it changes their identity; review and approve any [detected moves](#moving-data-and-retaining-settings) to carry settings across. These settings are never silently transferred. Missing-file exclusions remain saved in case those files return. Unticking Include does not rename or modify any source file.
 
+**Landmark plot counts:** the tensile legend uses `(n=8)` only when shape and all landmark-coordinate counts agree. Otherwise it distinguishes the populations, for example `(shape n=6; YS/UTS/EL n=8/8/7)`. The YS and UTS counts refer to strength; EL refers to failure elongation. Hover over a tensile landmark in Plotly (including the aligned group-review view) for its separate **Strain n** and **Stress n**; these govern the corresponding means and SD bars. The curve workbook already retains these counts in **Curve checks**. Landmark-derived WH legends show only `(shape n=6)`: the number of specimens contributing to the pre-peak shape. YS/UTS/UE are input anchors, not plotted WH points; their counts remain in the calculation log and curve export, not the WH legend. No YS/UTS error bars are added to WH plots. Pointwise-only plot counts are unchanged.
+
 ### Calculations
 
 Per-specimen properties are calculated independently of landmark alignment. A specimen may have valid YS/UTS/elongation/toughness even when its post-UTS segment is insufficient for a landmark curve. Each property keeps its own availability/valid count.
@@ -340,6 +342,9 @@ methods; scatter plots reuse the results workbook. Curve checks retain coverage,
 area comparisons and landmark error-bar values. Different numerical curve
 variants are distinguished, with their view settings in Export info.
 
+Workbooks are written in one pass with shared formatting. All curve datapoints
+are retained; empty padding is left blank rather than stored as formatted cells.
+
 Numeric cells retain full precision and display two decimals, except elastic-fit R², its threshold and fit/yield strain details, which display five. Counts are
 integers. Historical exports are not rewritten. Restart the running app to load
 code changes before creating a new export.
@@ -352,7 +357,7 @@ Diamonds show group means of calculated per-specimen properties. **Show individu
 
 Under each plot's **Settings → Group means**, choose:
 
-- **All eligible values per property** (default): strength uses all eligible strength values and EL uses all eligible EL values, matching the summary means. Each axis uses its own sample SD and the legend shows separate strength and EL counts. The group marker need not be the centre of the individual dots. It can exist without any paired dots if each property has eligible data; if either property is entirely unavailable, no group marker is drawn.
+- **All eligible values per property** (default): strength uses all eligible strength values and EL uses all eligible EL values, matching the summary means. Each axis uses its own sample SD. The legend shows one n when the counts match, or separate strength and EL counts when they differ. Equal counts do not necessarily mean the same specimens supply both properties. The group marker need not be the centre of the individual dots. It can exist without any paired dots if each property has eligible data; if either property is entirely unavailable, no group marker is drawn.
 - **Paired specimens only**: both means and SDs use the same specimens with valid strength and EL. The legend's n is the paired count. This places the group mean at the centre of the eligible individual dots; it can differ from summary means when values are excluded or unavailable.
 
 Individual dots always require both properties. An unresolved YS therefore prevents that specimen's YS–EL dot, but independent averaging can still use its valid EL; UTS–EL remains eligible when both values exist. These views use the same specimen-property calculations and Include/data-use selections as the tables, independently of landmark fitting, WH filters and the WH elastic modulus. They show **Calc** (or **Reconstruct** for EL), not Instron summary values. YS–EL and UTS–EL save their choices independently within each graph definition. New graphs and older graphs without a saved choice use all eligible values per property; explicit saved choices are preserved. Changing this setting does not change summary tables, landmark anchors or specimen exclusions.

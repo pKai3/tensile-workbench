@@ -1,7 +1,9 @@
 """Two-workbook exports; numeric, wide curve columns and no hidden plot methods."""
 from datetime import datetime
+from contextlib import suppress
 from pathlib import Path
 import json
+import math
 import os
 import tempfile
 import numpy as np
@@ -12,66 +14,110 @@ from tensile_fracture import FRACTURE_METHOD
 
 
 def write_workbook(path, sheets):
+    """Stream formatted rows, retaining full values without styling blank padding."""
     from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     path = Path(path)
-    workbook = Workbook()
-    workbook.remove(workbook.active)
     for name, frame in sheets.items():
-        sheet = workbook.create_sheet(name[:31])
-        sheet.sheet_view.showGridLines = False
-        sheet.freeze_panes = 'B2' if name in ('Summary', 'Specimens', 'Audit') else 'A2'
-        if frame.empty and not len(frame.columns):
-            sheet.append(['No data available'])
-            continue
         if len(frame) >= 1048576 or len(frame.columns) > 16384:
             raise ValueError(f'{name} exceeds Excel worksheet limits')
-        headers = [str(c) for c in frame.columns]
-        sheet.append(headers)
-        for row in frame.itertuples(index=False, name=None):
-            values = []
-            for v in row:
-                if isinstance(v, np.generic):
-                    v = v.item()
-                if v is None or (not isinstance(v, (list, dict)) and pd.isna(v)):
-                    v = None
-                elif isinstance(v, float) and not np.isfinite(v):
-                    v = None
-                elif isinstance(v, (dict, list, tuple)):
-                    v = json.dumps(v)
-                values.append(v)
-            sheet.append(values)
-        for cells in sheet.iter_rows():
-            for cell in cells:
-                cell.font = Font(name='Arial', size=10)
-                if isinstance(cell.value, str):
-                    cell.data_type = 's'  # literal names/paths, never formulas
-                    if headers[cell.column - 1] == 'Checks':
-                        cell.alignment = Alignment(wrap_text=True, vertical='top')
-                if isinstance(cell.value, (int, float)) and not isinstance(cell.value, bool):
-                    header = headers[cell.column - 1].lower()
-                    integer = (header.endswith(' n') or header in ('n', 'included n', 'available n', 'pairs with checks')
-                               or 'row (1-based)' in header)
-                    cell.number_format = '0' if integer else '0.' + '0' * fit_display_places(header)
-        for cell in sheet[1]:
-            cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
-            cell.fill = PatternFill('solid', fgColor='24445C')
-            cell.alignment = Alignment(wrap_text=True, vertical='center')
-        sheet.row_dimensions[1].height = 45
-        for i, header in enumerate(headers, 1):
-            sheet.column_dimensions[get_column_letter(i)].width = min(38, max(18, len(header) * .65))
-            if header == 'Checks':
-                sheet.column_dimensions[get_column_letter(i)].width = 65
-        sheet.auto_filter.ref = sheet.dimensions
-    path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook(write_only=True)
+    font = Font(name='Arial', size=10)
+    heading_font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+    heading_fill = PatternFill('solid', fgColor='24445C')
+    heading_alignment = Alignment(wrap_text=True, vertical='center')
+    checks_alignment = Alignment(wrap_text=True, vertical='top')
+    styles = {}
+
+    def style(sheet, number_format='General', kind='body'):
+        key = number_format, kind
+        if key not in styles:
+            template = WriteOnlyCell(sheet)
+            template.font = heading_font if kind == 'header' else font
+            template.number_format = number_format
+            if kind == 'header':
+                template.fill = heading_fill
+                template.alignment = heading_alignment
+            elif kind == 'checks':
+                template.alignment = checks_alignment
+            # Reuse workbook-bound style arrays as immutable values. Assigning
+            # individual font/format objects per datapoint repeats hashing work.
+            styles[key] = template._style
+        return styles[key]
+
     temporary = None
     try:
+        for name, frame in sheets.items():
+            sheet = workbook.create_sheet(name[:31])
+            sheet.sheet_view.showGridLines = False
+            sheet.freeze_panes = 'B2' if name in ('Summary', 'Specimens', 'Audit') else 'A2'
+            if frame.empty and not len(frame.columns):
+                sheet.append(['No data available'])
+                continue
+            headers = [str(c) for c in frame.columns]
+            numeric_styles, text_styles, header_cells = [], [], []
+            body_style = style(sheet)
+            for i, header in enumerate(headers, 1):
+                lower = header.lower()
+                integer = (lower.endswith(' n') or lower in ('n', 'included n', 'available n', 'pairs with checks')
+                           or 'row (1-based)' in lower)
+                number_format = '0' if integer else '0.' + '0' * fit_display_places(lower)
+                numeric_styles.append(style(sheet, number_format))
+                text_styles.append(style(sheet, kind='checks') if header == 'Checks' else body_style)
+                cell = WriteOnlyCell(sheet, header)
+                cell.data_type = 's'  # Headers and specimen names are literal, never formulas.
+                cell._style = style(sheet, kind='header')
+                header_cells.append(cell)
+                sheet.column_dimensions[get_column_letter(i)].width = (
+                    65 if header == 'Checks' else min(38, max(18, len(header) * .65)))
+            # Streaming worksheets require layout settings before their first row.
+            sheet.row_dimensions[1].height = 45
+            sheet.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{len(frame) + 1}'
+            sheet.append(header_cells)
+            for row in frame.itertuples(index=False, name=None):
+                cells = []
+                for i, value in enumerate(row):
+                    if isinstance(value, np.generic):
+                        value = value.item()
+                    if isinstance(value, (dict, list, tuple)):
+                        value = json.dumps(value)
+                    elif isinstance(value, float):
+                        if not math.isfinite(value):
+                            value = None
+                    elif value is not None and not isinstance(value, (str, int, bool)) and pd.isna(value):
+                        value = None
+                    if value is None:
+                        cells.append(None)  # Preserve position, omit the blank cell from XML.
+                        continue
+                    cell = WriteOnlyCell(sheet, value)
+                    if isinstance(value, str):
+                        cell.data_type = 's'
+                        cell._style = text_styles[i]
+                    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                        cell._style = numeric_styles[i]
+                    else:
+                        # Keep inferred date/time formats and native booleans.
+                        cell._style = style(sheet, cell.number_format)
+                    cells.append(cell)
+                sheet.append(cells)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix='.' + path.stem, suffix='.xlsx', delete=False) as f:
             temporary = Path(f.name)
         workbook.save(temporary)
         os.replace(temporary, path)
     finally:
+        # Successful saves remove their streaming XML files. On a conversion or
+        # save failure close the streams and remove any remaining temporary XML.
+        for sheet in workbook.worksheets:
+            writer = getattr(sheet, '_writer', None)
+            if writer is not None:
+                with suppress(Exception):
+                    if not sheet.closed:
+                        sheet.close()
+                if os.path.exists(writer.out):
+                    writer.cleanup()
         workbook.close()
         if temporary is not None and temporary.exists():
             temporary.unlink()
