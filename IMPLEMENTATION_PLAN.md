@@ -1,5 +1,19 @@
 # Implementation record
 
+## Change notes — 2026-10-23
+
+### Aligned summary statistics — implemented
+
+- Render summary means, ± symbols and SDs in separate aligned tracks, sized
+  consistently down each property/source column. Use tabular digits and
+  right-aligned numeric values so decimal places line up without padding text.
+- Preserve singleton means without SD, missing-value dashes, blank unavailable
+  reconstruction cells and per-cell n notes. Keep intrinsic table sizing and
+  horizontal scrolling; no changes to calculations or numeric Excel exports.
+- Verification: four focused synthetic HTML/data-integrity tests passed and
+  the rendered table was visually checked in a temporary browser preview.
+  No research data loaded or research outputs regenerated.
+
 ## Change notes — 2026-10-21
 
 ### Excel export performance and compact scatter counts — implemented

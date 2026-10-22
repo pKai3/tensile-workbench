@@ -414,6 +414,17 @@ def summary_wide(details):
 def summary_html(details):
     if details.empty:
         return '<p>No matching groups.</p>'
+    # Size the three display tracks once per property/source column, not per
+    # cell. Tabular digits and fixed decimal places then align both numbers
+    # and every ± down the column, even when one SD has an extra digit.
+    tracks = {}
+    for key, data in details.groupby(['Property', 'Source'], sort=False):
+        mean_width = max(2, max(len(_display_cell(value)) for value in data['Mean']))
+        sd_values = [_display_cell(value) for value in data.loc[data['n'] > 1, 'SD']]
+        sd_width = max(2, max(map(len, sd_values))) if sd_values else 0
+        tracks[key] = (f'--tw-mean-width:{mean_width}ch;--tw-sd-width:{sd_width}ch;'
+                       f'--tw-pm-width:{".8em" if sd_values else "0px"};'
+                       f'--tw-stat-gap:{".3em" if sd_values else "0px"};')
     result = ['''<style>
       .tw18-table-panel {max-width:100%;box-sizing:border-box;}
       .tw18-table-panel .widget-html-content {width:100%;min-width:0;max-width:100%;flex:1 1 0%;box-sizing:border-box;white-space:normal;}
@@ -424,12 +435,14 @@ def summary_html(details):
       .tw-summary th,.tw-summary td {padding:8px 10px;border-bottom:1px solid #dce3e9;white-space:nowrap;text-align:right;}
       .tw-summary th {background:#e8eef4;color:#152c3f;text-align:center;position:sticky;top:0;z-index:2;}
       .tw-summary thead tr:nth-child(2) th {top:33px;}
-      .tw-summary td {background:#fff;}
+      .tw-summary td {background:#fff;font-variant-numeric:tabular-nums lining-nums;}
       .tw-summary tbody tr:nth-child(even) td {background:#f6f8fa;}
       .tw-summary td:first-child {position:sticky;left:0;text-align:left;z-index:1;}
       .tw-summary th:first-child[rowspan] {left:0;z-index:3;}
       .tw-summary small {display:block;color:#526170;}
       .tw-summary .property-start {border-left:1px solid #cbd5e1;}
+      .tw-summary .tw-summary-stat {display:inline-grid;grid-template-columns:var(--tw-mean-width) var(--tw-pm-width) var(--tw-sd-width);column-gap:var(--tw-stat-gap);align-items:baseline;text-align:right;}
+      .tw-summary .tw-summary-pm {text-align:center;}
       </style><div class="tw-summary" tabindex="0" role="region" aria-label="Summary properties; scroll horizontally for additional columns"><table><thead><tr>
       <th rowspan="2" scope="col">Group</th><th rowspan="2" scope="col">Included n</th>''']
     for label, unit, _, _ in METRICS:
@@ -452,9 +465,12 @@ def summary_html(details):
                 if source == 'Reconstruct' and n == 0:
                     result.append(f'<td{css}></td>')
                     continue
-                value = _display_cell(item['Mean'])
-                if n > 1:
-                    value += ' ± ' + _display_cell(item['SD'])
+                mean = _display_cell(item['Mean'])
+                pm, sd = ('±', _display_cell(item['SD'])) if n > 1 else ('', '')
+                value = (f'<span class="tw-summary-stat" style="{tracks[label, source]}">'
+                         f'<span class="tw-summary-mean">{mean}</span> '
+                         f'<span class="tw-summary-pm">{pm}</span> '
+                         f'<span class="tw-summary-sd">{sd}</span></span>')
                 if n != included:
                     value += f'<small>n = {n}</small>'
                 result.append(f'<td{css}>{value}</td>')
