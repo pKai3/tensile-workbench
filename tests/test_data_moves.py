@@ -23,8 +23,8 @@ class DataMoveTests(unittest.TestCase):
             'display_names': {'Alloy': 'My alloy'},
             'specimen_exclusions': {'Alloy/a.csv': 'grip slip'},
             'specimen_data_modes': {'Alloy/b.csv': {'mode': 'exclude_shape', 'reason': 'shape'}},
-            'graphs': [{'id': 'graph', 'settings': {'groups': ['Alloy'],
-                'properties_by_group_order': ['Alloy'], 'properties_by_group_labels': {'Alloy': 'Short'}},
+            'graphs': [{'id': 'graph', 'settings': {'groups': ['Alloy'], 'group_order': ['Alloy'],
+                'properties_by_group_labels': {'Alloy': 'Short'}},
                 'definition': {'name_overrides': {'Alloy': 'Label'},
                     'color_overrides': {'Alloy': '#123456'},
                     'youngs_modulus_overrides': {'Alloy': 110000},
@@ -75,7 +75,7 @@ class DataMoveTests(unittest.TestCase):
             self.assertEqual(result[key][0]['original_specimen_id'], 'Alloy/b.csv')
         for graph in [result['graphs'][0], result['deleted_graphs'][0]['graph']]:
             self.assertEqual(graph['settings']['groups'], [new])
-            self.assertEqual(graph['settings']['properties_by_group_order'], [new])
+            self.assertEqual(graph['settings']['group_order'], [new])
             self.assertEqual(graph['settings']['properties_by_group_labels'], {new: 'Short'})
             for key in ('name_overrides', 'color_overrides', 'gauge_reconstruction', 'youngs_modulus_overrides'):
                 self.assertIn(new, graph['definition'][key])

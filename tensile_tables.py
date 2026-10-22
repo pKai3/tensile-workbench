@@ -10,6 +10,7 @@ from tensile_selection import specimen_id, selection_state, DATA_MODES, property
 from tensile_specimens import SpecimenTable
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 from tensile_fit import fit_display_places
+from tensile_order import sort_group_frame
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
 
@@ -488,6 +489,7 @@ class PropertyTablesView:
         self.frames = {}
         self.color_map = {}
         self.group_labels = {}
+        self.group_order = []
         self._threshold_sync = False
         self.on_threshold = on_threshold
         self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.001,
@@ -502,6 +504,7 @@ class PropertyTablesView:
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
                               'UTS (MPa)'], layout=w.Layout(width='300px'))
+        self.sort.tooltip = 'Group follows Sample group order, directly below the sample selector. Other sorts override it.'
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', max_width='100%', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
@@ -547,10 +550,11 @@ class PropertyTablesView:
             self.set_threshold(change['old'])
             self.threshold_status.value = '<b>Not saved:</b> ' + escape(str(error))
 
-    def set_frames(self, frames, color_map=None, group_labels=None):
+    def set_frames(self, frames, color_map=None, group_labels=None, group_order=None):
         self.frames = frames
         self.color_map = dict(color_map or {})
         self.group_labels = dict(group_labels or {})
+        self.group_order = list(group_order or [])
         _, _, rows = specimen_table_data(frames['tensile_samples'], frames['instron_comparison'])
         self.group_review.set_rows(rows)
         self.render()
@@ -588,6 +592,8 @@ class PropertyTablesView:
                 mask |= frame[key].astype(str).str.casefold().str.contains(text, regex=False, na=False).to_numpy()
             frame = frame.loc[mask]
         key = self.sort.value
+        if key == 'Group':
+            return sort_group_frame(frame, self.group_order, descending=self.descending.value)
         return frame.sort_values(key, ascending=not self.descending.value, kind='stable') if key in frame else frame
 
     @staticmethod

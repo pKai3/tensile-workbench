@@ -14,8 +14,9 @@ from tensile_fit import validate_threshold, validate_override
 from tensile_gauge import validate_group_policy
 from tensile_fracture import validate_failure_override
 from tensile_group_plot import validate_group_display
+from tensile_order import validate_group_order
 from tensile_colors import DEFAULT_PALETTE, validate_palette
-from tensile_moves import validate_tracking
+from tensile_moves import validate_tracking, graph_blocks
 from tensile_overrides import DISABLED, validate_disabled
 
 
@@ -92,13 +93,10 @@ def validate_project(project):
         validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(settings)
+        validate_group_order(settings.get('group_order', []))
         for family in ('ys_vs_el', 'uts_vs_el'):
             if settings.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
                 raise ValueError(f'{family}: mean population must be paired or independent.')
-        order = settings.get('properties_by_group_order', [])
-        if (not isinstance(order, list) or any(not isinstance(g, str) or not g for g in order)
-                or len(set(order)) != len(order)):
-            raise ValueError('Property-plot sample order must be a list of unique group names.')
         for key in ('ys', 'uts', 'el'):
             color = settings.get(f'properties_by_group_{key}_color', '#000000')
             if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
@@ -170,6 +168,12 @@ def _atomic_bytes(path, content):
             temporary.unlink()
 
 
+def _discard_obsolete_settings(project):
+    """Retire the redundant plot-specific order without adopting it elsewhere."""
+    for graph in graph_blocks(project):
+        graph.get('settings', {}).pop('properties_by_group_order', None)
+
+
 class ProjectStore:
     def __init__(self, path, defaults_path):
         self.path = Path(path).expanduser().resolve()
@@ -187,6 +191,7 @@ class ProjectStore:
             raw = self.path.read_bytes()
             project = json.loads(raw)
             validate_project(project)
+            _discard_obsolete_settings(project)
         except Exception as error:
             raise ValueError(f'Cannot load {self.path}. Existing definitions were preserved. '
                              f'The previous save, if available, is in {self.path.with_suffix(".previous.json")}. {error}') from error
@@ -197,6 +202,7 @@ class ProjectStore:
     def save(self, project):
         project = deepcopy(project)
         validate_project(project)
+        _discard_obsolete_settings(project)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock = self.path.with_suffix('.lock')
         try:

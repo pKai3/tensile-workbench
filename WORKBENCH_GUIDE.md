@@ -368,11 +368,33 @@ Each view has its own title and independent x/y limits under Settings. The with/
 
 Select **YS, UTS and elongation by sample** under Plot views. Sample groups run left to right on a categorical x-axis; **0.2% YS** and **UTS** use the left strength axis, and failure **EL** uses the right percentage axis. Three lines connect the group means as visual guides, not fitted trends. Each property uses its own available included specimens, so an unresolved YS does not discard a valid UTS or EL. Missing values leave a gap. EL follows each group's Calc/Reconstruct setting, including manual endpoint overrides.
 
-Open this plot's **Settings** to select a group in **Sample order** and use **Move left / Move right**. The list runs top to bottom in x-axis order. The order is saved per graph, affects only this plot, and is remembered when groups are deselected or sample data is hidden. Newly selected groups append to the order. **Connecting lines** selects **Straight / solid**, **Dash**, **Dot** or **None · markers only**, applied equally to YS, UTS and EL. Selecting None retains the mean markers and any enabled SD bars. Settings also provide independent left/right axis limits, a title, property colours, and optional ±1 sample SD bars. A single specimen has no SD bar.
+Set the left-to-right sample order using the shared **Sample group order** panel directly below the sample selector. This is the same order used by tables and group legends; there is no separate ordering control for this plot. Open the plot's **Settings** for **Connecting lines**: **Straight / solid**, **Dash**, **Dot** or **None · markers only**, applied equally to YS, UTS and EL. Selecting None retains the mean markers and any enabled SD bars. Settings also provide independent left/right axis limits, a title, property colours, and optional ±1 sample SD bars. A single specimen has no SD bar.
 
 Under **X-axis labels · this plot only**, enter a short label beside each selected group (for example, `0% CO₂`). A blank entry uses the usual group display name. Explicit line breaks are supported, and labels are wrapped to fit the available category spacing without truncation. Static exports use measured text widths; Plotly rewraps labels when resized or enlarged and reserves space above the legend. These labels are saved per graph, survive deselection/reselection, and do not rename groups, files, tables or other plots. Plotly hover retains full group identification.
 
 **Show individual specimens** adds faint, unconnected points; Plotly hover identifies specimens and reports the mean's n. Both display modes and with/without-individuals variants use the same values and axis limits. Colours identify properties here, not sample groups. Exported plots use `10_properties_by_group_with_individuals` / `without_individuals`. The existing results workbook supplies the underlying properties and mean/SD/n; no average tensile curves are fitted or exported for this view.
+
+## Group order
+
+Directly below the sample group selector, expand **Sample group order · tables and plots**:
+select a group and click **Move up / Move down**. Top to bottom is the order
+used in group legends, the Summary and Specimens tables when **Sort: Group**
+is selected, the Calc–Instron comparison charts/SD tables and Excel table rows.
+It also sets the left-to-right x-axis order on the YS/UTS/EL-by-sample chart.
+For example, move a baseline from another folder above the concentration series.
+The list shows folder identities so similarly named groups remain distinguishable;
+plot labels and colour assignments are unchanged.
+
+The order saves automatically per graph, survives deselection/reselection and
+approved folder moves, and appends newly selected groups. There is only one
+order: the shared order. With none saved, groups start in alphabetical folder
+order. The old triple-plot setting is ignored and removed on saving; it is not
+used as a fallback. Other table sorts take precedence;
+**Descending** reverses the saved group order. Table filters/sorts do not change
+the export order. Click **Update plots** to apply changes when live preview is off.
+Both static and Plotly plots, with and without individuals, follow this order.
+The **YS, UTS and elongation by sample** legend still identifies properties
+(YS, UTS, EL), not groups, so its property order does not change.
 
 ## Per-graph colours
 

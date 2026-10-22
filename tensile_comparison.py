@@ -192,8 +192,9 @@ class ComparisonView:
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
 
     def set_frames(self, frames, groups, color_map=None, group_labels=None):
+        from tensile_order import sort_group_frame
         summary = relative_comparison(frames)
-        summary = summary[summary['Group'].isin(groups)].reset_index(drop=True)
+        summary = sort_group_frame(summary[summary['Group'].isin(groups)], groups).reset_index(drop=True)
         colors = dict(color_map or {})
         if summary.equals(self.summary) and colors == self.color_map:
             return

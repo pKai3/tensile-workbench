@@ -137,6 +137,7 @@ class DemoDeploymentTests(unittest.TestCase):
         group = SAMPLE_GROUP_PREFIX + 'Demo_Ductile'
         identity = SAMPLE_ID_PREFIX + 'Demo_Ductile/specimen_1.csv'
         project['graphs'][0]['settings']['groups'].append(group)
+        project['graphs'][0]['settings']['group_order'] = [group, 'Alloy A']
         project['graphs'][0]['definition']['specimen_exclusions'] = {identity: 'synthetic test'}
         project_path.write_text(json.dumps(project))
         save_folders(self.root, DEFAULT_FOLDERS)
@@ -153,6 +154,7 @@ class DemoDeploymentTests(unittest.TestCase):
             app.sample_data_toggle.value = False
         self.assertEqual(project_path.read_bytes(), saved)
         self.assertEqual(app.state()['groups'], ['Alloy A'])
+        self.assertEqual(app.state()['group_order'], [group, 'Alloy A'])
         self.assertNotIn(group, app.group_picker.boxes)
         self.assertEqual(app.session.colors['Alloy A'], color)
         self.assertEqual(set(app.tables.frames['tensile_samples']['Group']), {'Alloy A'})
@@ -166,7 +168,8 @@ class DemoDeploymentTests(unittest.TestCase):
             reopened.save_current()
             reopened.sample_data_toggle.value = True
         self.assertIn(group, reopened.state()['groups'])
-        self.assertIn(identity, reopened._current()['definition']['specimen_exclusions'])
+        self.assertEqual(list(reopened.display_order_select.options), [group, 'Alloy A'])
+        self.assertIn(identity, reopened.store.data['specimen_exclusions'])
         sample_rows = reopened.tables.frames['tensile_samples'].query('Group == @group')
         self.assertEqual(len(sample_rows), 3)
         self.assertEqual(sample_rows['Included'].tolist(), [False, True, True])

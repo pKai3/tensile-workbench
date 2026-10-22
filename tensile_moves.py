@@ -42,7 +42,7 @@ def references(project):
         specimens.update(e['specimen_id'] for e in project.get(key, []))
     for graph in graph_blocks(project):
         settings, definition = graph.get('settings', {}), graph.get('definition', {})
-        for key in ('groups', 'properties_by_group_order'):
+        for key in ('groups', 'group_order'):
             groups.update(settings.get(key, []))
         groups.update(settings.get('properties_by_group_labels', {}))
         for key in GROUP_MAPS:
@@ -274,7 +274,7 @@ def migrate_settings(project, proposal, *, audit=True):
                 event['specimen_id'] = specimens[event['specimen_id']]
     for graph in graph_blocks(result):
         settings, definition = graph.get('settings', {}), graph.get('definition', {})
-        for key in ('groups', 'properties_by_group_order'):
+        for key in ('groups', 'group_order'):
             if key in settings:
                 settings[key] = list(dict.fromkeys(groups.get(g, g) for g in settings[key]))
         remap_keys(settings, 'properties_by_group_labels', groups)
@@ -333,7 +333,7 @@ def forget_group(project, group, *, live_groups=()):
                 block.pop(DISABLED, None)
     for graph in graph_blocks(result):
         settings, definition = graph.get('settings', {}), graph.get('definition', {})
-        for key in ('groups', 'properties_by_group_order'):
+        for key in ('groups', 'group_order'):
             if key in settings:
                 settings[key] = [g for g in settings[key] if g != group]
         settings.get('properties_by_group_labels', {}).pop(group, None)

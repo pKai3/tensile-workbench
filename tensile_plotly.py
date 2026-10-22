@@ -189,6 +189,7 @@ def _axis_to_plotly(ax, *, width=640):
             customdata=custom,
             meta=dict(legend_label=plain(name)),
             showlegend=visible_label, legendgroup=group, connectgaps=False,
+            legendrank=getattr(line, '_tensile_legend_rank', 1000),
             opacity=1 if line.get_alpha() is None else float(line.get_alpha()),
             line=dict(color=color, width=float(line.get_linewidth()) * 1.3, dash=dashes.get(line.get_linestyle(), 'solid')),
             marker=dict(color=color, size=float(line.get_markersize()) * 1.3, symbol=markers.get(marker, 'circle')),

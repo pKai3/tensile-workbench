@@ -11,6 +11,7 @@ import pandas as pd
 from tensile_gauge import group_basis_label, group_policy
 from tensile_fit import fit_display_places
 from tensile_fracture import FRACTURE_METHOD
+from tensile_order import sort_group_frame
 
 
 def write_workbook(path, sheets):
@@ -209,7 +210,7 @@ def export_results(frames, path, metadata):
         'failure_override': 'A specimen-wide manual EL override selects an original post-peak measurement row. It replaces the analysis endpoint in Calc EL, toughness, tensile curves and reconstruction, but not raw data, Instron results or pre-peak properties. Specimens identifies Manual versus Automatic selection; Audit retains the automatic result, selected row, reason and save time. Saved policy/history includes the source fingerprint and automatic snapshot. Stale overrides are not applied and require review.',
         'precision': 'Full numeric precision stored; two decimal places for ordinary results, five for elastic-fit R2, its warning threshold and fit/yield strain details. Counts and row identifiers remain integers.'}}
     from tensile_comparison import relative_comparison
-    agreement = relative_comparison(frames)
+    agreement = sort_group_frame(relative_comparison(frames), summary.get('Group', []))
     metadata['definitions']['relative_comparison'] = (
         'Calc-Instron agreement uses included specimens with finite paired measured values and nonzero Instron values. '
         'Mean and sample SD of 100*(Calc-Instron)/Instron are calculated per specimen, not from a ratio of group means. '

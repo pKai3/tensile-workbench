@@ -26,6 +26,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
+from tensile_order import sort_group_frame, validate_group_order
 from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
@@ -54,6 +55,8 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
             continue  # An actual research group always keeps its own identity.
         rename = {group: SAMPLE_GROUP_PREFIX + group for group in groups}
         graph['settings']['groups'] = [rename[group] for group in groups]
+        if 'group_order' in graph['settings']:
+            graph['settings']['group_order'] = [rename.get(group, group) for group in graph['settings']['group_order']]
         for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides', 'gauge_reconstruction'):
             if key in graph['definition']:
                 graph['definition'][key] = {rename.get(k, k): v for k, v in graph['definition'][key].items()}
@@ -336,7 +339,10 @@ class PreviewSession:
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron, self.project)
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
-        return self._property_frames[key]
+        # Reorder cached results without recalculating properties or mutating
+        # another graph's cached frames. Export and the viewer share this order.
+        return {name: sort_group_frame(frame, state.get('group_order', []))
+                for name, frame in self._property_frames[key].items()}
 
     def analysis_records(self, state, spec, include_excluded=False, measured=False, require_curves=True):
         records = ({g: [self.selected_record(row, spec) for row in self._load(g)] for g in self.visible_groups(state['groups'])}
@@ -434,6 +440,7 @@ class PreviewSession:
     def _validate(state):
         validate_palette(state.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(state)
+        validate_group_order(state.get('group_order', []))
         for family in PROPERTY_FAMILIES:
             if state.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
                 raise ValueError(f'{family}: mean population must be paired or independent.')
@@ -461,6 +468,8 @@ class PreviewSession:
 
     def render(self, state):
         """Cache unaffected plots when another control or panel changes."""
+        state = {**state, 'group_order': state.get('group_order', [])}
+        state.pop('properties_by_group_order', None)
         self._validate(state)
         key_state = deepcopy(state)
         for key in ("families", "show_both_versions", "graph_index", *VIEW_ONLY_SETTINGS):
@@ -578,7 +587,8 @@ class PreviewSession:
                 title = spec.get("workbench_titles", {}).get(family) or title
                 common = dict(out_path=Path("preview.png"), color_map=self.color_map(state, spec),
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
-                              title=title, name_overrides=spec.get('name_overrides', {}), preview=True)
+                              title=title, name_overrides=spec.get('name_overrides', {}), preview=True,
+                              group_order=state.get('group_order', []))
                 wh = {**self._wh_settings(state, spec),
                       'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in shape_records.items()}}
                 if family == GROUP_FAMILY:
@@ -635,15 +645,24 @@ class PreviewSession:
                 line.set_label(line.get_label() + " · original")
         for line in second.axes[0].lines:
             if not line.get_label().startswith("_"):
-                ax.plot(line.get_xdata(), line.get_ydata(), color=line.get_color(),
+                copied, = ax.plot(line.get_xdata(), line.get_ydata(), color=line.get_color(),
                         lw=line.get_linewidth(), ls="--", label=line.get_label() + " · landmark")
+                copied._tensile_group = line._tensile_group
         if common["xlim"] is None:
             ax.set_xlim(min(ax.get_xlim()[0], second.axes[0].get_xlim()[0]),
                         max(ax.get_xlim()[1], second.axes[0].get_xlim()[1]))
         if common["ylim"] is None:
             ax.set_ylim(min(ax.get_ylim()[0], second.axes[0].get_ylim()[0]),
                         max(ax.get_ylim()[1], second.axes[0].get_ylim()[1]))
-        ax.legend()
+        handles, labels = ax.get_legend_handles_labels()
+        if common.get('group_order'):
+            groups = ordered_groups(sorted(curves), common['group_order'])
+            ranks = {group: i for i, group in enumerate(groups)}
+            for handle in handles:
+                handle._tensile_legend_rank = ranks[handle._tensile_group]
+            entries = sorted(zip(handles, labels), key=lambda item: item[0]._tensile_legend_rank)
+            handles, labels = zip(*entries)
+        ax.legend(handles, labels)
         print('[PLOT INFO] Solid: mean specimen WH; dashed: derivative of landmark mean. '
               'Faint lines, if enabled: original specimen WH.')
         first.tight_layout()
@@ -768,15 +787,23 @@ class TensileWorkbench:
         for key, label in (('ys', 'YS colour'), ('uts', 'UTS colour'), ('el', 'EL colour')):
             name = f'properties_by_group_{key}_color'
             self.controls[name] = w.ColorPicker(description=label, value=GROUP_DEFAULTS[name])
-        self._group_order = []
         self._group_labels, self.group_label_fields = {}, {}
         self.group_labels_box = w.VBox(layout=w.Layout(width='100%'))
-        self.group_order_select = w.Select(options=[], rows=6, layout=w.Layout(width='98%'))
-        self.group_order_up = w.Button(description='Move left ↑', layout=w.Layout(width='auto'))
-        self.group_order_down = w.Button(description='Move right ↓', layout=w.Layout(width='auto'))
-        self.group_order_up.on_click(lambda _: self._move_group_order(-1))
-        self.group_order_down.on_click(lambda _: self._move_group_order(1))
-        self.group_order_select.observe(lambda _: self._sync_order_buttons(), names='value')
+        self._display_order = []
+        self.display_order_select = w.Select(options=[], rows=6,
+            layout=w.Layout(width='600px', max_width='100%'))
+        self.display_order_up = w.Button(description='Move up ↑', layout=w.Layout(width='auto'))
+        self.display_order_down = w.Button(description='Move down ↓', layout=w.Layout(width='auto'))
+        self.display_order_up.on_click(lambda _: self._move_display_order(-1))
+        self.display_order_down.on_click(lambda _: self._move_display_order(1))
+        self.display_order_select.observe(lambda _: self._sync_display_order_buttons(), names='value')
+        self.display_order_panel = w.Accordion(children=[w.VBox([
+            w.HTML('Top to bottom in group legends and tables, and left to right on the YS/UTS/EL-by-sample chart. '
+                   'Select a group, then move it. Saved for this graph; colours stay unchanged.'),
+            self.display_order_select,
+            self._row([self.display_order_up, self.display_order_down])
+        ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
+        self.display_order_panel.set_title(0, 'Sample group order · tables and plots')
         self._check("live_update", "Live preview (may be very slow)")
         self.controls["live_update"].tooltip = "Automatically update plots when settings change, including on slider release."
         self._check("export_tables", "Include Excel tables when exporting")
@@ -900,8 +927,7 @@ class TensileWorkbench:
                            'Line breaks are allowed. Other plots and tables keep their existing names.'),
                     self.group_labels_box])], selected_index=None)
                 label_settings.set_title(0, 'X-axis labels · this plot only')
-                local += [w.HTML('<b>Sample order</b> · top to bottom = left to right. Select a group, then move it.'),
-                          self.group_order_select, self._row([self.group_order_up, self.group_order_down]),
+                local += [w.HTML('Sample order follows the shared <b>Sample group order</b> below the sample selector.'),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
@@ -951,6 +977,7 @@ class TensileWorkbench:
             self.save_status, self.group_picker.ui,
             w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
                    "A mixed tick means only some groups are selected. Groups are still analysed separately."),
+            self.display_order_panel,
             self.move_review.ui,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
@@ -1060,7 +1087,7 @@ class TensileWorkbench:
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
         state["groups"] = list(state["groups"])
-        state['properties_by_group_order'] = list(self._group_order)
+        state['group_order'] = list(self._display_order)
         state['properties_by_group_labels'] = dict(self._group_labels)
         state["families"] = [family for family, box in self.family_boxes.items() if box.value]
         for key, (auto, lo, hi, _) in self.axes.items():
@@ -1092,9 +1119,10 @@ class TensileWorkbench:
                 control.value = value
             for family, box in self.family_boxes.items():
                 box.value = family in state["families"]
-            self._group_order = list(state.get('properties_by_group_order', []))
+            self._display_order = list(state.get('group_order', []))
+            self._sync_display_order()
             self._group_labels = dict(state.get('properties_by_group_labels', {}))
-            self._sync_group_order(force_labels=True)
+            self._sync_group_labels(force=True)
             for key, (auto, lo, hi, _) in self.axes.items():
                 pair = state.get(key)
                 auto.value = pair is None
@@ -1131,25 +1159,39 @@ class TensileWorkbench:
         for family, settings in self.plot_settings.items():
             settings.layout.display = "" if self.family_boxes[family].value else "none"
 
-    def _sync_order_buttons(self):
-        options = list(self.group_order_select.options)
-        value = self.group_order_select.value
-        index = options.index(value) if value in options else -1
-        self.group_order_up.disabled = index <= 0
-        self.group_order_down.disabled = index < 0 or index >= len(options) - 1
+    def _sync_display_order_buttons(self):
+        options = list(self.display_order_select.options)
+        selected = self.display_order_select.value
+        index = options.index(selected) if selected in options else -1
+        self.display_order_up.disabled = index <= 0
+        self.display_order_down.disabled = index < 0 or index >= len(options) - 1
 
-    def _sync_group_order(self, *, force_labels=False):
-        groups = list(self.controls['groups'].value)
-        self._group_order += [g for g in groups if g not in self._group_order]
-        selected = self.group_order_select.value
-        self.group_order_select.options = ordered_groups(groups, self._group_order)
-        if selected in self.group_order_select.options:
-            self.group_order_select.value = selected
-        self._sync_order_buttons()
-        self._sync_group_labels(force=force_labels)
+    def _sync_display_order(self):
+        groups = sorted(self.controls['groups'].value)
+        self._display_order += [g for g in groups if g not in self._display_order]
+        selected = self.display_order_select.value
+        options = ordered_groups(groups, self._display_order)
+        if list(self.display_order_select.options) != options:
+            self.display_order_select.options = options
+        if selected in options:
+            self.display_order_select.value = selected
+        self._sync_display_order_buttons()
+
+    def _move_display_order(self, direction):
+        visible = list(self.display_order_select.options)
+        selected = self.display_order_select.value
+        if selected not in visible:
+            return
+        other = visible.index(selected) + direction
+        if not 0 <= other < len(visible):
+            return
+        a, b = self._display_order.index(selected), self._display_order.index(visible[other])
+        self._display_order[a], self._display_order[b] = self._display_order[b], self._display_order[a]
+        self._sync_display_order()
+        self._changed()
 
     def _sync_group_labels(self, *, force=False):
-        groups = list(self.group_order_select.options)
+        groups = list(self.display_order_select.options)
         if not force and groups == list(self.group_label_fields):
             return
         old_rows = self.group_labels_box.children
@@ -1177,20 +1219,6 @@ class TensileWorkbench:
             self._group_labels[group] = label.strip()
         else:
             self._group_labels.pop(group, None)
-        self._changed()
-
-    def _move_group_order(self, direction):
-        visible = list(self.group_order_select.options)
-        selected = self.group_order_select.value
-        if selected not in visible:
-            return
-        index = visible.index(selected)
-        other = index + direction
-        if not 0 <= other < len(visible):
-            return
-        a, b = self._group_order.index(selected), self._group_order.index(visible[other])
-        self._group_order[a], self._group_order[b] = self._group_order[b], self._group_order[a]
-        self._sync_group_order()
         self._changed()
 
     def save_current(self):
@@ -1243,7 +1271,8 @@ class TensileWorkbench:
     def _changed(self, _=None):
         if self._paused:
             return
-        self._sync_group_order()
+        self._sync_display_order()
+        self._sync_group_labels()
         self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True
@@ -1836,7 +1865,8 @@ class TensileWorkbench:
             with redirect_stdout(io.StringIO()):
                 frames = self.session.property_tables(state, self._current()['definition'])
             spec = self._current()['definition']
-            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec))
+            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec),
+                                   group_order=state.get('group_order', []))
             self._update_fit_warning(frames)
             self.table_export_button.disabled = frames['tensile_samples'].empty
         except Exception as error:

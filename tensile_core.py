@@ -32,6 +32,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from tensile_properties import prepared_curve, specimen_properties
+from tensile_order import ordered_groups
 from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
 from tensile_selection import curve_allowed, discover_sample_groups, group_display_name
 
@@ -917,7 +918,7 @@ def finish_plot(figure, out_path, preview=False):
 
 def render_average_plot(models, records, out_path, family, show_individual,
                         color_map, xlim, ylim, title, name_overrides=None,
-                        landmark_error_bars=None, preview=False):
+                        landmark_error_bars=None, preview=False, group_order=()):
     """Render cached means so paired/comparison plots and area stats agree."""
     figure, ax = plt.subplots(figsize=PLOT_FIGSIZE)
     comparison = family == "comparison"
@@ -925,7 +926,8 @@ def render_average_plot(models, records, out_path, family, show_individual,
         landmark_error_bars = LANDMARK_ERROR_BARS
     plotted = False
     projected = False
-    for group, model in sorted(models.items()):
+    for group in ordered_groups(sorted(models), group_order):
+        model = models[group]
         pointwise, landmark = model["pointwise"], model["landmark"]
         if comparison and (pointwise is None or landmark is None):
             print(f"[WARN] Comparison omits {group}: both mean forms are required.")
@@ -1047,13 +1049,14 @@ def render_representative_tensile_plot(
     title="Representative stress–strain curves",
     show_individual=False,
     preview=False,
+    group_order=(),
 ):
     """Plot one representative engineering stress-strain curve per group."""
     plt.figure(figsize=PLOT_FIGSIZE)
     plotted = False
     representative_overrides = representative_overrides or {}
 
-    for group_name in sorted(groups_records.keys()):
+    for group_name in ordered_groups(sorted(groups_records), group_order):
         representative = choose_representative_curve(
             group_name,
             groups_records[group_name],
@@ -1120,6 +1123,7 @@ def render_work_hardening_plot(
     wh_filter_settings=None,
     preview=False,
     specimen_labels=None,
+    group_order=(),
 ):
     """
     Plot theta = d(true stress)/d(true plastic strain) up to uniform elongation.
@@ -1142,7 +1146,7 @@ def render_work_hardening_plot(
     all_rates = []
     x_max = 0.0
 
-    for group_name in sorted(groups_curves.keys()):
+    for group_name in ordered_groups(sorted(groups_curves), group_order):
         wh_curves = []
         wh_indices = []
         for specimen_index, (s_pct, stress_eng) in enumerate(groups_curves[group_name]):
@@ -1193,13 +1197,14 @@ def render_work_hardening_plot(
                 if specimen_index < len(labels):
                     line._tensile_hover_label = f'{get_display_name(group_name, name_overrides)} · {labels[specimen_index]}'
 
-        plt.plot(
+        mean_line, = plt.plot(
             grid_pct,
             mean_theta,
             lw=1.8,
             color=color,
             label=f"{get_display_name(group_name, name_overrides)} (n={len(wh_curves)})",
         )
+        mean_line._tensile_group = group_name
         plotted = True
 
     if not plotted:
@@ -1250,7 +1255,7 @@ def render_strength_elongation_plot(
     records, out_path, color_map, family, show_individual=False,
     xlim=None, ylim=None, name_overrides=None, title=None,
     error_bars=True, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS, preview=False,
-    mean_population='independent',
+    mean_population='independent', group_order=(),
 ):
     """Specimen properties with paired or independently eligible group means.
 
@@ -1268,7 +1273,8 @@ def render_strength_elongation_plot(
     metric, ylabel = metrics[family]
     figure, ax = plt.subplots(figsize=PLOT_FIGSIZE)
     plotted = False
-    for group, rows in sorted(records.items()):
+    for group in ordered_groups(sorted(records), group_order):
+        rows = records[group]
         paired, all_x, all_y = [], [], []
         for record in rows:
             p = specimen_properties(record, fit_fractions, LANDMARK_YIELD_R2_WARNING)
@@ -1374,7 +1380,7 @@ def render_landmark_work_hardening_plot(
     title="Landmark-derived work-hardening response",
     youngs_modulus_mpa=YOUNGS_MODULUS_MPA, youngs_modulus_overrides=None,
     min_plastic_strain_percent=WH_MIN_PLASTIC_STRAIN_PERCENT, num_points=WH_POINTS,
-    wh_filter_settings=None, preview=False, specimen_labels=None,
+    wh_filter_settings=None, preview=False, specimen_labels=None, group_order=(),
 ):
     """Plot the derivative of each landmark mean; optional faint specimen rates."""
     if not np.isfinite(youngs_modulus_mpa) or youngs_modulus_mpa <= 0:
@@ -1393,7 +1399,8 @@ def render_landmark_work_hardening_plot(
     plotted = False
     all_rates = []
     x_max = 0.0
-    for group, model in sorted(models.items()):
+    for group in ordered_groups(sorted(models), group_order):
+        model = models[group]
         settings = {
             **(wh_filter_settings or {}),
             "youngs_modulus_mpa": overrides.get(group, youngs_modulus_mpa),
@@ -1428,8 +1435,9 @@ def render_landmark_work_hardening_plot(
             figure._export_wh = []
         figure._export_wh.append(('WH landmark', group, None, x, theta))
         shape_n = landmark.get('shape_n', landmark.get('n', 0))
-        ax.plot(x, theta, color=color, lw=1.8,
+        mean_line, = ax.plot(x, theta, color=color, lw=1.8,
                 label=f"{get_display_name(group, name_overrides)} (shape n={shape_n})")
+        mean_line._tensile_group = group
         all_rates.extend(theta[theta >= 0].tolist())
         x_max = max(x_max, float(x[-1]))
         plotted = True

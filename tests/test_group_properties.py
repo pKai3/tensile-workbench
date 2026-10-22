@@ -31,7 +31,7 @@ class GroupPropertiesTests(unittest.TestCase):
     def state(self, **kwargs):
         return {**self.app.state(), 'graph_index': 0, 'family': GROUP_FAMILY,
                 'groups': ['Alloy A', 'Alloy Z', 'Heat treated'],
-                'properties_by_group_order': ['Heat treated', 'Alloy Z', 'Alloy A'], **kwargs}
+                'group_order': ['Heat treated', 'Alloy Z', 'Alloy A'], **kwargs}
 
     @staticmethod
     def means(result):
@@ -101,23 +101,23 @@ class GroupPropertiesTests(unittest.TestCase):
         self.assertGreaterEqual(chart.layout.margin.r, 85)
         self.assertFalse(means['EL'].connectgaps)
 
-    def test_order_controls_save_reopen_and_do_not_reorder_other_plots(self):
+    def test_shared_order_controls_save_reopen_and_keep_sample_selections(self):
         self.app.controls['groups'].value = ('Alloy A', 'Alloy Z', 'Heat treated')
         self.app.family_boxes[GROUP_FAMILY].value = True
-        self.app.group_order_select.value = 'Heat treated'
-        self.app._move_group_order(-1)
-        self.app._move_group_order(-1)
+        self.app.display_order_select.value = 'Heat treated'
+        self.app._move_display_order(-1)
+        self.app._move_display_order(-1)
         self.app.controls['properties_by_group_error_bars'].value = False
         self.app.controls['properties_by_group_line_style'].value = 'dot'
         self.app.group_label_fields['Alloy A'].value = '0%\nCO₂'
         self.app.title_inputs[GROUP_FAMILY].value = 'Comparison'
         auto, lo, hi, _ = self.app.axes['properties_by_group_el_ylim']
         lo.value, hi.value, auto.value = 0, 40, False
-        self.assertEqual(self.app.state()['properties_by_group_order'], ['Heat treated', 'Alloy A', 'Alloy Z'])
+        self.assertEqual(self.app.state()['group_order'], ['Heat treated', 'Alloy A', 'Alloy Z'])
         self.assertEqual(self.app.state()['groups'], ['Alloy A', 'Alloy Z', 'Heat treated'])
         with redirect_stdout(io.StringIO()):
             reopened = TensileWorkbench(self.root)
-        self.assertEqual(list(reopened.group_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
+        self.assertEqual(list(reopened.display_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
         self.assertFalse(reopened.state()['properties_by_group_error_bars'])
         self.assertEqual(reopened.state()['properties_by_group_line_style'], 'dot')
         self.assertEqual(reopened.state()['properties_by_group_labels'], {'Alloy A': '0%\nCO₂'})
@@ -125,13 +125,13 @@ class GroupPropertiesTests(unittest.TestCase):
         self.assertEqual(reopened.title_inputs[GROUP_FAMILY].value, 'Comparison')
         reopened.controls['groups'].value = ('Alloy A', 'Alloy Z')
         reopened.controls['groups'].value = ('Alloy A', 'Alloy Z', 'Heat treated')
-        self.assertEqual(list(reopened.group_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
+        self.assertEqual(list(reopened.display_order_select.options), ['Heat treated', 'Alloy A', 'Alloy Z'])
         reopened._apply_graph('1')
-        self.assertEqual(reopened.state()['properties_by_group_order'], ['Alloy A'])
+        self.assertEqual(reopened.state()['group_order'], ['Alloy A'])
         self.assertEqual(reopened.state()['properties_by_group_line_style'], 'solid')
         self.assertEqual(reopened.group_label_fields['Alloy A'].value, '')
         reopened._apply_graph('0')
-        self.assertEqual(reopened.state()['properties_by_group_order'], ['Heat treated', 'Alloy A', 'Alloy Z'])
+        self.assertEqual(reopened.state()['group_order'], ['Heat treated', 'Alloy A', 'Alloy Z'])
         self.assertEqual(reopened.group_label_fields['Alloy A'].value, '0%\nCO₂')
         reopened.controls['groups'].value = ('Alloy Z',)
         reopened.controls['groups'].value = ('Alloy A', 'Alloy Z')
@@ -207,7 +207,7 @@ class GroupPropertiesTests(unittest.TestCase):
         self.app.controls['groups'].value = ('Alloy A', 'Alloy Z')
         for specimen in (1, 2, 3):
             self.app._specimen_changed(f'Alloy Z/coupon_{specimen}.csv', False, 'synthetic exclusion')
-        result = self.session.render(self.state(groups=['Alloy A', 'Alloy Z'], properties_by_group_order=['Alloy Z', 'Alloy A']))
+        result = self.session.render(self.state(groups=['Alloy A', 'Alloy Z'], group_order=['Alloy Z', 'Alloy A']))
         for line in self.means(result).values():
             self.assertTrue(np.isnan(line.get_ydata()[0]))
             self.assertEqual(line._tensile_counts, [0, 3])

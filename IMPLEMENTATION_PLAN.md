@@ -2,6 +2,38 @@
 
 ## Change notes — 2026-10-23
 
+### Shared group order — implemented
+
+- Add a saved per-graph Group order list with Move up/down in a collapsible
+  Sample group order panel directly below the sample selector, above the tables.
+  Group legends follow it in static and Plotly plots and both specimen
+  display variants; WH comparisons keep the two methods adjacent per group.
+- Summary/specimen tables use it for their default Group sort; explicit other
+  sorts and filters remain available. Apply the same order to Calc–Instron
+  charts/SD tables and numeric Excel table rows. The categorical YS/UTS/EL
+  chart now uses this same order for its x-axis; its property legend stays fixed.
+- Preserve colours, calculations, curve geometry, specimen eligibility and
+  within-group row order. Reorder cached table frames without recalculating.
+  Remember deselected/hidden groups, append new selections, remap on approved
+  folder moves and remove the saved reference when a group is forgotten.
+- Verification: five focused ordering tests and 49 related regressions passed
+  with synthetic data only (including all nine group-legend plot families,
+  both individual variants, Plotly conversion, table/export-frame invariance,
+  autosave/reopen, folder moves and the sample-data toggle). Updated one stale
+  sample-data test assertion to check the existing global exclusion store.
+  No research plots/tables regenerated.
+- Placement follow-up: move the order controls out of Labels and colours into
+  their own collapsed panel below sample selection. Layout and saved-order
+  persistence checks passed; ordering behaviour is unchanged.
+- Single-order follow-up: remove the triple-property plot's separate selector
+  and move buttons. Remove the old setting entirely, with no migration/fallback
+  into the shared order. Ignore it on load and strip it from active/deleted
+  graphs and new-graph defaults on normal saves. Only shared order participates
+  in folder-move tracking. No shared order means alphabetical folder order.
+  Update the triple-plot cache key and short-label editor to follow shared order.
+  Twenty-nine focused synthetic plot/control/persistence/move checks passed,
+  including obsolete-setting removal and x-axis cache invalidation.
+
 ### Aligned summary statistics — implemented
 
 - Render summary means, ± symbols and SDs in separate aligned tracks, sized

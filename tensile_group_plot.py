@@ -1,11 +1,11 @@
 """Categorical strength/elongation comparison from shared specimen properties."""
 import textwrap
 import numpy as np
+from tensile_order import ordered_groups
 
 GROUP_FAMILY = 'properties_by_group'
 GROUP_LINE_STYLES = {'solid': '-', 'dash': '--', 'dot': ':', 'none': 'None'}
 GROUP_DEFAULTS = {
-    'properties_by_group_order': [],
     'properties_by_group_line_style': 'solid',
     'properties_by_group_labels': {},
     'properties_by_group_ylim': None,
@@ -53,12 +53,6 @@ def fit_group_tick_labels(figure, axis, labels):
         figure.tight_layout()
 
 
-def ordered_groups(groups, preferred=()):
-    """Keep selected identities in saved order; append newly selected groups."""
-    selected = set(groups)
-    return list(dict.fromkeys([g for g in preferred if g in selected] + list(groups)))
-
-
 def render_group_properties(engine, records, state, *, out_path, show_individual=False,
                             ylim=None, name_overrides=None, title=None, preview=False,
                             fit_fractions=None, **_):
@@ -66,7 +60,7 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
     e = engine
     if fit_fractions is None:
         fit_fractions = e.LANDMARK_YIELD_FIT_FRACTIONS
-    groups = ordered_groups(state['groups'], state.get('properties_by_group_order', []))
+    groups = ordered_groups(sorted(state['groups']), state.get('group_order', []))
     validate_group_display(state)
     full_labels = [e.get_display_name(group, name_overrides) for group in groups]
     overrides = state.get('properties_by_group_labels', {})
