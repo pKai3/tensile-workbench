@@ -11,7 +11,7 @@ import numpy as np
 from openpyxl import load_workbook
 
 import test_group_properties as fixture
-from tensile_variables import GroupVariablesView, validate_variables, variable_axis
+from tensile_variables import GroupVariablesView, validate_variables, variable_axis, variable_usage
 from tensile_property_variants import VARIANTS_KEY, TITLE_KEY, validate_variants
 from tensile_group_plot import GROUP_FAMILY
 from tensile_moves import migrate_settings, forget_group, references
@@ -281,6 +281,95 @@ class GroupVariablesTests(unittest.TestCase):
         view.refresh(['Alloy A'], force=True)
         self.assertEqual(view.table.columns[0]['values']['Alloy A'], '0.0')
         self.assertEqual(self.app.store.data['group_variables'][ident]['values']['Alloy A'], 0)
+
+    def test_delete_saved_variable_confirms_usage_preserves_charts_and_invalidates_exports(self):
+        self.variable()
+        self.app.controls['properties_by_group_x_variable'].value = 'co2'
+        cached = self.session.render(self.state(properties_by_group_x_variable='co2'))
+        view = self.app.group_variables
+        self.assertEqual(view.ui.get_title(0), 'Custom variables · shared by all graphs')
+        view.choice.value = 'co2'
+        before = deepcopy(self.app.store.data)
+        view.remove.click()
+        self.assertEqual(view._pending_delete['id'], 'co2')
+        self.assertIn('Chart 1', view.delete_message.value)
+        self.assertIn('new X-axis selection', view.delete_message.value)
+        self.assertEqual(before, self.app.store.data)
+        view.delete_cancel.click()
+        view.delete_confirm.click()
+        self.assertEqual(before, self.app.store.data)
+        view.remove.click()
+        view.delete_confirm.click()
+        self.assertNotIn('co2', self.app.store.data['group_variables'])
+        self.assertEqual(self.app.store.data['graphs'], before['graphs'])
+        self.assertEqual(self.app.controls['properties_by_group_x_variable'].value, 'co2')
+        self.assertIn(('Unavailable variable · choose another', 'co2'),
+                      self.app.controls['properties_by_group_x_variable'].options)
+        self.assertEqual(self.app.title_inputs[GROUP_FAMILY].placeholder, 'Choose an available custom variable')
+        with self.assertRaisesRegex(ValueError, 'unavailable'):
+            self.session.render(self.state(properties_by_group_x_variable='co2'))
+        with self.assertRaisesRegex(ValueError, 'variables changed'):
+            self.session.export([cached])
+        self.assertFalse((self.root / 'output').exists())
+        with redirect_stdout(io.StringIO()):
+            reopened = TensileWorkbench(self.root)
+        self.assertNotIn('co2', reopened.store.data['group_variables'])
+        self.assertEqual(reopened.controls['properties_by_group_x_variable'].value, 'co2')
+
+    def test_table_delete_keeps_other_drafts_and_does_not_resurrect_deleted_columns(self):
+        self.variable()
+        view = self.app.group_variables
+        view.view.value = 'table'
+        view.add.click()
+        new_id = view.table.columns[-1]['id']
+        view.table._message(None, dict(type='paste', row=0, column=1, text='Temperature\n°C\n500'), [])
+        view.table._message(None, dict(type='delete', id='co2'), [])
+        view.delete_confirm.click()
+        self.assertEqual(self.app.store.data['group_variables'], {})
+        self.assertEqual([c['id'] for c in view.table.columns], [new_id])
+        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '500')
+        view.save_all.click()
+        self.assertEqual(set(self.app.store.data['group_variables']), {new_id})
+        # Removing an unsaved column never writes the saved project.
+        view.add.click()
+        unsaved_id = view.table.columns[-1]['id']
+        with patch.object(self.app.store, 'save') as save:
+            view.table._message(None, dict(type='delete', id=unsaved_id), [])
+            self.assertIn('unsaved column', view.delete_message.value)
+            view.delete_confirm.click()
+            save.assert_not_called()
+        self.assertEqual([c['id'] for c in view.table.columns], [new_id])
+        view.table._message(None, dict(type='delete', id='unknown'), [])
+        self.assertIsNone(view._pending_delete)
+
+    def test_delete_failure_and_changed_target_keep_variable_and_force_reload_cancels(self):
+        self.variable()
+        view = self.app.group_variables
+        view.choice.value = 'co2'
+        view.remove.click()
+        with patch.object(view, 'on_save_all', side_effect=OSError('Save failed')):
+            view.delete_confirm.click()
+        self.assertIn('Not deleted', view.delete_message.value)
+        self.assertIn('co2', view._drafts)
+        self.assertIn('co2', self.app.store.data['group_variables'])
+        changed = self.variable({'Alloy A': 5})
+        view.delete_confirm.click()
+        self.assertIn('saved variable changed', view.delete_message.value)
+        self.assertEqual(self.app.store.data['group_variables']['co2'], changed)
+        view.refresh(['Alloy A'], force=True)
+        self.assertIsNone(view._pending_delete)
+        view.delete_confirm.click()
+        self.assertIn('co2', self.app.store.data['group_variables'])
+
+    def test_variable_usage_covers_variants_legacy_and_deleted_graphs(self):
+        settings = {'properties_by_group_x_variable': 'gas'}
+        project = dict(graphs=[dict(name='Legacy', settings=settings), dict(name='Variants', settings={
+            VARIANTS_KEY: [dict(name='Gas chart', settings=settings),
+                           dict(name='Temperature chart', settings={'properties_by_group_x_variable': 'temp'})]})],
+            deleted_graphs=[dict(graph=dict(name='Archived', settings=settings))])
+        self.assertEqual(variable_usage(project, 'gas'),
+                         ['Legacy — Chart 1', 'Variants — Gas chart', 'Deleted graph: Archived — Chart 1'])
+        self.assertEqual(variable_usage(project, 'missing'), [])
 
     def test_variants_switch_persist_add_remove_and_titles(self):
         self.variable()

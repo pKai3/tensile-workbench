@@ -84,6 +84,9 @@ class VariableTable(anywidget.AnyWidget):
       border:1px solid #b6c1cd;border-radius:3px;background:white;color:#24354a;font:inherit;}
     .tw-variable-grid tbody input {text-align:right;font-variant-numeric:tabular-nums;}
     .tw-variable-grid input:focus {outline:2px solid #1767a5;outline-offset:0;}
+    .tw-variable-heading {display:flex;align-items:center;gap:6px;}
+    .tw-variable-delete {width:25px;height:28px;flex:0 0 25px;border:1px solid #cbd5e1;
+      border-radius:3px;background:#fff;color:#a42b2b;cursor:pointer;font-size:18px;}
     .tw-variable-grid-note {margin:6px 0;color:#526170;white-space:pre-wrap;}
     .tw-variable-copy {margin:0 0 8px;padding:5px 10px;cursor:pointer;}
     """
@@ -134,7 +137,15 @@ class VariableTable(anywidget.AnyWidget):
                 if(next) {event.preventDefault();next.focus();next.select();}
               }
             });
-            cell.append(input);tr.append(cell);
+            if(r===0) {
+              const heading=document.createElement('div'),remove=document.createElement('button');
+              heading.className='tw-variable-heading';remove.type='button';remove.className='tw-variable-delete';
+              remove.textContent='×';remove.title='Delete this variable';
+              remove.setAttribute('aria-label','Delete variable '+(column.name || 'column '+(c+1)));
+              remove.addEventListener('click',()=>model.send({type:'delete',id:column.id}));
+              heading.append(input,remove);cell.append(heading);
+            } else {cell.append(input);}
+            tr.append(cell);
           });
         });
         box.replaceChildren(table);
@@ -161,11 +172,16 @@ class VariableTable(anywidget.AnyWidget):
     }};
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, on_delete=None, **kwargs):
+        self._on_delete = on_delete
         super().__init__(**kwargs)
         self.on_msg(self._message)
 
     def _message(self, _, message, buffers):
+        if message.get('type') == 'delete':
+            if self._on_delete:
+                self._on_delete(message.get('id'))
+            return
         if message.get('type') != 'paste':
             return
         try:

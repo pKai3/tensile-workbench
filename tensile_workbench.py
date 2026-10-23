@@ -26,7 +26,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
-from tensile_variables import GroupVariablesView, variable_label, property_chart_title, validate_variables
+from tensile_variables import GroupVariablesView, variable_label, property_chart_title, validate_variables, variable_usage
 from tensile_property_variants import PropertyVariantsView, VARIANTS_KEY, TITLE_KEY
 from tensile_order import sort_group_frame, validate_group_order
 from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
@@ -958,7 +958,7 @@ class TensileWorkbench:
                                                        self._apply_property_chart, self._changed)
         self.group_variables = GroupVariablesView(w, lambda: self.store.data.get('group_variables', {}),
                                                    lambda: list(self.session.files), self._save_group_variable,
-                                                   self._save_group_variables)
+                                                   self._save_group_variables, lambda ident: variable_usage(self.store.data, ident))
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             local = [self.title_inputs[family]]
@@ -1178,7 +1178,8 @@ class TensileWorkbench:
         ident = self.controls['properties_by_group_x_variable'].value
         variable = self.store.data.get('group_variables', {}).get(ident)
         properties = [key for key in ('ys', 'uts', 'el') if self.controls['properties_by_group_show_' + key].value]
-        self.title_inputs[GROUP_FAMILY].placeholder = property_chart_title(variable, properties)
+        self.title_inputs[GROUP_FAMILY].placeholder = ('Choose an available custom variable'
+            if ident and variable is None else property_chart_title(variable, properties))
 
     def _apply_property_chart(self, values):
         old, self._paused = self._paused, True

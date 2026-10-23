@@ -2,6 +2,23 @@
 
 ## Change notes — 2026-10-23
 
+### Custom-variable deletion — implemented
+
+- Add Delete variable in the single editor and an accessible × button per
+  table column. Require confirmation, list affected chart variants (including
+  deleted graphs), and allow cancellation without writes.
+- Remove only the selected variable and its group values globally; preserve
+  other unsaved edits. Unsaved-column removal does not write the project.
+  Keep existing chart references explicitly unavailable rather than silently
+  changing axes. Invalidate stale exports and require a new X-axis selection.
+- Reject deletion if the saved target changed after confirmation was opened;
+  leave drafts intact on failed saves and cancel pending deletion on graph or
+  editor switches. Document the workflow and use synthetic regression checks.
+- Verification: 67 focused synthetic tests pass (variables, clipboard, group
+  ordering/property plots and setup). Browser checks confirm table-column
+  deletion, cancellation, affected-chart warnings and the single-editor control;
+  no personal project variables were changed.
+
 ### Property plot and custom-variable labels — implemented
 
 - Rename the plot-view label to "YS, UTS and elongation by sample & by custom
