@@ -3,6 +3,7 @@ from copy import deepcopy
 from tensile_locations import LOCATION
 from tensile_property_variants import PropertyVariantsView, SPECIMEN_DEFAULTS, TITLE_KEY
 from tensile_variables import property_chart_title, variable_label
+from tensile_settings import SPECIMEN_TREND_KEY, SPECIMEN_GROUPS_KEY, specimen_trend
 
 
 class SpecimenChartsView:
@@ -12,6 +13,13 @@ class SpecimenChartsView:
         self.title = title
         self.controls, self.axes = {}, {}
         self._settings = deepcopy(SPECIMEN_DEFAULTS)
+        self.groups, self.group_boxes, self._selected_groups = [], {}, None
+        self.all_groups = w.Checkbox(description='All sample groups', value=True, indent=False,
+                                    layout=w.Layout(width='auto'))
+        self.group_rows = w.VBox(layout=w.Layout(width='100%', gap='2px'))
+        self.group_note = w.HTML()
+        self.group_ui = w.VBox([self.all_groups, self.group_rows, self.group_note])
+        self.all_groups.observe(self._all_groups_changed, names='value')
         prefix = 'properties_by_group_'
         self.controls[prefix + 'x_variable'] = w.Dropdown(description='X-axis:',
             options=[('Location', LOCATION)], layout=w.Layout(width='500px', max_width='100%'))
@@ -20,11 +28,8 @@ class SpecimenChartsView:
                 indent=False, layout=w.Layout(width='auto'))
             self.controls[prefix + key + '_color'] = w.ColorPicker(description=key.upper() + ' colour',
                 value=SPECIMEN_DEFAULTS[prefix + key + '_color'])
-        self.controls[prefix + 'line_style'] = w.Dropdown(description='Connecting lines:',
-            options=[('Straight / solid', 'solid'), ('Dash', 'dash'), ('Dot', 'dot'), ('None · markers only', 'none')],
-            value='none', style={'description_width': 'initial'}, layout=w.Layout(width='400px', max_width='100%'))
-        self.controls[prefix + 'trend'] = w.Dropdown(description='Trendline:',
-            options=[('None', 'none'), ('Linear', 'linear'), ('Quadratic', 'quadratic')],
+        self.controls[SPECIMEN_TREND_KEY] = w.Dropdown(description='Trendline:',
+            options=[('None', 'none'), ('Linear', 'linear'), ('Quadratic · order 2', 'quadratic')], value='quadratic',
             layout=w.Layout(width='350px', max_width='100%'))
         for suffix, caption, bounds in (('xlim', 'Location / custom variable', (0, 10)),
                                         ('ylim', 'Strength (MPa)', (0, 1000)),
@@ -41,23 +46,70 @@ class SpecimenChartsView:
         axis_panel.set_title(0, 'Axes · this plot')
         self.variants = PropertyVariantsView(w, self.capture, self.apply, self._changed)
         self.ui = w.VBox([
-            w.HTML('One chart per selected sample group, with individual YS/UTS/EL values. '
+            w.HTML('One grouped bar chart per chosen sample group, with individual YS/UTS/EL values. '
                    '<b>Location</b> defaults to the operator specimen number; edit overrides in '
                    '<b>Custom variables → Individual specimens</b>. Set the tested + untested total in '
                    '<b>Custom variables → Sample groups → Specimen count</b>.'),
-            self.variants.ui, self.controls[prefix + 'x_variable'],
+            self.variants.ui, self.group_ui, self.controls[prefix + 'x_variable'],
             w.HBox([self.controls[prefix + 'show_' + key] for key in ('ys', 'uts', 'el')]),
-            title, axis_panel, self.controls[prefix + 'line_style'], self.controls[prefix + 'trend'],
+            title, axis_panel, self.controls[SPECIMEN_TREND_KEY],
             w.HBox([self.controls[prefix + key + '_color'] for key in ('ys', 'uts', 'el')],
                    layout=w.Layout(flex_flow='row wrap')),
             w.HTML('No group averages or SD bars. Excluded properties stay omitted; EL follows gauge reconstruction. '
                    'Specimen count keeps untested locations visible without adding measurements. '
+                   'Quadratic (order 2) trendlines are the default and need at least three distinct locations. '
                    'Trendlines use measured eligible values only: dashed within the measured range, dotted beyond it. '
                    'Extrapolation is not a measured result or a validated prediction.')])
         for control in self.controls.values():
             control.observe(self._changed, names='value')
         self.title.observe(self._changed, names='value')
         self.paused = False
+
+    def refresh_groups(self, groups):
+        """Workspace identities only; this must not load or analyse specimens."""
+        groups = list(dict.fromkeys(groups))
+        old, self.paused = self.paused, True
+        try:
+            if groups != self.groups:
+                for box in self.group_boxes.values():
+                    box.close()
+                self.groups = groups
+                self.group_boxes = {}
+                for group in groups:
+                    box = self.w.Checkbox(description=group, indent=False,
+                        layout=self.w.Layout(width='auto', max_width='100%'))
+                    box.observe(lambda change, group=group: self._group_changed(group, change['new']), names='value')
+                    self.group_boxes[group] = box
+                self.group_rows.children = tuple(self.group_boxes.values())
+            for group, box in self.group_boxes.items():
+                box.value = self._selected_groups is None or group in self._selected_groups
+            count = sum(box.value for box in self.group_boxes.values())
+            self.all_groups.value = self._selected_groups is None or bool(groups) and count == len(groups)
+            self.all_groups.disabled = not groups
+            self.group_note.value = (f'{count} of {len(groups)} workspace groups selected for this chart variant. '
+                                     'Tables and specimen exclusions are unchanged.' if groups else
+                                     'Select sample groups in the workspace above first.')
+        finally:
+            self.paused = old
+
+    def _all_groups_changed(self, change):
+        if self.paused:
+            return
+        self._selected_groups = None if change['new'] else []
+        self.refresh_groups(self.groups)
+        self._changed()
+
+    def _group_changed(self, group, included):
+        if self.paused:
+            return
+        selected = list(self.groups if self._selected_groups is None else self._selected_groups)
+        if included and group not in selected:
+            selected.append(group)
+        elif not included:
+            selected = [g for g in selected if g != group]
+        self._selected_groups = selected
+        self.refresh_groups(self.groups)
+        self._changed()
 
     def refresh_variables(self):
         selected = self.controls['properties_by_group_x_variable'].value
@@ -90,7 +142,8 @@ class SpecimenChartsView:
 
     def capture(self):
         values = {**self._settings, **{key: control.value for key, control in self.controls.items()},
-                  TITLE_KEY: self.title.value.strip(), 'properties_by_group_level': 'specimen'}
+                  TITLE_KEY: self.title.value.strip(), 'properties_by_group_level': 'specimen',
+                  SPECIMEN_GROUPS_KEY: deepcopy(self._selected_groups)}
         for key, (auto, low, high, _) in self.axes.items():
             values[key] = None if auto.value else [low.value, high.value]
         return values
@@ -99,6 +152,9 @@ class SpecimenChartsView:
         old, self.paused = self.paused, True
         try:
             self._settings = {**deepcopy(SPECIMEN_DEFAULTS), **deepcopy(values)}
+            self._settings[SPECIMEN_TREND_KEY] = specimen_trend(values)
+            self._selected_groups = deepcopy(values.get(SPECIMEN_GROUPS_KEY))
+            self.refresh_groups(self.groups)
             ident = self._settings['properties_by_group_x_variable']
             self.refresh_variables()
             control = self.controls['properties_by_group_x_variable']

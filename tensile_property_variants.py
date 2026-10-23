@@ -1,7 +1,8 @@
 """Independent property-chart configurations within one saved graph."""
 from copy import deepcopy
 import uuid
-from tensile_settings import GROUP_DEFAULTS, GROUP_FAMILY, validate_group_display, planned_positions
+from tensile_settings import (GROUP_DEFAULTS, GROUP_FAMILY, validate_group_display, planned_positions,
+                              SPECIMEN_TREND_KEY, SPECIMEN_GROUPS_KEY)
 from tensile_locations import LOCATION, SPECIMEN_COUNT
 
 VARIANTS_KEY = 'properties_by_group_variants'
@@ -10,6 +11,7 @@ SPECIMEN_VARIANTS_KEY = 'properties_by_specimen_variants'
 TITLE_KEY = 'properties_by_group_title'
 SPECIMEN_DEFAULTS = {**GROUP_DEFAULTS, 'properties_by_group_level': 'specimen',
                      'properties_by_group_x_variable': LOCATION,
+                     SPECIMEN_TREND_KEY: 'quadratic', SPECIMEN_GROUPS_KEY: None,
                      'properties_by_group_line_style': 'none', 'properties_by_group_error_bars': False}
 
 

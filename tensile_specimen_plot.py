@@ -1,12 +1,13 @@
 """Individual-property/location plots; never pool specimens or fill missing tests."""
 import re
+from collections import Counter
 import numpy as np
 
 from tensile_selection import specimen_id
 from tensile_order import ordered_groups
 from tensile_variables import variable_label, property_chart_title, plot_text, validate_variables
 from tensile_group_plot import fit_group_tick_labels, wrap_group_label
-from tensile_settings import GROUP_DEFAULTS, GROUP_LINE_STYLES, validate_group_display, planned_positions
+from tensile_settings import GROUP_DEFAULTS, validate_group_display, planned_positions, specimen_trend
 from tensile_locations import LOCATION, LEGACY_NUMBER, specimen_number, location_values
 from tensile_property_variants import SPECIMEN_FAMILY
 
@@ -22,7 +23,7 @@ def specimen_sort_key(record):
 def render_specimen_properties(engine, records, state, *, out_path, variables=None,
                                color_map=None, name_overrides=None, title=None,
                                preview=False, fit_fractions=None, xlim=None, ylim=None, specimen_counts=None, **_):
-    """Independent specimen values at actual positions; lines only within a group."""
+    """Grouped specimen bars and trends fitted to actual, unshifted locations."""
     e = engine
     validate_group_display(state)
     fit_fractions = fit_fractions or e.LANDMARK_YIELD_FIT_FRACTIONS
@@ -66,11 +67,20 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         raise ValueError('No specimens have a usable location. Enter values under Custom variables → Individual specimens; '
                          'specimen numbers are taken only from unambiguous operator names, never CSV row numbers.')
     if any(len({values[specimen_id(r)] for r in specimens}) < len(specimens) for specimens in plotted_rows.values()):
-        warnings.append('Some specimens share a location. They remain separate; markers may overlap.')
+        warnings.append('Some specimens share a location. They remain separate, with adjacent bars.')
     show = {k: state.get('properties_by_group_show_' + k, True) for k in ('ys', 'uts', 'el')}
     if not any(show.values()):
         raise ValueError('Turn on at least one property: YS, UTS or EL.')
     strength = show['ys'] or show['uts']
+    # Side-by-side slots across both axes. Empty properties retain their slot;
+    # duplicate locations get additional slots, never pooled observations.
+    gaps = np.diff(sorted(set(domain)))
+    spacing = float(min(gaps)) if len(gaps) else 1.0
+    if variable_id in (SPECIMEN_NUMBER, LOCATION):
+        spacing = min(spacing, 1.0)
+    cluster_width = .78 * spacing
+    slots = {key: i for i, key in enumerate(k for k, visible in show.items() if visible)}
+    trend = specimen_trend(state)
     figure, left = e.plt.subplots(figsize=e.PLOT_FIGSIZE)
     right = left.twinx() if strength and show['el'] else left
     if variable_id in (SPECIMEN_NUMBER, LOCATION):
@@ -86,30 +96,44 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         if not specimens:
             continue
         properties = [e.specimen_properties(r, fit_fractions) for r in specimens]
-        x = [values[specimen_id(r)] for r in specimens]
+        x = np.asarray([values[specimen_id(r)] for r in specimens], dtype=float)
+        duplicates = Counter(x)
+        occurrences = Counter()
+        duplicate_slot = []
+        for location in x:
+            duplicate_slot.append(occurrences[location])
+            occurrences[location] += 1
+        width = cluster_width / (max(duplicates.values()) * len(slots))
         for field, name, marker, axis, key in metrics:
             if not show[key]:
                 continue
-            y = [p.get(field, np.nan) for p in properties]
+            y = np.asarray([p.get(field, np.nan) for p in properties], dtype=float)
             missing_properties.update(labels[specimen_id(r)] + ' (' + name + ')'
                                       for r, value in zip(specimens, y) if not np.isfinite(value))
-            plotted = plotted or bool(np.any(np.isfinite(y)))
+            valid = np.isfinite(y)
+            plotted = plotted or bool(valid.any())
             label = (e.get_display_name(group, name_overrides) + ' · ' if multiple else '') + name
             color = ((color_map or {}).get(group) if multiple else
                      state.get(f'properties_by_group_{key}_color', GROUP_DEFAULTS[f'properties_by_group_{key}_color']))
-            line, = axis.plot(x, y, marker=marker, markersize=6, label=label, color=color,
-                              linestyle=GROUP_LINE_STYLES[state.get('properties_by_group_line_style', 'none')])
-            line._tensile_point_labels = [labels[specimen_id(r)] for r in specimens]
-            line._tensile_point_kind = 'Specimen'
-            handles.append(line)
-            trend = state.get('properties_by_group_trend', 'none')
+            series = 'specimen-' + group + '-' + key
+            if valid.any():
+                centers = x + np.asarray([
+                    (duplicate_slot[i] * len(slots) + slots[key] + .5
+                     - duplicates[location] * len(slots) / 2) * width
+                    for i, location in enumerate(x)])
+                bars = axis.bar(centers[valid], y[valid], width=width * .92, color=color,
+                                label=label, alpha=.85, zorder=2)
+                bars._tensile_point_labels = [labels[specimen_id(r)] for r, keep in zip(specimens, valid) if keep]
+                bars._tensile_locations = x[valid].tolist()
+                bars._tensile_series_key = series
+                bars._tensile_legend_rank = slots[key]
+                handles.append(bars)
             if trend != 'none':
                 if not variable_id:
                     warnings.append('Trendlines require a numeric x-axis; no fit drawn.')
                     continue
                 degree = 1 if trend == 'linear' else 2
-                valid = np.isfinite(y)
-                fit_x, fit_y = np.asarray(x)[valid], np.asarray(y)[valid]
+                fit_x, fit_y = x[valid], y[valid]
                 if len(set(fit_x)) < degree + 1:
                     warnings.append(f'{label}: not enough distinct measured locations for a {trend} trendline.')
                     continue
@@ -122,17 +146,18 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
                     if end <= start:
                         continue
                     trend_x = np.linspace(start, end, 100)
-                    fit_line, = axis.plot(trend_x, polynomial(trend_x), color=line.get_color(),
-                                          linestyle=':' if extrapolated else '--', linewidth=1.3,
-                                          label='_nolegend_')
+                    fit_line, = axis.plot(trend_x, polynomial(trend_x), color=color,
+                                          linestyle=':' if extrapolated else '--', linewidth=1.8,
+                                          label='_nolegend_', zorder=3)
                     fit_line._tensile_hover_label = label + (' extrapolation' if extrapolated else ' trendline')
                     fit_line._tensile_is_extrapolation = extrapolated
+                    fit_line._tensile_series_key = series
     if not plotted:
         e.plt.close(figure)
         raise ValueError('No eligible values for the selected properties and specimens.')
     if missing_properties:
         warnings.append('Excluded or unavailable values omitted: ' + '; '.join(sorted(missing_properties)) + '.')
-    if state.get('properties_by_group_trend', 'none') != 'none':
+    if trend != 'none':
         warnings.append('Dashed: fitted trend within measured locations. Dotted: extrapolation beyond measurements, '
                         'not measured results or a validated prediction. Untested locations do not enter the fit.')
     figure._tensile_variable_warning = ' '.join(warnings)
@@ -163,7 +188,7 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
             left.set_xlim(xlim)
         elif planned:
             low, high = min(domain), max(domain)
-            pad = max((high - low) * .04, .2)
+            pad = max((high - low) * .04, cluster_width / 2 + .1 * spacing, .2)
             left.set_xlim(low - pad, high + pad)
     else:
         names = list(labels.values())
@@ -172,6 +197,7 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         left.set_xticks(list(values.values()), [wrap_group_label(label, 22) for label in names])
         left.set_xlim(-.5, len(names) - .5)
     left.grid(True, linestyle='--', alpha=.4)
+    left.set_axisbelow(True)
     if right is not left:
         right.grid(False)
     left.legend(handles, [h.get_label() for h in handles], loc='lower center', bbox_to_anchor=(.5, 1.01), ncol=3)
@@ -181,5 +207,6 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
     else:
         fit_group_tick_labels(figure, left, list(labels.values()))
     print('[SPECIMEN PROPERTIES] Individual eligible values; no averaging, inferred missing tests or SD bars. '
-          'Optional lines connect specimens within each group, not fitted trends. EL follows the group reconstruction setting.')
+          'Bars show measurements; trendlines fit actual locations, not the visual bar offsets. '
+          'EL follows the group reconstruction setting.')
     return e.finish_plot(figure, out_path, preview)

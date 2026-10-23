@@ -7,6 +7,8 @@ import math
 import re
 
 GROUP_FAMILY = 'properties_by_group'
+SPECIMEN_TREND_KEY = 'properties_by_specimen_trend'
+SPECIMEN_GROUPS_KEY = 'properties_by_specimen_groups'
 GROUP_LINE_STYLES = {'solid': '-', 'dash': '--', 'dot': ':', 'none': 'None'}
 GROUP_DEFAULTS = {
     'properties_by_group_level': 'group',
@@ -57,6 +59,12 @@ def validate_group_display(settings):
     planned_positions(settings.get('properties_by_group_planned_positions', ''))
     if settings.get('properties_by_group_trend', 'none') not in ('none', 'linear', 'quadratic'):
         raise ValueError('Choose no trendline, linear or quadratic.')
+    if settings.get(SPECIMEN_TREND_KEY, 'quadratic') not in ('none', 'linear', 'quadratic'):
+        raise ValueError('Choose no trendline, linear or quadratic.')
+    groups = settings.get(SPECIMEN_GROUPS_KEY)
+    if groups is not None and (not isinstance(groups, list)
+            or any(not isinstance(g, str) or not g for g in groups) or len(set(groups)) != len(groups)):
+        raise ValueError('Specimen chart groups must be a list of unique sample-group identities or all groups.')
     for key in ('xlim', 'ylim', 'el_ylim'):
         limits = settings.get('properties_by_group_' + key)
         if limits is not None and (not isinstance(limits, (tuple, list)) or len(limits) != 2
@@ -81,6 +89,16 @@ def validate_group_display(settings):
     if not isinstance(labels, dict) or any(not isinstance(group, str) or not group
                                          or not isinstance(label, str) for group, label in labels.items()):
         raise ValueError('Property-plot labels must map group names to label text.')
+
+
+def specimen_trend(settings):
+    """New bar charts default to quadratic; retain explicit trial linear/quadratic fits.
+
+    A separate saved key distinguishes a newly selected None from the trial's
+    automatic no-trend default, without changing group-mean chart settings.
+    """
+    legacy = settings.get('properties_by_group_trend')
+    return settings.get(SPECIMEN_TREND_KEY, legacy if legacy in ('linear', 'quadratic') else 'quadratic')
 
 
 def validate_group_policy(policy):

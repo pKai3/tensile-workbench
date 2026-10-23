@@ -3,7 +3,7 @@ from html import escape
 import textwrap
 import numpy as np
 from matplotlib.colors import to_hex
-from matplotlib.container import ErrorbarContainer
+from matplotlib.container import ErrorbarContainer, BarContainer
 
 
 def width_probe(on_resize):
@@ -100,8 +100,8 @@ def figure_to_plotly(figure, *, width=640):
         return _axis_to_plotly(figure.axes[0], width=width)
     if len(figure.axes) != 2 or not getattr(figure, '_tensile_group_plot', False):
         raise ValueError('Unsupported multi-axis figure; use Static plots.')
-    result = _axis_to_plotly(figure.axes[0], width=width)
-    secondary = _axis_to_plotly(figure.axes[1], width=width)
+    result = _axis_to_plotly(figure.axes[0], width=width, allow_empty=True)
+    secondary = _axis_to_plotly(figure.axes[1], width=width, allow_empty=True)
     for trace in secondary.data:
         trace.yaxis = 'y2'
         trace.legendgroup = 'right-' + trace.legendgroup
@@ -113,13 +113,16 @@ def figure_to_plotly(figure, *, width=640):
     return result
 
 
-def _axis_to_plotly(ax, *, width=640):
+def _axis_to_plotly(ax, *, width=640, allow_empty=False):
     """Convert one axis, including categorical labels when supplied by a plot."""
     import plotly.graph_objects as go
     categories = getattr(ax, '_tensile_category_labels', None)
     category_hover = getattr(ax, '_tensile_category_hover_labels', categories)
-    error_by_line, caps = {}, set()
+    error_by_line, caps, bars = {}, set(), []
     for container in ax.containers:
+        if isinstance(container, BarContainer):
+            bars.append(container)
+            continue
         if not isinstance(container, ErrorbarContainer):
             raise ValueError('Unsupported artist container; use Static plots.')
         data_line, caplines, collections = container.lines
@@ -137,6 +140,28 @@ def _axis_to_plotly(ax, *, width=640):
         error_by_line[id(data_line)] = errors
 
     traces = []
+    for index, container in enumerate(bars):
+        patches = container.patches
+        if not patches:
+            continue
+        label = str(container.get_label())
+        centers = [p.get_x() + p.get_width() / 2 for p in patches]
+        locations = getattr(container, '_tensile_locations', centers)
+        labels = getattr(container, '_tensile_point_labels', [''] * len(patches))
+        places = getattr(ax, '_tensile_x_places', 2)
+        x_hover = (escape(plain(ax.get_xlabel())) + ': %{customdata[1]:.' + str(places) + 'f}'
+                   if categories is None else '')
+        traces.append(go.Bar(x=centers, y=[p.get_height() for p in patches],
+            base=[p.get_y() for p in patches], width=[p.get_width() for p in patches],
+            marker=dict(color=[to_hex(p.get_facecolor()) for p in patches]),
+            opacity=1 if patches[0].get_alpha() is None else patches[0].get_alpha(),
+            name=plain(label), meta=dict(legend_label=plain(label)), showlegend=not label.startswith('_'),
+            legendgroup=getattr(container, '_tensile_series_key', f'bar-{index}'),
+            legendrank=getattr(container, '_tensile_legend_rank', 1000),
+            customdata=[[escape(plain(name)), value] for name, value in zip(labels, locations)],
+            hovertemplate=(escape(plain(label)) + '<br>Specimen: %{customdata[0]}'
+                           + ('<br>' + x_hover if x_hover else '') + '<br>'
+                           + escape(plain(ax.get_ylabel())) + ': %{y:.2f}<extra></extra>')))
     public = [(i, str(line.get_label())) for i, line in enumerate(ax.lines)
               if not str(line.get_label()).startswith('_')]
     group_ids = {i: f'group-{j}' for j, (i, _) in enumerate(public)}
@@ -159,6 +184,7 @@ def _axis_to_plotly(ax, *, width=640):
         parent = (after[0] if after else None) if faint else (before[-1] if before else None)
         parent = parent or (after[0] if after else (index, 'Curve'))
         group = group_ids.get(parent[0], f'curve-{index}')
+        group = getattr(line, '_tensile_series_key', group)
         name = label if visible_label else parent[1]
         marker = str(line.get_marker())
         if faint:
@@ -206,7 +232,7 @@ def _axis_to_plotly(ax, *, width=640):
                            + count_hover + '<extra></extra>'),
             **error_by_line.get(id(line), {}))
         traces.append(trace)
-    if not traces:
+    if not traces and not allow_empty:
         raise ValueError('No curves available for the Plotly view.')
     result = go.Figure(data=traces)
     # Titles and notes belong to the surrounding widget flow, not to fixed
@@ -220,6 +246,9 @@ def _axis_to_plotly(ax, *, width=640):
         legend=dict(orientation='v', x=0, xanchor='left', yanchor='top',
                     tracegroupgap=8, groupclick='togglegroup', font=dict(size=11)),
         dragmode='zoom', hovermode='closest', uirevision='exploration')
+    if bars:
+        # Offsets are already explicit, including bars on the secondary axis.
+        result.update_layout(barmode='overlay')
     if categories is not None:
         result.update_layout(meta={'category_labels': list(categories)})
         result.update_xaxes(tickmode='array', tickvals=list(range(len(categories))),

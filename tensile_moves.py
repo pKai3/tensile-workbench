@@ -53,6 +53,7 @@ def references(project):
         groups.update(settings.get('properties_by_group_labels', {}))
         for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             groups.update(chart.get('settings', {}).get('properties_by_group_labels', {}))
+            groups.update(chart.get('settings', {}).get('properties_by_specimen_groups') or [])
         for key in GROUP_MAPS:
             groups.update(definition.get(key, {}))
     return ({g for g in groups if not g.startswith(SAMPLE_GROUP_PREFIX)},
@@ -300,6 +301,9 @@ def migrate_settings(project, proposal, *, audit=True):
         remap_keys(settings, 'properties_by_group_labels', groups)
         for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             remap_keys(chart['settings'], 'properties_by_group_labels', groups)
+            selected = chart['settings'].get('properties_by_specimen_groups')
+            if selected is not None:
+                chart['settings']['properties_by_specimen_groups'] = list(dict.fromkeys(groups.get(g, g) for g in selected))
         representatives = definition.get('representative_overrides', {})
         if old in representatives:
             matches = {PurePosixPath(b).stem for a, b in specimens.items()
@@ -366,6 +370,9 @@ def forget_group(project, group, *, live_groups=()):
         settings.get('properties_by_group_labels', {}).pop(group, None)
         for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             chart.get('settings', {}).get('properties_by_group_labels', {}).pop(group, None)
+            selected = chart.get('settings', {}).get('properties_by_specimen_groups')
+            if selected is not None:
+                chart['settings']['properties_by_specimen_groups'] = [g for g in selected if g != group]
         for key in GROUP_MAPS:
             definition.get(key, {}).pop(group, None)
     for key in HISTORIES:

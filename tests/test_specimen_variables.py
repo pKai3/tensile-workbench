@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 import test_group_properties as fixture
 from tensile_workbench import TensileWorkbench
 from tensile_specimen_plot import specimen_number, SPECIMEN_NUMBER
-from tensile_settings import planned_positions, validate_group_display
+from tensile_settings import planned_positions, validate_group_display, SPECIMEN_TREND_KEY
 from tensile_variables import validate_variables, variable_usage
 from tensile_property_variants import VARIANTS_KEY, SPECIMEN_VARIANTS_KEY, SPECIMEN_FAMILY
 from tensile_locations import LOCATION, SPECIMEN_COUNT
@@ -21,7 +21,9 @@ from tensile_moves import migrate_settings, forget_group, references
 
 
 class SpecimenVariablesTests(unittest.TestCase):
-    means = staticmethod(fixture.GroupPropertiesTests.means)
+    @staticmethod
+    def bars(result):
+        return {bars.get_label(): bars for ax in result['figure'].axes for bars in ax.containers}
 
     def setUp(self):
         fixture.GroupPropertiesTests.setUp(self)
@@ -60,10 +62,9 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.app._save_group_variable(SPECIMEN_COUNT, dict(name='Specimen count', unit='', values={'Alloy A': 10}))
         state = self.state(properties_by_group_trend='linear')
         result = self.session.render(state)
-        for line in self.means(result).values():
-            np.testing.assert_array_equal(line.get_xdata(), [1, 4, 7])
-            self.assertFalse(hasattr(line, '_tensile_counts'))
-            self.assertEqual(line.get_linestyle(), 'None')
+        for bars in self.bars(result).values():
+            np.testing.assert_array_equal(bars._tensile_locations, [1, 4, 7])
+            self.assertFalse(hasattr(bars, '_tensile_counts'))
         axis = result['figure'].axes[0]
         np.testing.assert_array_equal(axis.get_xticks(), range(1, 11))
         self.assertLess(axis.get_xlim()[0], 1)
@@ -71,8 +72,8 @@ class SpecimenVariablesTests(unittest.TestCase):
         extrapolated = [line for a in result['figure'].axes for line in a.lines
                         if getattr(line, '_tensile_is_extrapolation', False)]
         self.assertEqual(len(extrapolated), 3)
-        ys = self.means(result)['0.2% YS']
-        prediction = np.polynomial.Polynomial.fit(ys.get_xdata(), ys.get_ydata(), 1)(10)
+        ys = self.bars(result)['0.2% YS']
+        prediction = np.polynomial.Polynomial.fit(ys._tensile_locations, ys.datavalues, 1)(10)
         self.assertAlmostEqual(extrapolated[0].get_ydata()[-1], prediction)
         self.assertEqual(extrapolated[0].get_xdata()[-1], 10)
         self.assertEqual(extrapolated[0].get_linestyle(), ':')
@@ -82,6 +83,8 @@ class SpecimenVariablesTests(unittest.TestCase):
         trace = next(t for t in plotly.data if t.name == '0.2% YS')
         self.assertIn('Specimen:', trace.hovertemplate)
         self.assertEqual(trace.customdata[0][0], 'Alloy A · Wall_01')
+        self.assertEqual(trace.type, 'bar')
+        self.assertEqual(trace.customdata[0][1], 1)
 
     def test_location_editor_defaults_override_reset_and_clipboard(self):
         view = self.editor()
@@ -114,8 +117,8 @@ class SpecimenVariablesTests(unittest.TestCase):
         view = self.app.specimen_charts
         self.assertNotIn('properties_by_group_level', self.app.controls)
         self.assertEqual(view.controls['properties_by_group_x_variable'].value, LOCATION)
-        self.assertEqual(view.controls['properties_by_group_line_style'].value, 'none')
-        view.controls['properties_by_group_trend'].value = 'quadratic'
+        self.assertNotIn('properties_by_group_line_style', view.controls)
+        self.assertEqual(view.controls[SPECIMEN_TREND_KEY].value, 'quadratic')
         self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
         self.app.controls['show_both_versions'].value = True
         self.app.family_boxes[SPECIMEN_FAMILY].value = True
@@ -126,12 +129,12 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.assertEqual(len({i['key'] for i in display.call_args.args[0]}), 2)
         for result in self.app._results:
             self.assertEqual(len(result['state']['groups']), 1)
-            self.assertEqual(set(self.means(result)), {'0.2% YS', 'UTS', 'EL'})
+            self.assertEqual(set(self.bars(result)), {'0.2% YS', 'UTS', 'EL'})
         first = view.variants.active
         view.variants.add.click()
-        view.controls['properties_by_group_trend'].value = 'linear'
+        view.controls[SPECIMEN_TREND_KEY].value = 'linear'
         view.variants.choice.value = first
-        self.assertEqual(view.controls['properties_by_group_trend'].value, 'quadratic')
+        self.assertEqual(view.controls[SPECIMEN_TREND_KEY].value, 'quadratic')
         self.assertEqual(self.app.property_variants.snapshot()[0]['settings']['properties_by_group_level'], 'group')
 
     def test_custom_locations_duplicates_and_missing_are_not_pooled(self):
@@ -139,8 +142,8 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.app._save_specimen_variable('height', dict(name='Height', unit='mm', values={
             'Alloy A/coupon_1.csv': 5, 'Alloy A/coupon_3.csv': 5}))
         result = self.session.render({**self.state(), 'properties_by_group_x_variable': 'height'})
-        for line in self.means(result).values():
-            np.testing.assert_array_equal(line.get_xdata(), [5, 5])
+        for bars in self.bars(result).values():
+            np.testing.assert_array_equal(bars._tensile_locations, [5, 5])
         self.assertIn('Wall_04', result['figure']._tensile_variable_warning)
         self.assertIn('remain separate', result['figure']._tensile_variable_warning)
         self.assertEqual(result['figure'].axes[0].get_xlabel(), 'Height (mm)')
@@ -164,8 +167,8 @@ class SpecimenVariablesTests(unittest.TestCase):
         project['specimen_exclusions'] = {'Alloy A/coupon_3.csv': 'reserved for review'}
         self.session.set_project(project)
         result = self.session.render({**self.state(), 'properties_by_group_x_variable': 'height'})
-        self.assertTrue(all(np.isfinite(line.get_ydata()).all() for line in self.means(result).values()))
-        self.assertTrue(all(len(line.get_ydata()) == 2 for line in self.means(result).values()))
+        self.assertTrue(all(np.isfinite(bars.datavalues).all() for bars in self.bars(result).values()))
+        self.assertTrue(all(len(bars.datavalues) == 2 for bars in self.bars(result).values()))
         self.assertEqual(len(self.session.specimen_variable_catalogue(['Alloy A'])), 3)
 
     def test_property_toggles_and_partial_exclusions(self):
@@ -176,10 +179,10 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.session.set_project(project)
         state = {**self.state(), 'properties_by_group_x_variable': 'height'}
         result = self.session.render(state)
-        values = self.means(result)
-        self.assertEqual(len(values['UTS'].get_ydata()), 2)
-        self.assertTrue(np.isfinite(values['0.2% YS'].get_ydata()).all())
-        self.assertTrue(np.isnan(values['EL'].get_ydata()[1]))
+        values = self.bars(result)
+        self.assertEqual(len(values['UTS'].datavalues), 2)
+        self.assertTrue(np.isfinite(values['0.2% YS'].datavalues).all())
+        self.assertEqual(values['EL']._tensile_point_labels, ['Alloy A · Wall_01'])
         self.assertIn('Wall_04 (EL)', result['figure']._tensile_variable_warning)
         for combination in itertools.product([False, True], repeat=3):
             if not any(combination):

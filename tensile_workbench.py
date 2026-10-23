@@ -68,9 +68,12 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
             variable['values'] = {rename.get(k, k): v for k, v in variable.get('values', {}).items()}
             if 'minimums' in variable:
                 variable['minimums'] = {rename.get(k, k): v for k, v in variable['minimums'].items()}
-        for settings in [graph['settings'], *(v['settings'] for v in graph['settings'].get(VARIANTS_KEY, []))]:
+        for settings in [graph['settings'], *(v['settings'] for key in (VARIANTS_KEY, SPECIMEN_VARIANTS_KEY)
+                                              for v in graph['settings'].get(key, []))]:
             if 'properties_by_group_labels' in settings:
                 settings['properties_by_group_labels'] = {rename.get(k, k): v for k, v in settings['properties_by_group_labels'].items()}
+            if settings.get('properties_by_specimen_groups') is not None:
+                settings['properties_by_specimen_groups'] = [rename.get(g, g) for g in settings['properties_by_specimen_groups']]
         for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides', 'gauge_reconstruction'):
             if key in graph['definition']:
                 graph['definition'][key] = {rename.get(k, k): v for k, v in graph['definition'][key].items()}
@@ -1458,6 +1461,7 @@ class TensileWorkbench:
         if selected in options:
             self.display_order_select.value = selected
         self._sync_display_order_buttons()
+        self.specimen_charts.refresh_groups(options)
 
     def _move_display_order(self, direction):
         visible = list(self.display_order_select.options)
@@ -2212,7 +2216,9 @@ class TensileWorkbench:
                     charts.extend((family, chart, None) for chart in state[VARIANTS_KEY])
                 elif family == SPECIMEN_FAMILY:
                     charts.extend((family, chart, group) for chart in state[SPECIMEN_VARIANTS_KEY]
-                                  for group in ordered_groups(state['groups'], state.get('group_order', [])))
+                                  for group in ordered_groups(state['groups'], state.get('group_order', []))
+                                  if chart['settings'].get('properties_by_specimen_groups') is None
+                                  or group in chart['settings']['properties_by_specimen_groups'])
                 else:
                     charts.append((family, None, None))
             for family, chart, group in charts:
@@ -2247,6 +2253,10 @@ class TensileWorkbench:
                         message = str(error)
                         items.append({**item, "error": message})
                         messages.append(label + ": " + message)
+            if not charts:
+                self.viewer.clear('No sample groups selected for specimen charts. Tick All sample groups or individual groups in their Settings.')
+                self.status.value = 'Choose sample groups for the specimen charts. Workspace tables are unchanged.'
+                return
             self.viewer.set_items(items)
             self._signature = self._current_signature()
             self.details.value = "\n\n".join(messages)

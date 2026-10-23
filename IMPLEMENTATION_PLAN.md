@@ -2,6 +2,29 @@
 
 ## Change notes — 2026-10-23
 
+### Specimen bars, quadratic trends and chart group selection — implemented
+
+- Use grouped YS/UTS/EL bars in the specimen-location section, one chart per
+  chosen sample group. Keep YS/UTS on the strength axis and EL on its own axis;
+  an EL-only selection uses a single axis. Omitted properties create no zero
+  bars. Duplicate locations stay separate, with adjacent bars and specimen
+  names in interactive hovers.
+- Default to quadratic (order 2) trends, with Linear and None still available.
+  Fit actual measured locations, never the visual bar offsets. Require three
+  distinct locations for quadratic fits. Retain dotted extrapolation through
+  reserved, untested positions without inventing measurements or fit weight.
+- Add an All sample groups checkbox and individual workspace-group checkboxes
+  in each specimen chart variant's Settings. Save independently per variant;
+  do not alter workspace selection, tables or specimen exclusions. Keep shared
+  group order, dormant selections, approved moves and forget-group handling.
+  An empty selection clears these charts with an actionable message.
+- Verification: 117 synthetic tests ran; 114 passed. Three older strength–EL
+  expectations (hover labels and the automatic endpoint) fail identically in
+  the preceding commit. New bar/filter tests and variable/export tests pass.
+  Browser checks confirmed select-all, clear-all and individual-group selection,
+  quadratic defaults, dual-axis bars and reserved positions. Static output was
+  visually checked. Research data and personal settings were not changed.
+
 ### Separate specimen charts and required integer variables — implemented
 
 - Split **YS/UTS/EL by specimen** from **YS/UTS/EL by sample group & custom
