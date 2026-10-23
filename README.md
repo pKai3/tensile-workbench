@@ -97,7 +97,7 @@ For the last view, **Settings → Add chart variant** creates another separate c
 
 To plot against a numeric variable, such as shielding-gas CO₂ concentration:
 
-1. Select sample groups, then expand **Custom variables** below the sample selector/order controls.
+1. Select sample groups, then expand **Custom variables → Sample groups** below the sample selector/order controls.
 2. Enter a variable name, optional units and each group's value. Leave unknown values blank; `0` is a real value. **Show all sample groups** lets you edit groups outside the current selection.
 3. Click **Save variable and values**. Or choose **View → Table** to edit all variables together: names in row 1, units in row 2, then sample-group data. **Add variable (column)** creates another column; **Save all variables** applies the complete table. Variables are shared across saved graphs.
 4. In the property chart's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more chart variants to compare other variables or property combinations.
@@ -111,6 +111,16 @@ To delete a variable, select it in **One variable** view and click **Delete vari
 For variable-based charts, leave **Title** empty to use the grey automatic title, e.g. **YS/UTS/EL vs. Shielding CO₂ (%)**. It follows the selected variable, units and enabled properties; a typed title overrides it. Numeric subscript/superscript shorthand is formatted in these chart titles and variable-axis labels: `CO_2` → CO₂, `mm^2` → mm², `m^{-3}` → m⁻³. Saved variable text is unchanged; Unicode characters can also be entered directly.
 
 Variables and chart variants are stored in the ignored personal project file, not deployed to colleagues. Values follow an approved sample-folder move. Exports include the chart settings and variable values; table exports add a numeric **Group variables** sheet when variables exist.
+
+To check properties against **specimen extraction location**, use the same property-chart settings but set **Plot → Individual specimens**:
+
+- The default X-axis is **Specimen number** from the operator's specimen name, not the CSV export row. For example, `Wall_04` plots at 4. Missing or ambiguous operator numbers are flagged, not guessed.
+- For editable locations, open **Custom variables → Individual specimens**. The initial **Location** draft starts from those numbers. Edit and save it, then choose it as the chart's X-axis. You can also add variables such as extraction height (mm); table editing and CSV/TSV paste work here too. **Fill blanks from specimen number** fills only empty cells in the current variable.
+- Set **Planned locations** to `1:10` to display positions 1 through 10, including reserved/untested specimens. A list such as `0, 5, 10, 15` also works. Only real tested specimens get data points: missing locations are not renumbered, replaced with zero or included in statistics.
+- Optional **Linear** or **Quadratic** trendlines fit eligible measured specimens within each group. Dashed segments cover the measured range; dotted segments extrapolate to the planned range (or manual X-axis limits). These are descriptive fits, not validated predictions. Each property fits its own available observations; insufficient distinct locations leave that trend undrawn.
+- YS/UTS/EL switches, manual overrides and partial exclusions still apply. There are no group means or SD bars in specimen mode. Equal locations stay as separate observations, and different groups are never connected. One group uses property colours; multiple groups use group colours with different property symbols.
+
+Specimen variables are separate from group variables and keyed to stable specimen identities, so changing display labels does not reassign values. Approved moves migrate them; forgetting a group clears its values. Excel results include a **Specimen variables** sheet when these variables are saved. Planned locations and trend settings are saved per chart variant; they do not add fake specimen rows to exports.
 
 Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
 

@@ -9,6 +9,9 @@ import re
 GROUP_FAMILY = 'properties_by_group'
 GROUP_LINE_STYLES = {'solid': '-', 'dash': '--', 'dot': ':', 'none': 'None'}
 GROUP_DEFAULTS = {
+    'properties_by_group_level': 'group',
+    'properties_by_group_planned_positions': '',
+    'properties_by_group_trend': 'none',
     'properties_by_group_x_variable': '',
     'properties_by_group_xlim': None,
     'properties_by_group_show_ys': True,
@@ -25,7 +28,35 @@ GROUP_DEFAULTS = {
 }
 
 
+def planned_positions(text):
+    """An explicit plotting domain, never additional observations."""
+    if not isinstance(text, str):
+        raise ValueError('Planned locations must be comma-separated numbers or an inclusive integer range such as 1:10.')
+    if not text.strip():
+        return []
+    values = []
+    try:
+        for part in text.split(','):
+            if ':' in part:
+                start, end = map(int, part.split(':'))
+                if end < start or end - start > 500:
+                    raise ValueError()
+                values.extend(range(start, end + 1))
+            else:
+                values.append(float(part))
+        if len(values) > 501 or not all(math.isfinite(v) for v in values):
+            raise ValueError()
+    except ValueError as error:
+        raise ValueError('Use planned locations such as 1:10 or 0, 5, 10, 15 (at most 501 positions).') from error
+    return sorted(set(values))
+
+
 def validate_group_display(settings):
+    if settings.get('properties_by_group_level', 'group') not in ('group', 'specimen'):
+        raise ValueError('Property charts must show group means or individual specimens.')
+    planned_positions(settings.get('properties_by_group_planned_positions', ''))
+    if settings.get('properties_by_group_trend', 'none') not in ('none', 'linear', 'quadratic'):
+        raise ValueError('Choose no trendline, linear or quadratic.')
     for key in ('xlim', 'ylim', 'el_ylim'):
         limits = settings.get('properties_by_group_' + key)
         if limits is not None and (not isinstance(limits, (tuple, list)) or len(limits) != 2

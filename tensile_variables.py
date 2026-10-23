@@ -1,19 +1,20 @@
-"""User-supplied numeric sample-group variables, shared by saved graphs."""
+"""User-supplied group/specimen variables, shared by saved graphs."""
 from copy import deepcopy
 from html import escape
 import math
 import re
 import uuid
 from tensile_order import ordered_groups
+from tensile_selection import valid_specimen_id
 
 
-def validate_variables(variables):
+def validate_variables(variables, *, scope='group'):
     if not isinstance(variables, dict):
         raise ValueError('Custom variables must be a mapping.')
     names = set()
     for ident, variable in variables.items():
         if not isinstance(ident, str) or not ident or not isinstance(variable, dict):
-            raise ValueError('Invalid sample-group variable.')
+            raise ValueError('Invalid custom variable.')
         name, unit = variable.get('name'), variable.get('unit', '')
         if not isinstance(name, str) or not name.strip() or name.strip().casefold() in names:
             raise ValueError('Variable names must be nonempty and unique.')
@@ -22,11 +23,13 @@ def validate_variables(variables):
             raise ValueError('Variable units must be text.')
         values = variable.get('values', {})
         if not isinstance(values, dict):
-            raise ValueError('Variable values must map sample groups to numbers.')
+            raise ValueError('Variable values must map identities to numbers.')
         for group, value in values.items():
             if (not isinstance(group, str) or not group or isinstance(value, bool)
                     or not isinstance(value, (float, int)) or not math.isfinite(value)):
-                raise ValueError('Group variable values must be finite numbers. Leave missing values blank.')
+                raise ValueError('Variable values must be finite numbers. Leave missing values blank.')
+            if scope == 'specimen' and not valid_specimen_id(group):
+                raise ValueError('Specimen variable values need relative specimen IDs, not display names or absolute paths.')
 
 
 def plot_text(text):
@@ -43,14 +46,14 @@ def variable_label(variable, *, for_plot=False):
     return plot_text(label) if for_plot else label
 
 
-def property_chart_title(variable=None, properties=('ys', 'uts', 'el')):
+def property_chart_title(variable=None, properties=('ys', 'uts', 'el'), *, scope='group'):
     shown = '/'.join(key.upper() for key in properties)
     if variable is None:
-        return shown + ' by sample'
+        return shown + (' by specimen' if scope == 'specimen' else ' by sample')
     return shown + ' vs. ' + variable_label(variable, for_plot=True)
 
 
-def variable_usage(project, ident):
+def variable_usage(project, ident, *, scope='group'):
     """Describe affected saved charts without rewriting their axis selections."""
     graphs = [(graph, '') for graph in project.get('graphs', [])]
     graphs += [(item['graph'], 'Deleted graph: ') for item in project.get('deleted_graphs', []) if 'graph' in item]
@@ -59,7 +62,9 @@ def variable_usage(project, ident):
         settings = graph.get('settings', {})
         charts = settings.get('properties_by_group_variants') or [dict(name='Chart 1', settings=settings)]
         for chart in charts:
-            if chart.get('settings', {}).get('properties_by_group_x_variable') == ident:
+            config = chart.get('settings', {})
+            if (config.get('properties_by_group_level', 'group') == scope
+                    and config.get('properties_by_group_x_variable') == ident):
                 used.append(prefix + graph.get('name', 'Unnamed graph') + ' — ' + chart.get('name', 'Chart'))
     return used
 
@@ -85,10 +90,14 @@ def variable_axis(groups, ident, variables):
 
 class GroupVariablesView:
     """Compact editor; an explicit save commits names, units and values together."""
-    def __init__(self, w, get_variables, get_groups, on_save, on_save_all=None, get_usage=None):
+    def __init__(self, w, get_variables, get_groups, on_save, on_save_all=None, get_usage=None,
+                 *, scope='group', row_label=None):
         from tensile_variable_table import VariableTable
         self.w, self.get_variables, self.get_groups, self.on_save = w, get_variables, get_groups, on_save
         self.on_save_all = on_save_all
+        self.scope = scope
+        self.row_label = row_label or str
+        entity = 'individual specimens' if scope == 'specimen' else 'sample groups'
         self.get_usage = get_usage or (lambda _: [])
         self._pending_delete = None
         self.groups, self.fields, self._draft = [], {}, {}
@@ -100,10 +109,11 @@ class GroupVariablesView:
                                      style={'button_width': 'auto'})
         self.choice = w.Dropdown(description='Variable:', options=[('New variable…', '')],
                                  layout=w.Layout(width='450px', max_width='100%'))
-        self.name = w.Text(description='Name:', placeholder='e.g. Shielding gas CO₂', continuous_update=False)
+        self.name = w.Text(description='Name:', placeholder=('e.g. Extraction height' if scope == 'specimen'
+                                                           else 'e.g. Shielding gas CO₂'), continuous_update=False)
         self.unit = w.Text(description='Units:', placeholder='e.g. %, °C, mm', continuous_update=False)
-        self.all_groups = w.Checkbox(description='Show all sample groups', indent=False,
-                                     tooltip='Include groups not selected in this graph, without changing the graph selection.',
+        self.all_groups = w.Checkbox(description='Show all ' + entity, indent=False,
+                                     tooltip='Include unselected groups without changing the graph selection. Values include excluded specimens.',
                                      layout=w.Layout(width='auto'))
         self.rows = w.VBox(layout=w.Layout(width='100%', max_height='300px', overflow='auto', flex='0 0 auto'))
         self.save = w.Button(description='Save variable and values', button_style='primary',
@@ -123,17 +133,21 @@ class GroupVariablesView:
                                 self.rows, w.HBox([self.save, self.remove], layout=w.Layout(flex_flow='row wrap'))],
                                 layout=w.Layout(width='100%', min_width='0'))
         self.table_ui = w.VBox([
-            w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: sample-group values. '
+            w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
                    'Paste CSV/TSV or an Excel block into a cell; extra columns are added automatically. '
-                   'Paste variable cells only, without the sample-group labels. Blank cells clear values. '
+                   'Paste variable cells only, without the row labels. Blank cells clear values. '
                    'Edits are applied with Save all variables; deletion requires separate confirmation.'),
             w.HBox([self.add, self.save_all], layout=w.Layout(flex_flow='row wrap')),
             self.table], layout=w.Layout(width='100%', min_width='0', display='none'))
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
-            w.HTML('Numeric values attached to sample groups, shared by all graphs. Create as many variables as needed. '
+            w.HTML('Numeric values attached to ' + entity + ', shared by all graphs. Create as many variables as needed. '
                    'Rows follow this graph’s sample group order. '
-                   'Leave unknown values blank; zero is a valid value. Save before switching graphs.'),
+                   'Leave unknown values blank; zero is a valid value. Save before switching graphs.'
+                   + (' Specimen rows use operator labels when available; hover a row label for its stable CSV identity. '
+                      'Location can start from the operator specimen number; edit it to match your extraction map. '
+                      'CSV row numbers are never used as locations. '
+                      'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else '')),
             self.view, self.all_groups, self.delete_panel, self.single_ui, self.table_ui, self.status
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
         self.ui.set_title(0, 'Custom variables · shared by all graphs')
@@ -260,6 +274,7 @@ class GroupVariablesView:
         try:
             with self.table.hold_sync():
                 self.table.groups = self._visible_groups()
+                self.table.labels = {ident: self.row_label(ident) for ident in self.table.groups}
                 self.table.columns = [dict(id=k, **deepcopy(v)) for k, v in self._drafts.items() if k]
         finally:
             self._paused = old
@@ -286,7 +301,7 @@ class GroupVariablesView:
         self._pending_delete = dict(id=ident, saved=deepcopy(saved.get(ident)), persisted=ident in saved)
         name = self._drafts[ident]['name'].strip() or 'Unnamed variable'
         if ident in saved:
-            message = f'<b>Delete {escape(name)}?</b> This removes the variable and all its group values from every graph. '
+            message = f'<b>Delete {escape(name)}?</b> This removes the variable and all its values from every graph. '
             usage = self.get_usage(ident)
             if usage:
                 message += '<br><b>Charts needing a new X-axis selection:</b><ul>'
@@ -344,7 +359,8 @@ class GroupVariablesView:
             self.fields[group] = field
             # Flex children otherwise shrink into the capped viewport instead
             # of overflowing it, clipping every input when many groups appear.
-            rows.append(w.HBox([w.HTML(escape(group), layout=w.Layout(width='450px', max_width='100%')), field],
+            rows.append(w.HBox([w.HTML('<span title="' + escape(group, quote=True) + '">' + escape(self.row_label(group)) + '</span>',
+                                       layout=w.Layout(width='450px', max_width='100%')), field],
                                 layout=w.Layout(flex_flow='row wrap', gap='8px', flex='0 0 auto', min_height='32px')))
         self.rows.children = tuple(rows) or (w.HTML('Select sample groups above, or enable Show all sample groups.'),)
         for row in old:
@@ -360,7 +376,7 @@ class GroupVariablesView:
             variable = self._numeric(self._drafts[self._active])
             variables = deepcopy(self.get_variables())
             variables[ident] = variable
-            validate_variables(variables)
+            validate_variables(variables, scope=self.scope)
             self.on_save(ident, variable)
             if not self._active:
                 self._drafts.pop('', None)
@@ -377,7 +393,7 @@ class GroupVariablesView:
         try:
             variables = deepcopy(self.get_variables())
             variables.update({k: self._numeric(v) for k, v in self._drafts.items() if k})
-            validate_variables(variables)
+            validate_variables(variables, scope=self.scope)
             if self.on_save_all is None:
                 raise ValueError('Saving the table is unavailable in this preview.')
             self.on_save_all(variables)

@@ -231,6 +231,13 @@ def export_results(frames, path, metadata):
         ], columns=['Group', 'Variable ID', 'Variable', 'Unit', 'Value'])
     if not agreement.empty:
         sheets['Calc-Instron agreement'] = agreement
+    variables = metadata.get('specimen_variables', {})
+    if variables:
+        sheets['Specimen variables'] = pd.DataFrame([
+            {'Specimen ID': specimen, 'Variable ID': ident, 'Variable': variable['name'],
+             'Unit': variable.get('unit', ''), 'Value': value}
+            for ident, variable in variables.items() for specimen, value in variable.get('values', {}).items()
+        ], columns=['Specimen ID', 'Variable ID', 'Variable', 'Unit', 'Value'])
     sheets.update({'Audit': checks, 'Export info': flatten_info(metadata)})
     write_workbook(path, sheets)
 

@@ -36,7 +36,7 @@ def paste_cells(columns, groups, row, column, text):
     if not width or any(len(line) != width for line in block):
         raise ValueError('Paste a rectangular block: each row must have the same number of cells.')
     if row + len(block) > len(groups) + 2:
-        raise ValueError('The block extends beyond the visible sample groups. Show all groups or paste fewer rows.')
+        raise ValueError('The block extends beyond the visible rows. Show all rows or paste fewer rows.')
     if width + column > 200 or len(block) * width > 100_000:
         raise ValueError('Paste a smaller block (at most 200 variable columns / 100,000 cells).')
     result = deepcopy(columns)
@@ -64,6 +64,7 @@ def paste_cells(columns, groups, row, column, text):
 class VariableTable(anywidget.AnyWidget):
     columns = traitlets.List(traitlets.Dict()).tag(sync=True)
     groups = traitlets.List(traitlets.Unicode()).tag(sync=True)
+    labels = traitlets.Dict().tag(sync=True)
     notice = traitlets.Unicode('').tag(sync=True)
 
     _css = """
@@ -105,16 +106,17 @@ class VariableTable(anywidget.AnyWidget):
         const left=box.scrollLeft,top=box.scrollTop,active=document.activeElement;
         const focus=box.contains(active) && active.matches('input') ?
           {r:active.dataset.row,c:active.dataset.col,start:active.selectionStart,end:active.selectionEnd} : null;
-        const columns=model.get('columns'),groups=model.get('groups');
+        const columns=model.get('columns'),groups=model.get('groups'),labels=model.get('labels');
         const table=document.createElement('table'),head=table.createTHead(),body=table.createTBody();
         ['Name','Unit',...groups].forEach((label,r)=>{
           const tr=(r<2 ? head : body).insertRow(),group=document.createElement('th');
-          group.textContent=label;group.title=label;group.className='group';group.scope='row';tr.append(group);
+          const caption=r<2 ? label : (labels[label] || label);
+          group.textContent=caption;group.title=label;group.className='group';group.scope='row';tr.append(group);
           columns.forEach((column,c)=>{
             const cell=document.createElement(r<2 ? 'th' : 'td'),input=document.createElement('input');
             input.type='text';input.dataset.row=r;input.dataset.col=c;
             input.setAttribute('aria-label',r===0 ? 'Variable name '+(c+1) :
-              r===1 ? 'Variable unit '+(c+1) : label+' · variable '+(c+1));
+              r===1 ? 'Variable unit '+(c+1) : caption+' · variable '+(c+1));
             input.value=r===0 ? column.name : r===1 ? column.unit : (column.values[label] ?? '');
             input.placeholder=r===0 ? 'Variable name' : r===1 ? 'Optional unit' : 'Not set';
             input.addEventListener('input',()=>{
@@ -166,9 +168,9 @@ class VariableTable(anywidget.AnyWidget):
           note.textContent='Copied names, units and visible values. Group labels are not included.';
         } catch {note.textContent='Clipboard access was unavailable. You can still paste from Excel into a cell.';}
       });
-      model.on('change:columns',render);model.on('change:groups',render);model.on('change:notice',status);
+      model.on('change:columns',render);model.on('change:groups',render);model.on('change:labels',render);model.on('change:notice',status);
       render();status();
-      return ()=>{model.off('change:columns',render);model.off('change:groups',render);model.off('change:notice',status);};
+      return ()=>{model.off('change:columns',render);model.off('change:groups',render);model.off('change:labels',render);model.off('change:notice',status);};
     }};
     """
 

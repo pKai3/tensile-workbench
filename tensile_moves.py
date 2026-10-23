@@ -36,6 +36,8 @@ def references(project):
     for variable in project.get('group_variables', {}).values():
         groups.update(variable.get('values', {}))
     specimens = set()
+    for variable in project.get('specimen_variables', {}).values():
+        specimens.update(variable.get('values', {}))
     for block in [project, *(g.get('definition', {}) for g in graph_blocks(project))]:
         for key in SPECIMEN_MAPS:
             specimens.update(block.get(key, {}))
@@ -270,6 +272,8 @@ def migrate_settings(project, proposal, *, audit=True):
     remap_keys(result, 'display_names', groups)
     for variable in result.get('group_variables', {}).values():
         remap_keys(variable, 'values', groups)
+    for variable in result.get('specimen_variables', {}).values():
+        remap_keys(variable, 'values', specimens)
     for key in SPECIMEN_MAPS:
         remap_keys(result, key, specimens)
         remap_keys(result.get(DISABLED, {}), key, specimens)
@@ -330,6 +334,8 @@ def forget_group(project, group, *, live_groups=()):
     result.get('display_names', {}).pop(group, None)
     for variable in result.get('group_variables', {}).values():
         variable.get('values', {}).pop(group, None)
+    for variable in result.get('specimen_variables', {}).values():
+        variable['values'] = {ident: value for ident, value in variable.get('values', {}).items() if not owned(ident)}
     for block in [result, *(g.get('definition', {}) for g in graph_blocks(result))]:
         for key in SPECIMEN_MAPS:
             if key in block:

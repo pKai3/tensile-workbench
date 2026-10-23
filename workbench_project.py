@@ -31,6 +31,7 @@ def validate_project(project):
     validate_disabled(project)
     validate_threshold(project.get('yield_r2_warning', .98))
     validate_variables(project.get('group_variables', {}))
+    validate_variables(project.get('specimen_variables', {}), scope='specimen')
     modes = project.get('specimen_data_modes', {})
     if not isinstance(modes, dict):
         raise ValueError('Specimen data-use modes must be a mapping.')

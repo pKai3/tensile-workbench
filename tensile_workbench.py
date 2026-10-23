@@ -26,6 +26,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
+from tensile_specimen_plot import render_specimen_properties, specimen_sort_key, specimen_number, SPECIMEN_NUMBER
 from tensile_variables import GroupVariablesView, variable_label, property_chart_title, validate_variables, variable_usage
 from tensile_property_variants import PropertyVariantsView, VARIANTS_KEY, TITLE_KEY
 from tensile_order import sort_group_frame, validate_group_order
@@ -72,7 +73,8 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
             graph['definition']['specimen_exclusions'] = {
                 SAMPLE_ID_PREFIX + k if k.split('/')[0] in rename else k: v for k, v in exclusions.items()}
         for mapping in (project.get('specimen_exclusions', {}), project.get('specimen_data_modes', {}),
-                        graph['definition'].get('specimen_inclusion_overrides', {})):
+                        graph['definition'].get('specimen_inclusion_overrides', {}),
+                        *(v.get('values', {}) for v in project.get('specimen_variables', {}).values())):
             for ident in list(mapping):
                 if ident.split('/')[0] in rename:
                     mapping[SAMPLE_ID_PREFIX + ident] = mapping.pop(ident)
@@ -393,20 +395,38 @@ class PreviewSession:
         export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
                        {'graph': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
                         'group_variables': self.variable_provenance(state),
+                        'specimen_variables': self.variable_provenance(state, scope='specimen'),
                         'specimen_selection': self.selection_provenance(state, spec),
                         'engine_sha256': self.engine_sha256})
         (destination / 'settings.json').write_text(json.dumps({'graph_definition': spec, 'settings': state,
             'group_variables': self.variable_provenance(state),
+            'specimen_variables': self.variable_provenance(state, scope='specimen'),
             'specimen_fit_policy': self.fit_provenance(state),
             'specimen_selection': self.selection_provenance(state, spec),
             'engine_sha256_at_load': self.engine_sha256,
             'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Audit sheet for source hashes.'}, indent=2))
         return destination
 
-    def variable_provenance(self, state):
+    def variables_for(self, state):
+        return self.project.get(state.get('properties_by_group_level', 'group') + '_variables', {})
+
+    def specimen_variable_catalogue(self, groups):
+        """Lazy catalogue includes excluded specimens, with stable identities and operator names."""
+        result = []
+        for group in self.visible_groups(groups):
+            rows = sorted(self._load(group), key=specimen_sort_key)
+            for record, label in zip(rows, self.engine.scatter_specimen_labels(rows)):
+                result.append({'id': specimen_id(record), 'label': group + ' · ' + label,
+                               'number': specimen_number(record)})
+        return result
+
+    def variable_provenance(self, state, *, scope='group'):
+        identities = (set(state['groups']) if scope == 'group' else
+                      {row['id'] for row in self.specimen_variable_catalogue(state['groups'])}
+                      if self.project.get('specimen_variables') else set())
         return {ident: {**variable, 'values': {group: value for group, value in variable.get('values', {}).items()
-                                             if group in state['groups']}}
-                for ident, variable in self.project.get('group_variables', {}).items()}
+                                             if group in identities}}
+                for ident, variable in self.project.get(scope + '_variables', {}).items()}
 
     def specimen_inspection(self, state, spec, ident):
         """Inspect only a currently selected group's loaded record; no file-path lookup.
@@ -510,7 +530,7 @@ class PreviewSession:
             if family == "work_hardening":
                 key_state.pop("landmark_points", None)
         key = json.dumps([key_state, self.graphs[state["graph_index"]], self.project.get("display_names", {}),
-                          self.selection_signature(), self.project.get('group_variables', {}).get(
+                          self.selection_signature(), self.variables_for(state).get(
                               state.get('properties_by_group_x_variable')) if family == GROUP_FAMILY else None], sort_keys=True)
         if key not in self._previews:
             self._previews[key] = self._render_uncached(state)
@@ -529,7 +549,7 @@ class PreviewSession:
         if state.get('family') != GROUP_FAMILY or not state.get('properties_by_group_x_variable'):
             return None
         ident = state['properties_by_group_x_variable']
-        return json.dumps(self.variable_provenance(state).get(ident), sort_keys=True)
+        return json.dumps(self.variable_provenance(state, scope=state.get('properties_by_group_level', 'group')).get(ident), sort_keys=True)
 
     def _render_uncached(self, state):
         """Compute one preview in memory. Never invoke main() or any exporters."""
@@ -619,8 +639,9 @@ class PreviewSession:
                 wh = {**self._wh_settings(state, spec),
                       'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in shape_records.items()}}
                 if family == GROUP_FAMILY:
-                    fig = render_group_properties(e, records, state,
-                        variables=self.project.get('group_variables', {}),
+                    renderer = render_specimen_properties if state.get('properties_by_group_level') == 'specimen' else render_group_properties
+                    fig = renderer(e, records, state,
+                        variables=self.variables_for(state),
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
                         **common)
                 elif family in PROPERTY_FAMILIES:
@@ -755,6 +776,7 @@ class PreviewSession:
         export_results(self.property_tables(state, spec), destination / f'{graph}_results.xlsx',
                        {'graph': spec, 'views': [r['state'] for r in results],
                         'group_variables': self.variable_provenance(state),
+                        'specimen_variables': self.variable_provenance(state, scope='specimen'),
                         'specimen_selection': self.selection_provenance(state, spec),
                         'fit_policy': self.fit_provenance(state), 'engine_sha256': self.engine_sha256})
         export_curves(results, self.engine, destination / f'{graph}_curves.xlsx')
@@ -818,6 +840,15 @@ class TensileWorkbench:
                 value='independent', style={'description_width': 'initial'},
                 layout=w.Layout(width='450px', max_width='100%'))
         self._check('properties_by_group_error_bars', 'Group mean ±1 SD bars')
+        self.controls['properties_by_group_level'] = w.Dropdown(description='Plot:',
+            options=[('Group means', 'group'), ('Individual specimens', 'specimen')],
+            layout=w.Layout(width='400px', max_width='100%'))
+        self.controls['properties_by_group_planned_positions'] = w.Text(description='Planned locations:',
+            placeholder='e.g. 1:10 or 0, 5, 10, 15', continuous_update=False,
+            style={'description_width': 'initial'}, layout=w.Layout(width='500px', max_width='100%'))
+        self.controls['properties_by_group_trend'] = w.Dropdown(description='Trendline:',
+            options=[('None', 'none'), ('Linear', 'linear'), ('Quadratic', 'quadratic')],
+            layout=w.Layout(width='350px', max_width='100%'))
         self.controls['properties_by_group_x_variable'] = w.Dropdown(
             description='X-axis:', options=[('Sample names', '')],
             layout=w.Layout(width='500px', max_width='100%'))
@@ -959,6 +990,26 @@ class TensileWorkbench:
         self.group_variables = GroupVariablesView(w, lambda: self.store.data.get('group_variables', {}),
                                                    lambda: list(self.session.files), self._save_group_variable,
                                                    self._save_group_variables, lambda ident: variable_usage(self.store.data, ident))
+        self._specimen_variable_labels, self._specimen_numbers = {}, {}
+        self._specimen_variables_force = True
+        self.specimen_variables = GroupVariablesView(w, lambda: self.store.data.get('specimen_variables', {}),
+            self._all_specimen_variable_ids, self._save_specimen_variable, self._save_specimen_variables,
+            lambda ident: variable_usage(self.store.data, ident, scope='specimen'), scope='specimen',
+            row_label=lambda ident: self._specimen_variable_labels.get(ident, ident + ' (unavailable)'))
+        self.fill_specimen_locations = w.Button(description='Fill blanks from specimen number',
+            layout=w.Layout(width='auto', align_self='flex-start'),
+            tooltip='Fills only blanks in the current variable; uses operator names, not CSV row numbers.')
+        self.fill_specimen_locations.on_click(lambda _: self._fill_specimen_locations())
+        self.custom_variable_tabs = w.Tab(children=[self.group_variables.ui.children[0],
+            w.VBox([self.fill_specimen_locations, self.specimen_variables.ui.children[0]])])
+        self.custom_variable_tabs.set_title(0, 'Sample groups')
+        self.custom_variable_tabs.set_title(1, 'Individual specimens')
+        self.custom_variables_panel = w.Accordion(children=[self.custom_variable_tabs], selected_index=None,
+            layout=w.Layout(width='100%', min_width='0'))
+        self.custom_variables_panel.set_title(0, 'Custom variables · shared by all graphs')
+        self.custom_variables_panel.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
+        self.custom_variable_tabs.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
+        self.specimen_variables.all_groups.observe(lambda _: self._refresh_specimen_variables(), names='value')
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             local = [self.title_inputs[family]]
@@ -972,23 +1023,35 @@ class TensileWorkbench:
             local.append(axes)
             if family == GROUP_FAMILY:
                 local.insert(0, self.property_variants.ui)
-                local.insert(1, self.controls['properties_by_group_x_variable'])
-                local.insert(2, self._row([self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')]))
+                local.insert(1, self.controls['properties_by_group_level'])
+                local.insert(2, self.controls['properties_by_group_x_variable'])
+                local.insert(3, self._row([self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')]))
+                self.specimen_plot_settings = w.VBox([
+                    self.controls['properties_by_group_planned_positions'], self.controls['properties_by_group_trend'],
+                    w.HTML('Specimen number comes from the operator’s name. For another location, save a specimen variable '
+                           'under <b>Custom variables → Individual specimens</b> and select it above. '
+                           'Planned locations include untested/reserved positions (1:10 means 1 through 10). '
+                           'They add no measurements or statistical weight. Trendlines fit tested, eligible values only: '
+                           'dashed inside the measured range, dotted outside. Extrapolation is not a validated prediction.')])
+                local.append(self.specimen_plot_settings)
                 label_settings = w.Accordion(children=[w.VBox([
                     w.HTML('Short x-axis labels for this plot only. Leave blank to use the usual display name. '
                            'Line breaks are allowed. Other plots and tables keep their existing names.'),
                     self.group_labels_box])], selected_index=None)
                 label_settings.set_title(0, 'X-axis labels · this plot only')
+                self.group_plot_label_settings = label_settings
                 local += [w.HTML('Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
-                                 'with their actual spacing. Missing values omit that group from this chart only. '
+                                 'with their actual spacing. Missing locations omit that group/specimen from this chart only. '
                                  'Edit values in <b>Custom variables</b> below the sample selector.'),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
-                          w.HTML('Lines connect group means, not a fitted trend. YS and UTS use the left axis; EL uses the right '
+                          w.HTML('Connecting lines join values, not a fitted trend. YS and UTS use the left axis; EL uses the right '
                                  '(or the only axis when shown alone). '
                                  'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
-                                 'Show individuals adds faint specimen points. Colours here identify properties, not groups.')]
+                                 'Group mode: show individuals adds faint specimen points. Specimen mode: no means or SD bars; '
+                                 'one group uses property colours, multiple groups use group colours and property symbols. '
+                                 'Specimens at equal locations stay separate; lines never join different groups.')]
             if property_plot:
                 local += [self.controls[family + '_mean_population'], self.controls['property_error_bars'],
                           w.HTML('EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
@@ -1033,7 +1096,7 @@ class TensileWorkbench:
             w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
                    "A mixed tick means only some groups are selected. Groups are still analysed separately."),
             self.display_order_panel,
-            self.group_variables.ui,
+            self.custom_variables_panel,
             self.move_review.ui,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
@@ -1074,7 +1137,8 @@ class TensileWorkbench:
         self.graph.observe(self._graph_changed, names="value")
         self.name.observe(self._changed, names="value")
         for key, widget in self.controls.items():
-            widget.observe(self._palette_changed if key == 'color_palette' else
+            widget.observe(self._property_level_changed if key == 'properties_by_group_level' else
+                           self._palette_changed if key == 'color_palette' else
                            self._view_changed if key in VIEW_ONLY_SETTINGS else self._changed, names="value")
         for widget in list(self.family_boxes.values()) + list(self.title_inputs.values()):
             widget.observe(self._changed, names="value")
@@ -1164,27 +1228,44 @@ class TensileWorkbench:
         values[TITLE_KEY] = self.title_inputs[GROUP_FAMILY].value.strip()
         return values
 
-    def _variable_options(self, selected=None):
+    def _variable_options(self, selected=None, *, scope=None):
         control = self.controls['properties_by_group_x_variable']
         selected = control.value if selected is None else selected
-        variables = self.store.data.get('group_variables', {})
-        options = [('Sample names', '')] + [(variable_label(v), k) for k, v in variables.items()]
-        if selected and selected not in variables:
+        scope = scope or self.controls['properties_by_group_level'].value
+        variables = self.store.data.get(scope + '_variables', {})
+        options = ([('Specimen number · default location', SPECIMEN_NUMBER), ('Specimen names', '')]
+                   if scope == 'specimen' else [('Sample names', '')])
+        options += [(variable_label(v), k) for k, v in variables.items()]
+        if selected and selected not in dict((value, name) for name, value in options):
             options.append(('Unavailable variable · choose another', selected))
         control.options = options
         control.value = selected
 
+    def _property_level_changed(self, change):
+        if self._paused:
+            return
+        self._paused = True
+        try:
+            self._variable_options(SPECIMEN_NUMBER if change['new'] == 'specimen' else '')
+            self.controls['properties_by_group_line_style'].value = 'none' if change['new'] == 'specimen' else 'solid'
+        finally:
+            self._paused = False
+        self._changed()
+
     def _sync_property_title(self):
         ident = self.controls['properties_by_group_x_variable'].value
-        variable = self.store.data.get('group_variables', {}).get(ident)
+        scope = self.controls['properties_by_group_level'].value
+        variable = (dict(name='Specimen number', unit='') if scope == 'specimen' and ident == SPECIMEN_NUMBER else
+                    self.store.data.get(scope + '_variables', {}).get(ident))
         properties = [key for key in ('ys', 'uts', 'el') if self.controls['properties_by_group_show_' + key].value]
         self.title_inputs[GROUP_FAMILY].placeholder = ('Choose an available custom variable'
-            if ident and variable is None else property_chart_title(variable, properties))
+            if ident and variable is None else property_chart_title(variable, properties, scope=scope))
 
     def _apply_property_chart(self, values):
         old, self._paused = self._paused, True
         try:
-            self._variable_options(values.get('properties_by_group_x_variable', ''))
+            self._variable_options(values.get('properties_by_group_x_variable', ''),
+                                   scope=values.get('properties_by_group_level', 'group'))
             for key, control in self.controls.items():
                 if key in GROUP_DEFAULTS:
                     control.value = values.get(key, GROUP_DEFAULTS[key])
@@ -1197,6 +1278,7 @@ class TensileWorkbench:
                 low.value, high.value = pair or AXIS_DEFAULTS[key]
             self.title_inputs[GROUP_FAMILY].value = values.get(TITLE_KEY, '')
             self._sync_property_title()
+            self._sync_specimen_plot_settings()
         finally:
             self._paused = old
 
@@ -1206,11 +1288,22 @@ class TensileWorkbench:
         self._save_group_variables(variables)
 
     def _save_group_variables(self, variables):
-        validate_variables(variables)
+        self._save_variables(variables, 'group')
+
+    def _save_specimen_variable(self, ident, variable):
+        variables = deepcopy(self.store.data.get('specimen_variables', {}))
+        variables[ident] = variable
+        self._save_specimen_variables(variables)
+
+    def _save_specimen_variables(self, variables):
+        self._save_variables(variables, 'specimen')
+
+    def _save_variables(self, variables, scope):
+        validate_variables(variables, scope=scope)
         if not self.save_current():
             raise ValueError('Save the current graph settings before updating variables.')
         project = deepcopy(self.store.data)
-        project['group_variables'] = deepcopy(variables)
+        project[scope + '_variables'] = deepcopy(variables)
         self.store.save(project)
         self.session.set_project(self.store.data)
         old, self._paused = self._paused, True
@@ -1219,6 +1312,59 @@ class TensileWorkbench:
         finally:
             self._paused = old
         self._changed()
+
+    def _specimen_variable_ids(self, groups):
+        catalogue = self.session.specimen_variable_catalogue(ordered_groups(list(groups), self._display_order))
+        self._specimen_variable_labels.update({row['id']: row['label'] for row in catalogue})
+        self._specimen_numbers.update({row['id']: row['number'] for row in catalogue})
+        return [row['id'] for row in catalogue]
+
+    def _all_specimen_variable_ids(self):
+        return self._specimen_variable_ids(self.session.files)
+
+    @busy('Loading specimen locations…')
+    def _refresh_specimen_variables(self, *, force=False):
+        if force:
+            self._specimen_variables_force = True
+            self._specimen_variable_labels.clear()
+            self._specimen_numbers.clear()
+            self.specimen_variables._cancel_delete()
+        if self.custom_variables_panel.selected_index is None or self.custom_variable_tabs.selected_index != 1:
+            return
+        try:
+            identities = self._specimen_variable_ids(self.controls['groups'].value)
+            order = identities
+            if self.specimen_variables.all_groups.value:
+                order = identities + [ident for ident in self._all_specimen_variable_ids() if ident not in identities]
+            view = self.specimen_variables
+            view.refresh(identities, order=order, force=self._specimen_variables_force)
+            self._specimen_variables_force = False
+            if not self.store.data.get('specimen_variables') and not view.name.value and not view._active:
+                view.name.value = 'Location'
+                self._fill_specimen_locations()
+                view.status.value = ('Location starts from the operator specimen number. Edit as needed, then Save. '
+                                     'Unknown/ambiguous names stay blank. Untested positions belong in the chart’s Planned locations setting.')
+        except Exception as error:
+            self.specimen_variables.status.value = '<b>Could not load specimen locations:</b> ' + escape(str(error))
+
+    def _fill_specimen_locations(self):
+        view = self.specimen_variables
+        if view.view.value == 'single':
+            view._capture_single()
+        draft = view._drafts[view._active]
+        identities = self._all_specimen_variable_ids() if view.all_groups.value else view.groups
+        for ident in identities:
+            number = self._specimen_numbers.get(ident)
+            if number is not None and not draft['values'].get(ident, '').strip():
+                draft['values'][ident] = str(number)
+        view._load_single()
+        view._sync_table()
+
+    def _sync_specimen_plot_settings(self):
+        individual = self.controls['properties_by_group_level'].value == 'specimen'
+        self.specimen_plot_settings.layout.display = '' if individual else 'none'
+        self.group_plot_label_settings.layout.display = 'none' if individual else ''
+        self.controls['properties_by_group_error_bars'].disabled = individual
 
     def _apply_graph(self, ident):
         self._cancel_delete_graph()
@@ -1235,7 +1381,8 @@ class TensileWorkbench:
                          if group.startswith(SAMPLE_GROUP_PREFIX) else group)
                 return label if group in self.session.files else label + ' (unavailable)'
             self.controls["groups"].options = [(group_label(g), g) for g in choices]
-            self._variable_options(state.get('properties_by_group_x_variable', ''))
+            self._variable_options(state.get('properties_by_group_x_variable', ''),
+                                   scope=state.get('properties_by_group_level', 'group'))
             for key, control in self.controls.items():
                 value = state.get(key, {"color_palette": DEFAULT_PALETTE, "export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
                 if key == "groups":
@@ -1260,6 +1407,7 @@ class TensileWorkbench:
                 control.value = graph["definition"].get("workbench_titles", {}).get(family, legacy.get(title_keys.get(family), ""))
             self.property_variants.load(state.get(VARIANTS_KEY), self._capture_property_chart())
             self.group_variables.refresh(self.controls['groups'].value, order=self._display_order, force=True)
+            self._refresh_specimen_variables(force=True)
             self.override_group.options = self.session.visible_groups(state["groups"])
             self._sync_gauge_rows(force=True)
             self._sample_data_note()
@@ -1274,6 +1422,8 @@ class TensileWorkbench:
             self._paused = old
 
     def _sync_disabled(self):
+        self._sync_specimen_plot_settings()
+        self._sync_property_title()
         self.palette_swatches.value = palette_preview(self.controls['color_palette'].value,
             self.session.engine.plt.rcParams['axes.prop_cycle'].by_key()['color'])
         for auto, lo, hi, _ in self.axes.values():
@@ -1405,6 +1555,7 @@ class TensileWorkbench:
         self._sync_group_labels()
         self._sync_property_title()
         self.group_variables.refresh(self.controls['groups'].value, order=self._display_order)
+        self._refresh_specimen_variables()
         self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True
@@ -1835,7 +1986,8 @@ class TensileWorkbench:
         for key in VIEW_ONLY_SETTINGS:
             graph['settings'].pop(key, None)
         return json.dumps([graph, fit_policy(self.store.data), self.store.data.get('specimen_exclusions', {}),
-                           self.store.data.get('specimen_data_modes', {}), self.store.data.get('group_variables', {})], sort_keys=True)
+                           self.store.data.get('specimen_data_modes', {}), self.store.data.get('group_variables', {}),
+                           self.store.data.get('specimen_variables', {})], sort_keys=True)
 
     def _fit_settings_saved(self):
         self.session.set_project(self.store.data)
@@ -2048,7 +2200,9 @@ class TensileWorkbench:
                 else:
                     charts.append((family, None))
             for family, chart in charts:
-                for individuals in variants:
+                chart_state = {**state, **chart['settings']} if chart else state
+                individual_chart = family == GROUP_FAMILY and chart_state.get('properties_by_group_level') == 'specimen'
+                for individuals in ([True] if individual_chart else variants):
                     label = dict((value, label) for label, value in FAMILIES)[family]
                     chart_state = {**state, **chart['settings']} if chart else state
                     chart_key = ''
@@ -2057,7 +2211,7 @@ class TensileWorkbench:
                         chart_key = '_' + chart['id']
                         chart_state['property_chart_id'] = chart['id']
                         chart_state['property_chart_name'] = chart['name']
-                    subtitle = "with individuals" if individuals else "without individuals"
+                    subtitle = 'individual specimens' if individual_chart else ("with individuals" if individuals else "without individuals")
                     item = {"key": family + chart_key + ("_with" if individuals else "_without"), "label": label + " · " + subtitle}
                     try:
                         if family in PROPERTY_FAMILIES:

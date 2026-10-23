@@ -190,7 +190,8 @@ def _axis_to_plotly(ax, *, width=640):
         x_hover = ('Sample group: %{customdata[0]}' if categories is not None else
                    escape(plain(ax.get_xlabel())) + ': %{x:.2f}')
         if point_labels is not None:
-            x_hover = 'Sample group: %{customdata[0]}<br>' + x_hover
+            kind = escape(getattr(line, '_tensile_point_kind', 'Sample group'))
+            x_hover = kind + ': %{customdata[0]}' + ('<br>' + x_hover if categories is None else '')
         trace = go.Scatter(x=x.tolist(), y=y.tolist(), mode=mode, name=plain(name),
             customdata=custom,
             meta=dict(legend_label=plain(name)),
@@ -222,6 +223,8 @@ def _axis_to_plotly(ax, *, width=640):
         result.update_layout(meta={'category_labels': list(categories)})
         result.update_xaxes(tickmode='array', tickvals=list(range(len(categories))),
                             ticktext=[wrapped(label, 22) for label in categories])
+    elif hasattr(ax, '_tensile_numeric_ticks'):
+        result.update_xaxes(tickmode='array', tickvals=list(ax._tensile_numeric_ticks))
     resize_chart(result, width)
     return result
 

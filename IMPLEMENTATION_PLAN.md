@@ -2,6 +2,35 @@
 
 ## Change notes — 2026-10-23
 
+### Individual specimen properties versus location — trial implemented
+
+- Add Group means / Individual specimens modes to independent YS/UTS/EL chart
+  variants. Existing saved group charts retain their behaviour. Specimen mode
+  starts with markers only and the operator specimen number as the numeric X-axis;
+  CSV acquisition indices and ambiguous names are never inferred as locations.
+- Add separate Sample groups / Individual specimens tabs under Custom variables.
+  Reuse single/table editing, clipboard paste and confirmed deletion. Seed the
+  initial editable Location draft from operator numbers, with a fill-blanks
+  action. Load the specimen catalogue lazily; include excluded specimens for
+  editing, retain stable IDs, shared group order and natural specimen ordering.
+- Preserve untested locations with a per-chart Planned locations field (inclusive
+  integer range or numeric list), without inventing measurements or statistical
+  weight. Optional linear/quadratic trends fit only real eligible observations;
+  dashed in-range segments become dotted extrapolations beyond each property's
+  measured range. Keep repeated locations separate and fits/connections per group.
+- Respect partial exclusions, fit/EL overrides and gauge reconstruction through
+  the existing property pipeline. Show no SD bars or duplicate with/without views
+  for individual charts. Preserve specimen identities in interactive hovers and
+  planned numeric ticks in static and interactive plots.
+- Persist shared specimen variables separately from group variables. Include
+  cache/export invalidation, project validation, approved move/forget handling,
+  sample-data namespace migration and a numeric Specimen variables export sheet.
+- Verification: 83 focused tests pass covering synthetic numerical/UI,
+  clipboard, persistence, partial exclusions, moves and setup. A browser trial
+  confirmed operator-number defaults, a two-column TSV paste/save and locations
+  1–10 with real points only at 1, 4 and 7 and dotted extrapolation to 10. No
+  research data, outputs or personal settings were changed.
+
 ### Animated tensile-coupon loaders — implemented
 
 - Replace the circular busy indicator and initial Voilà spinner with one bundled
