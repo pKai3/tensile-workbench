@@ -107,7 +107,7 @@ class GroupVariablesTests(unittest.TestCase):
         result = self.session.render(self.state(properties_by_group_x_variable='co2', show_individuals=True))
         ax = result['figure'].axes[0]
         self.assertEqual(ax.get_xlabel(), 'Shielding CO₂ (%)')
-        self.assertIn('vs Shielding CO₂', ax.get_title())
+        self.assertEqual(ax.get_title(), 'YS/UTS/EL vs. Shielding CO₂ %')
         for line in self.means(result).values():
             np.testing.assert_equal(line.get_xdata(), [0, 5, 12.5])
         chart = figure_to_plotly(result['figure'])
@@ -172,6 +172,115 @@ class GroupVariablesTests(unittest.TestCase):
         reopened.group_variables.save.click()
         self.assertIn('Not saved', reopened.group_variables.status.value)
         self.assertEqual(before, reopened.store.data)
+
+    def test_table_drafts_shared_with_single_editor_and_saved_atomically(self):
+        self.variable()
+        view = self.app.group_variables
+        view.choice.value = 'co2'
+        view.fields['Alloy A'].value = '2.5'
+        view.view.value = 'table'
+        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '2.5')
+        self.assertEqual(self.app.store.data['group_variables']['co2']['values']['Alloy A'], 0)
+        view.add.click()
+        ident = view.table.columns[-1]['id']
+        view.table._message(None, dict(type='paste', row=0, column=1, text='Temperature\n°C\n500'), [])
+        view.view.value = 'single'
+        self.assertEqual(view.choice.value, ident)
+        self.assertEqual(view.name.value, 'Temperature')
+        self.assertEqual(view.fields['Alloy A'].value, '500')
+        view.view.value = 'table'
+        view.all_groups.value = True
+        self.assertEqual(view.table.groups, ['Alloy A', 'Alloy Z', 'Heat treated'])
+        view.table._message(None, dict(type='paste', row=3, column=1, text='870\n600'), [])
+        view.all_groups.value = False
+        view.save_all.click()
+        self.assertEqual(self.app.store.data['group_variables'][ident]['values'],
+                         {'Alloy A': 500, 'Alloy Z': 870, 'Heat treated': 600})
+        self.assertEqual(self.app.store.data['group_variables']['co2']['values']['Alloy A'], 2.5)
+        self.assertEqual(self.app.controls['groups'].value, ('Alloy A',))
+        with redirect_stdout(io.StringIO()):
+            reopened = TensileWorkbench(self.root)
+        self.assertEqual(reopened.store.data['group_variables'], self.app.store.data['group_variables'])
+        # Invalid names or numeric entries reject the entire batch, not just one column.
+        saved = deepcopy(self.app.store.data)
+        columns = deepcopy(view.table.columns)
+        columns[0]['values']['Alloy A'] = '10'
+        columns[1]['name'] = columns[0]['name']
+        view.table.columns = columns
+        view.save_all.click()
+        self.assertIn('Not saved', view.table.notice)
+        self.assertEqual(saved, self.app.store.data)
+        columns = deepcopy(view.table.columns)
+        columns[1]['name'] = 'Temperature'
+        columns[1]['values']['Alloy A'] = 'nan'
+        view.table.columns = deepcopy(columns)
+        view.save_all.click()
+        self.assertIn('finite number', view.table.notice)
+        self.assertEqual(saved, self.app.store.data)
+
+    def test_table_reorders_preserves_drafts_and_blank_clears(self):
+        self.variable()
+        view = self.app.group_variables
+        self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
+        view.view.value = 'table'
+        view.table._message(None, dict(type='paste', row=2, column=0, text='0\n9'), [])
+        self.app.display_order_select.value = 'Heat treated'
+        self.app._move_display_order(-1)
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A'])
+        self.assertEqual(view.table.columns[0]['values']['Heat treated'], '9')
+        view.all_groups.value = True
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A', 'Alloy Z'])
+        view.table._message(None, dict(type='paste', row=2, column=0, text='\n0\n12.5'), [])
+        view.save_all.click()
+        self.assertEqual(self.app.store.data['group_variables']['co2']['values'], {'Alloy A': 0, 'Alloy Z': 12.5})
+
+    def test_title_placeholder_and_scripts_follow_each_chart_without_saving_defaults(self):
+        self.app._save_group_variable('gas', dict(name='Shielding CO_2', unit='%', values={'Alloy A': 0}))
+        self.app._save_group_variable('area', dict(name='Area', unit='mm^2', values={'Alloy A': 10}))
+        title = self.app.title_inputs[GROUP_FAMILY]
+        self.app.controls['properties_by_group_x_variable'].value = 'gas'
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ %')
+        self.assertEqual(title.value, '')
+        self.assertEqual(self.app._capture_property_chart()[TITLE_KEY], '')
+        title.value = 'Custom CO_2 comparison'
+        first = self.app.property_variants.active
+        self.app.property_variants.add.click()
+        title.value = ''
+        self.app.controls['properties_by_group_x_variable'].value = 'area'
+        self.app.controls['properties_by_group_show_el'].value = False
+        self.assertEqual(title.placeholder, 'YS/UTS vs. Area mm²')
+        result = self.session.render(self.state(properties_by_group_x_variable='area',
+                                               properties_by_group_show_el=False, **{TITLE_KEY: ''}))
+        self.assertEqual(result['figure'].axes[0].get_title(), title.placeholder)
+        self.assertEqual(result['figure'].axes[0].get_xlabel(), 'Area (mm²)')
+        self.app.property_variants.choice.value = first
+        self.assertEqual(title.value, 'Custom CO_2 comparison')
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ %')
+        self.app._save_group_variable('gas', dict(name='Gas CO_2', unit='vol.%', values={'Alloy A': 0}))
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Gas CO₂ vol.%')
+        self.assertEqual(title.value, 'Custom CO_2 comparison')
+        self.assertEqual(self.app.store.data['group_variables']['gas']['name'], 'Gas CO_2')
+        custom = self.session.render(self.state(properties_by_group_x_variable='gas',
+                                                **{TITLE_KEY: title.value}))
+        self.assertEqual(custom['figure'].axes[0].get_title(), 'Custom CO₂ comparison')
+        # Interactive titles are displayed by the viewer above the Plotly canvas.
+        self.assertEqual(figure_to_plotly(custom['figure']).layout.xaxis.title.text, 'Gas CO₂ (vol.%)')
+
+    def test_new_single_variable_draft_survives_table_switch_and_force_reload(self):
+        view = self.app.group_variables
+        view.name.value, view.unit.value = 'Gas', '%'
+        view.fields['Alloy A'].value = '0'
+        view.view.value = 'table'
+        ident = view.table.columns[0]['id']
+        view.view.value = 'single'
+        self.assertEqual(view.choice.value, ident)
+        self.assertEqual(view.fields['Alloy A'].value, '0')
+        view.save.click()
+        view.view.value = 'table'
+        view.table._message(None, dict(type='paste', row=2, column=0, text='9'), [])
+        view.refresh(['Alloy A'], force=True)
+        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '0.0')
+        self.assertEqual(self.app.store.data['group_variables'][ident]['values']['Alloy A'], 0)
 
     def test_variants_switch_persist_add_remove_and_titles(self):
         self.variable()

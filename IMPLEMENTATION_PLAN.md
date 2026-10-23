@@ -2,6 +2,30 @@
 
 ## Change notes — 2026-10-23
 
+### Variable table, clipboard editing and automatic chart titles — implemented
+
+- Add a Table / One variable editor switch. The table shows editable names in
+  row 1, units in row 2 and group values below, with fixed group identities,
+  sticky headers, scrolling, Add variable (column) and Save all variables.
+  Both editors share drafts; row order follows the graph and Show all includes
+  unselected groups. Saving validates the entire batch before updating shared
+  variables; hidden-group values and stable variable IDs are preserved.
+- Support rectangular CSV/TSV/Excel paste at a chosen cell, quoted fields,
+  blank units/values, zero and scientific notation. Grow variable columns as
+  needed, but reject row overflow, ragged/invalid blocks or nonfinite data
+  without partial edits. Copy variable cells as TSV for spreadsheet use.
+  Clipboard edits remain drafts until explicitly saved.
+- Use the same automatic property-chart title for plotting and the grey title
+  placeholder: YS/UTS/EL vs. variable name and unit. Follow selected variables,
+  enabled properties and chart variants without persisting generated text or
+  overwriting custom titles. Format numeric sub/superscripts (CO_2, mm^2,
+  m^{-3}) as Unicode in these titles and variable-axis labels only; keep saved
+  text, numeric data and spreadsheet exports unchanged.
+- Verification: all 63 focused synthetic editor/clipboard/plot/order/setup
+  tests passed, plus an actual browser preview including a three-column paste,
+  invalid-block rejection, save, TSV copy, editor switching and 60-group scrolling. No research outputs or
+  personal settings changed.
+
 ### Show all sample groups scrolling — implemented
 
 - Prevent variable-entry rows from shrinking into the capped list viewport;

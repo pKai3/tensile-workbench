@@ -99,10 +99,14 @@ To plot against a numeric variable, such as shielding-gas CO₂ concentration:
 
 1. Select sample groups, then expand **Sample-group variables** below the sample selector/order controls.
 2. Enter a variable name, optional units and each group's value. Leave unknown values blank; `0` is a real value. **Show all sample groups** lets you edit groups outside the current selection.
-3. Click **Save variable and values** before switching variables. Create as many variables as needed; they are shared across saved graphs.
+3. Click **Save variable and values**. Or choose **View → Table** to edit all variables together: names in row 1, units in row 2, then sample-group data. **Add variable (column)** creates another column; **Save all variables** applies the complete table. Variables are shared across saved graphs.
 4. In the property chart's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more chart variants to compare other variables or property combinations.
 
 Numeric X values use their actual spacing in ascending order. Groups with missing values are flagged and omitted from that chart only; groups sharing an X value remain separate, not pooled. Lines connect means, not fitted trends. Statistics, eligibility and ±1 sample SD bars follow the existing property calculations. With **Sample names** as the X-axis, the shared **Sample group order** applies; **X-axis labels · this plot only** provides short labels without renaming groups elsewhere.
+
+In table view, paste a rectangular block from Excel, CSV or TSV into its starting cell. Paste variable cells only, without sample-group labels; rows follow the visible group order. Extra variable columns are added automatically, but pastes cannot extend beyond the visible groups. Blank cells clear values, while `0` remains a value. Invalid blocks are rejected without partial changes. **Copy variable cells (TSV)** copies names, units and visible values back to a spreadsheet. Save before changing graphs; switching editor views preserves drafts.
+
+For variable-based charts, leave **Title** empty to use the grey automatic title, e.g. **YS/UTS/EL vs. Shielding CO₂ %**. It follows the selected variable, units and enabled properties; a typed title overrides it. Numeric subscript/superscript shorthand is formatted in these chart titles and variable-axis labels: `CO_2` → CO₂, `mm^2` → mm², `m^{-3}` → m⁻³. Saved variable text is unchanged; Unicode characters can also be entered directly.
 
 Variables and chart variants are stored in the ignored personal project file, not deployed to colleagues. Values follow an approved sample-folder move. Exports include the chart settings and variable values; table exports add a numeric **Group variables** sheet when variables exist.
 

@@ -2,7 +2,7 @@
 import textwrap
 import numpy as np
 from tensile_order import ordered_groups
-from tensile_variables import variable_axis
+from tensile_variables import variable_axis, property_chart_title, plot_text
 from tensile_settings import GROUP_FAMILY, GROUP_LINE_STYLES, GROUP_DEFAULTS, validate_group_display
 
 
@@ -121,8 +121,8 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
     else:
         left.set_xticks(positions, [wrap_group_label(label, 22) for label in labels])
         left.set_xlim(-.5, len(groups) - .5)
-    shown = ', '.join(label for _, label, _, _, key in metrics if show[key])
-    left.set(title=title or (shown + (' vs ' + xlabel if variable else ' by sample')),
+    default_title = property_chart_title((variables or {}).get(variable), [key for key in show if show[key]])
+    left.set(title=plot_text(title) if title else default_title,
              xlabel=xlabel, ylabel='Strength (MPa)' if strength else 'Elongation at failure (%)')
     if show['el']:
         right.set_ylabel('Elongation at failure (%)')
