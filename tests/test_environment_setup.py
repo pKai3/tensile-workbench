@@ -44,7 +44,8 @@ class EnvironmentTests(unittest.TestCase):
         for name in ('requirements.txt', 'requirements-windows.txt',
                      'tensile_workbench_defaults.json', 'tensile_workbench.ipynb'):
             shutil.copy2(ROOT / name, self.root / name)
-        for name in ('web/templates/index.html.j2', 'web/static/tensile-favicon.svg'):
+        for name in ('web/templates/index.html.j2', 'web/templates/spinner.macro.html.j2',
+                     'web/static/tensile-favicon.svg', 'web/static/tensile-loading.svg'):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, destination)

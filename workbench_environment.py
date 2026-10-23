@@ -24,7 +24,8 @@ def check_project_files(root):
                 'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
                 'workbench_environment.py', 'workbench_app.py', 'workbench_server.py',
                 'tensile_activity.py', 'tensile_page_layout.py', 'tensile_order.py', 'tensile_variables.py', 'tensile_variable_table.py', 'tensile_property_variants.py', 'tensile_settings.py',
-                'web/templates/index.html.j2', 'web/static/tensile-favicon.svg',
+                'web/templates/index.html.j2', 'web/templates/spinner.macro.html.j2',
+                'web/static/tensile-favicon.svg', 'web/static/tensile-loading.svg',
                 'tensile_workbench_defaults.json', 'requirements.txt')
     unavailable = []
     for name in required:

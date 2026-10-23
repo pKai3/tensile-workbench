@@ -1,0 +1,22 @@
+{# Keep Voilà's skeleton styles and loading lifecycle; swap only the artwork. #}
+{% import 'voila/templates/base/spinner.macro.html.j2' as stock %}
+{% macro css() %}
+  {{ stock.css() }}
+  <style>
+    #loading {min-height:300px;height:75vh;padding:24px;box-sizing:border-box;gap:4px;text-align:center;}
+    #loading .tw-startup-coupon {width:208px;max-width:70vw;line-height:0;}
+    #loading .tw-startup-coupon svg {display:block;width:100%;height:auto;}
+    #loading .tw-startup-title {font:600 22px/1.4 system-ui,sans-serif;margin:0;}
+    #loading #loading_text {font:14px/1.5 system-ui,sans-serif;margin:8px 0;opacity:.75;}
+    @media(prefers-reduced-motion:reduce) {
+      .voila-skeleton-avatar,.voila-skeleton-line {animation:none !important;}
+    }
+  </style>
+{% endmacro %}
+{% macro html() %}
+  <div id="loading" style="display:flex" role="status" aria-live="polite" aria-atomic="true">
+    <div class="tw-startup-coupon" aria-hidden="true">{% include 'static/tensile-loading.svg' %}</div>
+    <h1 class="tw-startup-title">Tensile Workbench</h1>
+    <p id="loading_text">Preparing your workbench…</p>
+  </div>
+{% endmacro %}

@@ -17,7 +17,8 @@ class WorkbenchVoila(Voila):
         # Ship branding with the app, not inside the user's Python environment.
         # Absolute paths keep Mac/Windows launches independent of the cwd.
         web_root = Path(__file__).resolve().parent / 'web'
-        self.template_paths = [str(web_root / 'templates'), *self.template_paths]
+        # The web root also exposes our shared SVG to the loader macro's include.
+        self.template_paths = [str(web_root / 'templates'), str(web_root), *self.template_paths]
         self.static_paths = [str(web_root / 'static'), *self.static_paths]
 
     def browser_url(self):

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 160" width="260" height="160" aria-hidden="true" focusable="false">
+  <!-- One shared, self-contained animation for Voilà and the in-app overlay. -->
+  <style>
+    .tw-coupon .tw-coupon-body {fill:#55c9bf;stroke:#24465a;stroke-width:3;stroke-linejoin:round;}
+    .tw-coupon .tw-coupon-detail {fill:none;stroke:#24465a;stroke-width:2.5;stroke-linecap:round;}
+    .tw-coupon .tw-coupon-pull {transform-origin:130px 78px;animation:tw-coupon-stretch 3.4s ease-in-out infinite;}
+    .tw-coupon .tw-coupon-whole {animation:tw-coupon-intact 3.4s steps(1,end) infinite;}
+    .tw-coupon .tw-coupon-broken {opacity:0;animation:tw-coupon-break 3.4s steps(1,end) infinite;}
+    .tw-coupon .tw-coupon-left {transform-origin:70px 78px;animation:tw-coupon-left 3.4s ease-out infinite;}
+    .tw-coupon .tw-coupon-right {transform-origin:190px 78px;animation:tw-coupon-right 3.4s ease-out infinite;}
+    .tw-coupon .tw-coupon-pop {opacity:0;transform-origin:130px 78px;animation:tw-coupon-pop 3.4s ease-out infinite;}
+    .tw-coupon .tw-coupon-arrows {animation:tw-coupon-arrows 3.4s ease-in-out infinite;}
+    @keyframes tw-coupon-stretch {
+      0%,12%,100% {transform:scale(1);opacity:1;}
+      47%,52% {transform:scale(1.1,.86);opacity:1;}
+      60%,77% {transform:scale(1);opacity:1;}
+      85%,90% {transform:scale(1);opacity:0;}
+      96% {transform:scale(1);opacity:1;}
+    }
+    @keyframes tw-coupon-intact {0%,88%,100% {opacity:1;} 51% {opacity:0;}}
+    @keyframes tw-coupon-break {0%,88%,100% {opacity:0;} 51% {opacity:1;}}
+    @keyframes tw-coupon-left {
+      0%,50%,88%,100% {transform:translate(0,0) rotate(0deg);}
+      58% {transform:translate(-15px,2px) rotate(-7deg);}
+      66%,87% {transform:translate(-12px,0) rotate(-4deg);}
+    }
+    @keyframes tw-coupon-right {
+      0%,50%,88%,100% {transform:translate(0,0) rotate(0deg);}
+      58% {transform:translate(15px,2px) rotate(7deg);}
+      66%,87% {transform:translate(12px,0) rotate(4deg);}
+    }
+    @keyframes tw-coupon-pop {
+      0%,50%,72%,100% {opacity:0;transform:scale(.7);}
+      53%,59% {opacity:1;transform:scale(1);}
+      70% {opacity:0;transform:scale(1.14);}
+    }
+    @keyframes tw-coupon-arrows {0%,10%,65%,100% {opacity:.25;} 30%,48% {opacity:1;}}
+    @media (prefers-reduced-motion:reduce) {
+      .tw-coupon * {animation:none !important;}
+      .tw-coupon .tw-coupon-broken,.tw-coupon .tw-coupon-pop {display:none;}
+    }
+  </style>
+  <g class="tw-coupon">
+    <ellipse cx="130" cy="127" rx="83" ry="7" fill="#24465a" opacity=".08"/>
+    <g class="tw-coupon-arrows" fill="none" stroke="#7294a5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M28 78H12m6-6-6 6 6 6M232 78h16m-6-6 6 6-6 6"/>
+    </g>
+    <g class="tw-coupon-pull">
+      <g class="tw-coupon-whole">
+        <path class="tw-coupon-body" d="M48 44H74Q80 44 80 50V55Q80 65 94 65H166Q180 65 180 55V50Q180 44 186 44H212Q220 44 220 52V104Q220 112 212 112H186Q180 112 180 106V101Q180 91 166 91H94Q80 91 80 101V106Q80 112 74 112H48Q40 112 40 104V52Q40 44 48 44Z"/>
+        <path d="M48 51H72M188 51H211" fill="none" stroke="#c8fff0" stroke-width="4" stroke-linecap="round"/>
+        <g fill="#24465a"><circle cx="52" cy="72" r="3"/><circle cx="68" cy="72" r="3"/></g>
+        <g fill="#f48f9f" opacity=".85"><ellipse cx="49" cy="81" rx="4" ry="2.5"/><ellipse cx="71" cy="81" rx="4" ry="2.5"/></g>
+        <path class="tw-coupon-detail" d="M55 82q5 7 10 0M192 72h14m-14 6h14m-14 6h14"/>
+        <g fill="#24465a"><circle cx="100" cy="78" r="2"/><circle cx="160" cy="78" r="2"/></g>
+      </g>
+      <g class="tw-coupon-broken">
+        <g class="tw-coupon-left">
+          <path class="tw-coupon-body" d="M48 44H74Q80 44 80 50V55Q80 65 94 65H130L125 72 133 78 127 85 130 91H94Q80 91 80 101V106Q80 112 74 112H48Q40 112 40 104V52Q40 44 48 44Z"/>
+          <path d="M48 51H72" fill="none" stroke="#c8fff0" stroke-width="4" stroke-linecap="round"/>
+          <path class="tw-coupon-detail" d="m50 69 5 3-5 3m20-6-5 3 5 3"/>
+          <ellipse cx="60" cy="84" rx="3.5" ry="4.5" fill="#24465a"/>
+          <g fill="#f48f9f" opacity=".85"><ellipse cx="49" cy="81" rx="4" ry="2.5"/><ellipse cx="71" cy="81" rx="4" ry="2.5"/></g>
+          <circle cx="100" cy="78" r="2" fill="#24465a"/>
+        </g>
+        <g class="tw-coupon-right">
+          <path class="tw-coupon-body" d="M130 65H166Q180 65 180 55V50Q180 44 186 44H212Q220 44 220 52V104Q220 112 212 112H186Q180 112 180 106V101Q180 91 166 91H130L127 85 133 78 125 72Z"/>
+          <path d="M188 51H211" fill="none" stroke="#c8fff0" stroke-width="4" stroke-linecap="round"/>
+          <path class="tw-coupon-detail" d="M192 72h14m-14 6h14m-14 6h14"/>
+          <circle cx="160" cy="78" r="2" fill="#24465a"/>
+        </g>
+      </g>
+    </g>
+    <g class="tw-coupon-pop">
+      <g fill="none" stroke="#e7a33e" stroke-width="3" stroke-linecap="round">
+        <path d="m119 50-5-8m16 6V37m11 13 5-8m-27 64-5 8m16-6v11m11-13 5 8"/>
+      </g>
+      <text x="130" y="28" text-anchor="middle" fill="#aa621f" font-family="'Comic Sans MS','Chalkboard SE',cursive" font-size="16" font-weight="bold" letter-spacing="1">SNAP!</text>
+    </g>
+  </g>
+</svg>

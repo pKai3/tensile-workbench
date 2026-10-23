@@ -2,6 +2,22 @@
 
 ## Change notes — 2026-10-23
 
+### Animated tensile-coupon loaders — implemented
+
+- Replace the circular busy indicator and initial Voilà spinner with one bundled
+  cartoon dogbone SVG: stretch, snap, recoil and reset, with a surprised face.
+  Use CSS animation only; no image service, new dependency or animation timers.
+- Keep the initial loader's existing streaming/removal hooks and progress text.
+  Preserve the busy overlay's nested operations, input lock, focus restoration
+  and short-operation delay. Use a static intact coupon for reduced motion.
+- Include the artwork inline in both contexts so it works before widgets load,
+  in notebook mode and under a non-root server URL. Validate the new bundled
+  files during launch checks.
+- Verification: 38 focused tests pass (artwork/template streaming, activity,
+  browser launch and setup). Synthetic browser preview checked both loaders,
+  changing stretch/break states and normal page/control restoration. No research
+  data or personal settings were used.
+
 ### Custom-variable deletion — implemented
 
 - Add Delete variable in the single editor and an accessible × button per

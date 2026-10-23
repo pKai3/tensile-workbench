@@ -1,6 +1,7 @@
 """Shared browser busy overlay with exception-safe, nested operation scopes."""
 from contextlib import contextmanager, nullcontext
 from functools import wraps
+from pathlib import Path
 
 import anywidget
 import traitlets
@@ -21,6 +22,10 @@ def busy(message):
 
 class BusyOverlay(anywidget.AnyWidget):
     state = traitlets.Dict({'busy': False, 'message': ''}).tag(sync=True)
+    # Trusted bundled artwork, also included by the initial Voilà page loader.
+    # Inline it so the overlay works in notebook mode without a static endpoint.
+    loader_svg = traitlets.Unicode((Path(__file__).resolve().parent / 'web/static/tensile-loading.svg')
+                                  .read_text(encoding='utf-8')).tag(sync=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -42,14 +47,14 @@ class BusyOverlay(anywidget.AnyWidget):
       align-items:center;justify-content:center;background:rgba(241,245,249,.66);
       cursor:wait;touch-action:none;}
     .tw-busy-overlay[hidden] {display:none;}
-    .tw-busy-card {display:flex;align-items:center;gap:16px;max-width:calc(100vw - 48px);
+    .tw-busy-card {display:flex;align-items:center;gap:16px;max-width:calc(100vw - 48px);box-sizing:border-box;
       background:white;color:#203650;padding:22px 28px;border:1px solid #cbd5e1;
       border-radius:10px;box-shadow:0 8px 30px #20365025;font:15px/1.5 Arial,sans-serif;outline:none;}
     .tw-busy-card small {display:block;color:#637385;font-size:12px;margin-top:4px;}
-    .tw-busy-spinner {width:28px;height:28px;flex:0 0 28px;border:3px solid #dce5ed;
-      border-top-color:#1767a5;border-radius:50%;animation:tw-busy-spin .8s linear infinite;}
-    @keyframes tw-busy-spin {to {transform:rotate(360deg);}}
-    @media(prefers-reduced-motion:reduce) {.tw-busy-spinner {animation:none;border-top-color:#1767a5;}}
+    .tw-busy-coupon {display:block;width:130px;flex:0 0 130px;line-height:0;}
+    .tw-busy-coupon svg {display:block;width:100%;height:auto;}
+    @media(max-width:480px) {.tw-busy-card {flex-direction:column;gap:4px;padding:16px;text-align:center;}
+      .tw-busy-coupon {flex:0 0 auto;}}
     """
     _esm = """
     export default {render({model,el}) {
@@ -57,7 +62,8 @@ class BusyOverlay(anywidget.AnyWidget):
       const overlay=document.createElement('div');overlay.className='tw-busy-overlay';overlay.hidden=true;
       const card=document.createElement('div');card.className='tw-busy-card';card.tabIndex=-1;
       card.setAttribute('role','status');card.setAttribute('aria-live','polite');card.setAttribute('aria-atomic','true');
-      const spinner=document.createElement('span');spinner.className='tw-busy-spinner';spinner.setAttribute('aria-hidden','true');
+      const spinner=document.createElement('span');spinner.className='tw-busy-coupon';spinner.setAttribute('aria-hidden','true');
+      spinner.innerHTML=model.get('loader_svg');
       const copy=document.createElement('div'),label=document.createElement('div'),hint=document.createElement('small');
       hint.textContent='Please wait. Controls will be available when this finishes.';
       copy.append(label,hint);card.append(spinner,copy);overlay.append(card);document.body.append(overlay);
