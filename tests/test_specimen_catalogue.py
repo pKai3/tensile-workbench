@@ -11,6 +11,8 @@ from tensile_instron import InstronSummaries, read_catalogue_csv
 from tensile_variables import GroupVariablesView
 from tensile_workbench import TensileWorkbench
 from selection_fixture import make_fixture
+from variable_fixture import column, cell, set_cell
+from tensile_locations import LOCATION
 
 
 STRAIN = ['Tensile strain (Strain 1)']
@@ -88,37 +90,36 @@ class SpecimenCatalogueTests(unittest.TestCase):
             app.custom_variables_panel.selected_index = 0
             app.custom_variable_tabs.selected_index = 1
             view = app.specimen_variables
-            view.name.value = 'Location'
-            view.fields['Alloy A/coupon_1.csv'].value = '12.5'
-            with patch.object(view, '_render_rows', wraps=view._render_rows) as render:
+            set_cell(view, LOCATION, 'Alloy A/coupon_1.csv', '12')
+            with patch.object(view, '_sync_table', wraps=view._sync_table) as render:
                 view.all_groups.value = True
                 self.assertEqual(render.call_count, 1)
-            self.assertEqual(view.fields['Alloy A/coupon_1.csv'].value, '12.5')
+            self.assertEqual(cell(view, LOCATION, 'Alloy A/coupon_1.csv'), '12')
             self.assertEqual(app._specimen_numbers['Unselected/Batch.is_tens_Exports/Batch_1.csv'], 4)
             view.all_groups.value = False
-            self.assertEqual(view.fields['Alloy A/coupon_1.csv'].value, '12.5')
+            self.assertEqual(cell(view, LOCATION, 'Alloy A/coupon_1.csv'), '12')
         self.assertEqual(set(app.session._records), before)
         (other.parent / 'Batch.csv').write_text(numbered_summary.replace('705_AB_#04', '705_AB_#08'))
         app.session.reload_data()
         self.assertEqual(app.session.specimen_variable_catalogue(['Unselected'])[0]['number'], 8)
 
-    def test_large_single_editor_pages_without_losing_hidden_drafts(self):
+    def test_large_table_browses_all_specimens_without_losing_hidden_drafts(self):
         ids = [f'Group/specimen_{i:04}.csv' for i in range(1000)]
         view = GroupVariablesView(w, lambda: {}, lambda: ids, lambda *_: None, scope='specimen')
         view.refresh(ids[:3])
-        view.fields[ids[0]].value = '12.5'
+        view.add.click()
+        ident = view.table.columns[0]['id']
+        view.table._message(None, dict(type='paste', row=0, column=0, text='Position\nmm\n12.5'), [])
         view.all_groups.value = True
-        self.assertEqual(len(view.fields), 100)
-        self.assertIn('of 1000', view.page_status.value)
-        view.page_next.click()
-        self.assertEqual(next(iter(view.fields)), ids[100])
-        view.fields[ids[100]].value = '77'
-        view.page_previous.click()
-        self.assertEqual(view.fields[ids[0]].value, '12.5')
-        view.name.value = 'Position'
-        view.view.value = 'table'
         self.assertEqual(len(view.table.groups), 1000)
-        self.assertEqual(view.table.columns[0]['values'][ids[100]], '77')
+        set_cell(view, ident, ids[100], '77')
+        view.all_groups.value = False
+        self.assertEqual(view.table.groups, ids[:3])
+        self.assertEqual(cell(view, ident, ids[0]), '12.5')
+        view.all_groups.value = True
+        self.assertEqual(len(view.table.groups), 1000)
+        self.assertEqual(column(view, ident)['name'], 'Position')
+        self.assertEqual(cell(view, ident, ids[100]), '77')
 
 
 if __name__ == '__main__':

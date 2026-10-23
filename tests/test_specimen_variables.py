@@ -18,6 +18,7 @@ from tensile_locations import LOCATION, SPECIMEN_COUNT
 from tensile_group_plot import GROUP_FAMILY
 from tensile_plotly import figure_to_plotly
 from tensile_moves import migrate_settings, forget_group, references
+from variable_fixture import column, cell, set_cell
 
 
 class SpecimenVariablesTests(unittest.TestCase):
@@ -93,20 +94,19 @@ class SpecimenVariablesTests(unittest.TestCase):
 
     def test_location_editor_defaults_override_reset_and_clipboard(self):
         view = self.editor()
-        self.assertEqual(view.name.value, 'Location')
-        self.assertEqual([v.value for v in view.fields.values()], ['1', '4', '7'])
+        self.assertEqual(column(view, LOCATION)['name'], 'Location')
+        self.assertEqual([cell(view, LOCATION, g) for g in view.table.groups], ['1', '4', '7'])
         first = 'Alloy A/coupon_1.csv'
-        view.fields[first].value = '2'
-        view.save.click()
-        ident = view.choice.value
+        set_cell(view, LOCATION, first, '2')
+        view.save_all.click()
+        ident = view.table.columns[0]['id']
         self.assertEqual(ident, LOCATION)
         self.assertEqual(self.app.store.data['specimen_variables'][ident]['values'][first], 2)
-        view.fields[first].value = ''
-        view.save.click()
+        set_cell(view, LOCATION, first, '')
+        view.save_all.click()
         self.app._refresh_specimen_variables(force=True)
-        self.assertEqual(view.fields[first].value, '1')
+        self.assertEqual(cell(view, LOCATION, first), '1')
         self.assertNotIn(first, self.app.store.data['specimen_variables'][LOCATION]['values'])
-        view.view.value = 'table'
         view.table._message(None, dict(type='paste', row=0, column=0, text='Location\tTemperature\n\t°C\n0\t500\n5\t600\n20\t700'), [])
         view.save_all.click()
         saved = self.app.store.data['specimen_variables']
@@ -122,13 +122,12 @@ class SpecimenVariablesTests(unittest.TestCase):
         for record, number in zip(self.session._load('Alloy A'), (1, 4, 7)):
             record['specimen_label'] = f'705_AB_#{number}'
         view = self.editor()
-        self.assertEqual([field.value for field in view.fields.values()], ['1', '4', '7'])
-        view.save.click()
+        self.assertEqual([cell(view, LOCATION, g) for g in view.table.groups], ['1', '4', '7'])
+        view.save_all.click()
         self.assertEqual(self.app.store.data['specimen_variables'][LOCATION]['values'], {})
         second = 'Alloy A/coupon_2.csv'
-        view.fields[second].value = '9'
-        view.save.click()
-        view.view.value = 'table'
+        set_cell(view, LOCATION, second, '9')
+        view.save_all.click()
         self.assertEqual(view.table.defaults[LOCATION][second], '4')
         state = self.state()
         result = self.session.render(state)
@@ -142,11 +141,10 @@ class SpecimenVariablesTests(unittest.TestCase):
             workbook.close()
         for index, number in enumerate((1, 9, 7), start=1):
             self.assertIn((f'Alloy A/coupon_{index}.csv', LOCATION, 'Location', None, number), rows)
-        view.view.value = 'single'
-        view.fields[second].value = ''
-        view.save.click()
+        set_cell(view, LOCATION, second, '')
+        view.save_all.click()
         self.app._refresh_specimen_variables(force=True)
-        self.assertEqual(view.fields[second].value, '4')
+        self.assertEqual(cell(view, LOCATION, second), '4')
         self.assertEqual(self.app.store.data['specimen_variables'][LOCATION]['values'], {})
 
     def test_independent_sections_variants_and_one_chart_per_group(self):
@@ -242,8 +240,7 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.assertTrue(variable_usage(self.app.store.data, 'height', scope='specimen'))
         self.assertFalse(variable_usage(self.app.store.data, 'height'))
         view = self.editor()
-        view.choice.value = 'height'
-        view.remove.click()
+        view.table._message(None, dict(type='delete', id='height'), [])
         view.delete_confirm.click()
         self.assertNotIn('height', self.app.store.data['specimen_variables'])
         with self.assertRaisesRegex(ValueError, 'unavailable'):

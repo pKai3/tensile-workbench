@@ -97,50 +97,30 @@ def variable_axis(groups, ident, variables):
 
 
 class GroupVariablesView:
-    """Compact editor; an explicit save commits names, units and values together."""
-    def __init__(self, w, get_variables, get_groups, on_save, on_save_all=None, get_usage=None,
+    """Table-only editor; an explicit save commits names, units and values together."""
+    def __init__(self, w, get_variables, get_groups, on_save_all=None, get_usage=None,
                  *, scope='group', row_label=None, on_scope_change=None, required=None,
-                 get_defaults=None, default_variable=''):
+                 get_defaults=None):
         from tensile_variable_table import VariableTable
-        self.w, self.get_variables, self.get_groups, self.on_save = w, get_variables, get_groups, on_save
+        self.get_variables, self.get_groups = get_variables, get_groups
         self.on_save_all = on_save_all
         self.scope = scope
         self.on_scope_change = on_scope_change
         self.required = required or {}
         self.get_defaults = get_defaults or (lambda: {})
-        self._page = 0
-        self._page_size = 100 if scope == 'specimen' else None
         self.row_label = row_label or str
         entity = 'individual specimens' if scope == 'specimen' else 'sample groups'
         self.get_usage = get_usage or (lambda _: [])
         self._pending_delete = None
-        self.groups, self.fields, self._draft = [], {}, {}
+        self.groups = []
         self.order = []
         self._paused = False
-        self._active = default_variable
         self._drafts = self._editable(get_variables())
-        self.view = w.ToggleButtons(description='View:', options=[('One variable', 'single'), ('Table', 'table')],
-                                     style={'button_width': 'auto'})
-        self.choice = w.Dropdown(description='Variable:', options=[('New variable…', '')],
-                                 layout=w.Layout(width='450px', max_width='100%'))
-        self.name = w.Text(description='Name:', placeholder=('e.g. Extraction height' if scope == 'specimen'
-                                                           else 'e.g. Shielding gas CO₂'), continuous_update=False)
-        self.unit = w.Text(description='Units:', placeholder='e.g. %, °C, mm', continuous_update=False)
         self.all_groups = w.Checkbox(description='Show all ' + entity, indent=False,
                                      tooltip='Include unselected groups without changing the graph selection. Values include excluded specimens.',
                                      layout=w.Layout(width='auto'))
-        self.rows = w.VBox(layout=w.Layout(width='100%', max_height='300px', overflow='auto', flex='0 0 auto'))
-        self.page_previous = w.Button(description='Previous rows', layout=w.Layout(width='auto'))
-        self.page_next = w.Button(description='Next rows', layout=w.Layout(width='auto'))
-        self.page_status = w.HTML()
-        self.pagination = w.HBox([self.page_previous, self.page_status, self.page_next],
-                                 layout=w.Layout(display='none', flex_flow='row wrap'))
-        self.save = w.Button(description='Save variable and values', button_style='primary',
-                             layout=w.Layout(width='auto', align_self='flex-start', flex='0 0 auto'))
         self.table = VariableTable(on_delete=self._request_delete, required=self.required,
                                    layout=w.Layout(width='100%', min_width='0'))
-        self.remove = w.Button(description='Delete variable', button_style='danger', disabled=True,
-                               layout=w.Layout(width='auto'))
         self.delete_message = w.HTML()
         self.delete_confirm = w.Button(description='Confirm delete', button_style='danger', layout=w.Layout(width='auto'))
         self.delete_cancel = w.Button(description='Cancel', layout=w.Layout(width='auto'))
@@ -149,16 +129,13 @@ class GroupVariablesView:
         self.add = w.Button(description='Add variable (column)', layout=w.Layout(width='auto'))
         self.save_all = w.Button(description='Save all variables', button_style='primary',
                                  layout=w.Layout(width='auto'))
-        self.single_ui = w.VBox([self.choice, w.HBox([self.name, self.unit], layout=w.Layout(flex_flow='row wrap')),
-                                self.pagination, self.rows, w.HBox([self.save, self.remove], layout=w.Layout(flex_flow='row wrap'))],
-                                layout=w.Layout(width='100%', min_width='0'))
         self.table_ui = w.VBox([
             w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
                    'Paste CSV/TSV or an Excel block into a cell; extra columns are added automatically. '
                    'Paste variable cells only, without the row labels. Blank cells clear values. '
                    'Edits are applied with Save all variables; deletion requires separate confirmation.'),
             w.HBox([self.add, self.save_all], layout=w.Layout(flex_flow='row wrap')),
-            self.table], layout=w.Layout(width='100%', min_width='0', display='none'))
+            self.table], layout=w.Layout(width='100%', min_width='0'))
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
             w.HTML('Numeric values attached to ' + entity + ', shared by all graphs. Create as many variables as needed. '
@@ -168,19 +145,13 @@ class GroupVariablesView:
                       'Location defaults to the operator specimen number. Enter a whole number to override it; clear the cell to restore the default. '
                       'CSV row numbers are never used as locations. '
                       'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else '')),
-            self.view, self.all_groups, self.delete_panel, self.single_ui, self.table_ui, self.status
+            self.all_groups, self.delete_panel, self.table_ui, self.status
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
         self.ui.set_title(0, 'Custom variables · shared by all graphs')
-        self.choice.observe(self._choose, names='value')
         self.all_groups.observe(self._scope_changed, names='value')
-        self.page_previous.on_click(lambda _: self._move_page(-1))
-        self.page_next.on_click(lambda _: self._move_page(1))
-        self.view.observe(self._switch_view, names='value')
         self.table.observe(self._table_changed, names='columns')
-        self.save.on_click(self._save)
         self.add.on_click(self._add_column)
         self.save_all.on_click(self._save_table)
-        self.remove.on_click(lambda _: self._request_delete(self._active))
         self.delete_cancel.on_click(self._cancel_delete)
         self.delete_confirm.on_click(self._confirm_delete)
 
@@ -206,36 +177,6 @@ class GroupVariablesView:
                 values[group] = value
         return dict(name=variable['name'].strip(), unit=variable['unit'].strip(), values=values)
 
-    def _capture_single(self):
-        self._drafts[self._active] = dict(name=self.name.value, unit=self.unit.value, values=dict(self._draft))
-
-    def _promote_new(self):
-        new = self._drafts.get('')
-        if new and (new['name'].strip() or new['unit'].strip() or any(v.strip() for v in new['values'].values())):
-            ident = 'var-' + uuid.uuid4().hex
-            self._drafts[ident] = self._drafts.pop('')
-            if not self._active:
-                self._active = ident
-
-    def _sync_choices(self):
-        old, self._paused = self._paused, True
-        try:
-            self.choice.options = [('New variable…', '')] + [
-                (variable_label(v) if v['name'].strip() else 'Unnamed variable', k)
-                for k, v in self._drafts.items() if k]
-            self.choice.value = self._active if self._active in self._drafts else ''
-        finally:
-            self._paused = old
-
-    def _load_single(self, *, render=True):
-        variable = self._drafts.get(self._active, dict(name='', unit='', values={}))
-        self.name.value, self.unit.value = variable['name'], variable['unit']
-        self._draft = dict(variable['values'])
-        self.remove.disabled = not bool(self._active) or self._active in self.required
-        self.name.disabled = self.unit.disabled = self._active in self.required
-        if render and self.view.value == 'single':
-            self._render_rows()
-
     def refresh(self, groups, *, order=None, force=False, redraw=False):
         groups = list(groups)
         order = list(order) if order is not None else self.order
@@ -243,68 +184,31 @@ class GroupVariablesView:
         self.groups = groups
         self.order = order
         variables = self._editable(self.get_variables())
+        changed = changed or bool(variables.keys() - self._drafts.keys())
         if force:
             self._cancel_delete()
-            self._page = 0
             self._drafts = variables
-            if self._active not in variables:
-                self._active = ''
-            self._load_single(render=False)
             self.status.value = ''
             self.table.notice = ''
         else:
             for ident, variable in variables.items():
                 self._drafts.setdefault(ident, variable)
-        self._sync_choices()
-        if force or changed or redraw:
-            self._render()
+        if force or changed or redraw or self._editable_defaults() != self.table.defaults:
+            self._sync_table()
 
     def _scope_changed(self, _=None):
-        self._page = 0
         if self.on_scope_change is not None:
             self.on_scope_change()
         else:
-            self._render()
-
-    def _move_page(self, step):
-        self._page = max(0, self._page + step)
-        self._render_rows()
-
-    def _choose(self, _=None):
-        if self._paused:
-            return
-        self._cancel_delete()
-        self._capture_single()
-        self._active = self.choice.value
-        self.status.value = ''
-        self._load_single()
-
-    def _switch_view(self, change):
-        self._cancel_delete()
-        if change['new'] == 'table':
-            self._capture_single()
-            self._promote_new()
             self._sync_table()
-        else:
-            self._sync_choices()
-            self._load_single()
-        self.single_ui.layout.display = '' if change['new'] == 'single' else 'none'
-        self.table_ui.layout.display = '' if change['new'] == 'table' else 'none'
-        self.status.value = ''
 
     def _visible_groups(self):
         if not self.all_groups.value:
             return ordered_groups(self.groups, self.order)
-        groups = set(self.get_groups()) | set(self._draft)
+        groups = set(self.get_groups())
         for variable in self._drafts.values():
             groups.update(variable['values'])
         return ordered_groups(sorted(groups), self.order)
-
-    def _render(self):
-        if self.view.value == 'table':
-            self._sync_table()
-        else:
-            self._render_rows()
 
     def _sync_table(self):
         old, self._paused = self._paused, True
@@ -325,19 +229,17 @@ class GroupVariablesView:
 
     def _add_column(self, _=None):
         self._cancel_delete()
-        self._active = 'var-' + uuid.uuid4().hex
-        self._drafts[self._active] = dict(name='', unit='', values={})
+        ident = 'var-' + uuid.uuid4().hex
+        self._drafts[ident] = dict(name='', unit='', values={})
         self._sync_table()
         self.table.notice = 'New column added. Enter its name, optional unit and values, then Save all variables.'
 
     def _request_delete(self, ident):
         if ident in self.required:
-            self.status.value = escape(self.required[ident]['name']) + ' is required and cannot be deleted.'
+            self.table.notice = self.required[ident]['name'] + ' is required and cannot be deleted.'
             return
         if not ident or ident not in self._drafts:
             return
-        if self.view.value == 'single':
-            self._capture_single()
         saved = self.get_variables()
         self._pending_delete = dict(id=ident, saved=deepcopy(saved.get(ident)), persisted=ident in saved)
         name = self._drafts[ident]['name'].strip() or 'Unnamed variable'
@@ -379,73 +281,17 @@ class GroupVariablesView:
                 self.on_save_all(variables)
             name = self._drafts[ident]['name'].strip() or 'Unnamed variable'
             del self._drafts[ident]
-            if self._active == ident:
-                self._active = next((key for key in self._drafts if key), '')
-            self._sync_choices()
-            self._load_single()
             self._sync_table()
             self._cancel_delete()
-            self.status.value = escape(f'Deleted {name}. Other draft edits are unchanged.')
+            self.status.value = ''
             self.table.notice = f'Deleted {name}. Other draft edits are unchanged.'
         except Exception as error:
             self.delete_message.value += '<br><b>Not deleted:</b> ' + escape(str(error))
-
-    def _render_rows(self):
-        w = self.w
-        groups = self._visible_groups()
-        size = self._page_size or max(1, len(groups))
-        self._page = min(self._page, max(0, (len(groups) - 1) // size))
-        start = self._page * size
-        self.pagination.layout.display = '' if len(groups) > size else 'none'
-        self.page_previous.disabled = start == 0
-        self.page_next.disabled = start + size >= len(groups)
-        self.page_status.value = f'Rows {start + 1}–{min(start + size, len(groups))} of {len(groups)} · Table view shows all rows'
-        groups = groups[start:start + size]
-        old = self.rows.children
-        self.fields = {}
-        rows = []
-        defaults = self._editable_defaults().get(self._active, {})
-        for group in groups:
-            field = w.Text(value=self._draft.get(group, '').strip() or defaults.get(group, ''),
-                           placeholder=defaults.get(group, 'Not set'), continuous_update=False,
-                           layout=w.Layout(width='160px', flex='0 0 160px'))
-            field.observe(lambda change, g=group: self._draft.__setitem__(g, change['new']), names='value')
-            self.fields[group] = field
-            # Flex children otherwise shrink into the capped viewport instead
-            # of overflowing it, clipping every input when many groups appear.
-            rows.append(w.HBox([w.HTML('<span title="' + escape(group, quote=True) + '">' + escape(self.row_label(group)) + '</span>',
-                                       layout=w.Layout(width='450px', max_width='100%')), field],
-                                layout=w.Layout(flex_flow='row wrap', gap='8px', flex='0 0 auto', min_height='32px')))
-        self.rows.children = tuple(rows) or (w.HTML('Select sample groups above, or enable Show all sample groups.'),)
-        for row in old:
-            for child in getattr(row, 'children', ()):
-                child.close()
-            row.close()
 
     def _editable_defaults(self):
         return {ident: {group: str(int(value)) if ident in self.required and whole_number(value) else str(value)
                         for group, value in values.items() if value is not None}
                 for ident, values in self.get_defaults().items()}
-
-    def _save(self, _=None):
-        self._cancel_delete()
-        try:
-            self._capture_single()
-            ident = self._active or 'var-' + uuid.uuid4().hex
-            variable = self._numeric(self._drafts[self._active])
-            variables = deepcopy(self.get_variables())
-            variables[ident] = variable
-            validate_variables(variables, scope=self.scope)
-            self.on_save(ident, variable)
-            if not self._active:
-                self._drafts.pop('', None)
-            self._active = ident
-            self._drafts.update(self._editable({ident: self.get_variables().get(ident, variable)}))
-            self._sync_choices()
-            self._load_single()
-            self.status.value = 'Saved for all graphs. Choose this variable as an X-axis in the YS/UTS/EL plot settings.'
-        except Exception as error:
-            self.status.value = '<b>Not saved:</b> ' + escape(str(error))
 
     def _save_table(self, _=None):
         self._cancel_delete()
@@ -457,9 +303,8 @@ class GroupVariablesView:
                 raise ValueError('Saving the table is unavailable in this preview.')
             self.on_save_all(variables)
             self._drafts = self._editable(self.get_variables())
-            self._sync_choices()
-            self._load_single()
             self._sync_table()
+            self.status.value = ''
             self.table.notice = 'All variables saved for all graphs.'
         except Exception as error:
             self.table.notice = 'Not saved: ' + str(error)

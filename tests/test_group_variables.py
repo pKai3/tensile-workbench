@@ -18,6 +18,7 @@ from tensile_moves import migrate_settings, forget_group, references
 from tensile_plotly import figure_to_plotly
 from tensile_workbench import TensileWorkbench
 from tensile_locations import SPECIMEN_COUNT
+from variable_fixture import column, cell, set_cell
 
 
 class GroupVariablesTests(unittest.TestCase):
@@ -51,32 +52,31 @@ class GroupVariablesTests(unittest.TestCase):
     def test_variable_rows_follow_shared_order_without_losing_drafts(self):
         self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
         view = self.app.group_variables
-        view.choice.value = ''
-        view.name.value, view.unit.value = 'Gas', '%'
-        view.fields['Alloy A'].value = '0'
-        view.fields['Heat treated'].value = '5.25'
+        view.add.click()
+        ident = view.table.columns[-1]['id']
+        view.table._message(None, dict(type='paste', row=0, column=1, text='Gas\n%\n0\n5.25'), [])
         self.app.display_order_select.value = 'Heat treated'
         self.app._move_display_order(-1)
-        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
-        self.assertEqual(view.fields['Alloy A'].value, '0')
-        self.assertEqual(view.fields['Heat treated'].value, '5.25')
-        self.assertEqual((view.name.value, view.unit.value), ('Gas', '%'))
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A'])
+        self.assertEqual(cell(view, ident, 'Alloy A'), '0')
+        self.assertEqual(cell(view, ident, 'Heat treated'), '5.25')
+        self.assertEqual((column(view, ident)['name'], column(view, ident)['unit']), ('Gas', '%'))
         view.all_groups.value = True
-        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A', 'Alloy Z'])
-        view.fields['Alloy Z'].value = '12.5'
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A', 'Alloy Z'])
+        set_cell(view, ident, 'Alloy Z', '12.5')
         view.all_groups.value = False
-        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
-        view.save.click()
-        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
-        self.assertEqual(self.app.store.data['group_variables'][view.choice.value]['values'],
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A'])
+        view.save_all.click()
+        self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A'])
+        self.assertEqual(self.app.store.data['group_variables'][ident]['values'],
                          {'Alloy A': 0, 'Heat treated': 5.25, 'Alloy Z': 12.5})
         with redirect_stdout(io.StringIO()):
             reopened = TensileWorkbench(self.root)
-        self.assertEqual(list(reopened.group_variables.fields), ['Heat treated', 'Alloy A'])
+        self.assertEqual(reopened.group_variables.table.groups, ['Heat treated', 'Alloy A'])
         reopened._apply_graph('1')
-        self.assertEqual(list(reopened.group_variables.fields), ['Alloy A'])
+        self.assertEqual(reopened.group_variables.table.groups, ['Alloy A'])
         reopened._apply_graph('0')
-        self.assertEqual(list(reopened.group_variables.fields), ['Heat treated', 'Alloy A'])
+        self.assertEqual(reopened.group_variables.table.groups, ['Heat treated', 'Alloy A'])
 
     def test_many_variable_rows_scroll_without_shrinking_or_changing_selection(self):
         import ipywidgets as w
@@ -84,25 +84,22 @@ class GroupVariablesTests(unittest.TestCase):
         selected = [groups[2], groups[0]]
         view = GroupVariablesView(w, lambda: {}, lambda: groups, lambda *_: None)
         view.refresh(selected, order=selected)
-        view.fields[groups[2]].value = '0'
+        view.add.click()
+        ident = view.table.columns[0]['id']
+        set_cell(view, ident, groups[2], '0')
         view.all_groups.value = True
-        self.assertEqual(len(view.fields), 60)
-        self.assertEqual(list(view.fields)[:2], selected)
+        self.assertEqual(len(view.table.groups), 60)
+        self.assertEqual(view.table.groups[:2], selected)
         self.assertEqual(view.groups, selected)
-        self.assertEqual(view.rows.layout.overflow, 'auto')
-        self.assertEqual(view.rows.layout.max_height, '300px')
-        self.assertEqual(view.rows.layout.flex, '0 0 auto')
-        for row in view.rows.children:
-            self.assertEqual(row.layout.flex, '0 0 auto')
-            self.assertEqual(row.layout.min_height, '32px')
-            self.assertEqual(row.layout.flex_flow, 'row wrap')
-        self.assertEqual(view.save.layout.align_self, 'flex-start')
-        view.fields[groups[-1]].value = '12.5'
+        self.assertIn('overflow:auto;max-height:440px', view.table._css)
+        self.assertNotEqual(view.table_ui.layout.display, 'none')
+        self.assertFalse(hasattr(view, 'fields'))
+        set_cell(view, ident, groups[-1], '12.5')
         view.all_groups.value = False
-        self.assertEqual(list(view.fields), selected)
-        self.assertEqual(view.fields[groups[2]].value, '0')
+        self.assertEqual(view.table.groups, selected)
+        self.assertEqual(cell(view, ident, groups[2]), '0')
         view.all_groups.value = True
-        self.assertEqual(view.fields[groups[-1]].value, '12.5')
+        self.assertEqual(cell(view, ident, groups[-1]), '12.5')
 
     def test_numeric_spacing_identity_and_unchanged_means(self):
         self.variable()
@@ -146,18 +143,17 @@ class GroupVariablesTests(unittest.TestCase):
 
     def test_global_editor_persistence_and_cache_invalidation(self):
         view = self.app.group_variables
-        view.choice.value = ''
-        view.name.value, view.unit.value = 'Shielding CO₂', '%'
-        view.fields['Alloy A'].value = '0'
-        view.save.click()
-        ident = view.choice.value
+        view.add.click()
+        ident = view.table.columns[-1]['id']
+        view.table._message(None, dict(type='paste', row=0, column=1, text='Shielding CO₂\n%\n0'), [])
+        view.save_all.click()
         self.assertTrue(ident)
         self.assertEqual(self.app.store.data['group_variables'][ident]['values'], {'Alloy A': 0})
         self.app.controls['properties_by_group_x_variable'].value = ident
         result = self.session.render(self.state(properties_by_group_x_variable=ident))
         self.assertIn('omitted from this plot', result['figure']._tensile_variable_warning)
-        view.fields['Alloy A'].value = '2.5'
-        view.save.click()
+        set_cell(view, ident, 'Alloy A', '2.5')
+        view.save_all.click()
         changed = self.session.render(self.state(properties_by_group_x_variable=ident))
         self.assertIsNot(result['figure'], changed['figure'])
         with self.assertRaisesRegex(ValueError, 'variables changed'):
@@ -170,28 +166,22 @@ class GroupVariablesTests(unittest.TestCase):
             reopened = TensileWorkbench(self.root)
         self.assertEqual(reopened.store.data['group_variables'][ident]['values'], {'Alloy A': 2.5})
         before = deepcopy(reopened.store.data)
-        reopened.group_variables.name.value = 'Bad'
-        reopened.group_variables.fields['Alloy A'].value = 'nan'
-        reopened.group_variables.save.click()
-        self.assertIn('Not saved', reopened.group_variables.status.value)
+        set_cell(reopened.group_variables, ident, 'Alloy A', 'nan')
+        reopened.group_variables.save_all.click()
+        self.assertIn('Not saved', reopened.group_variables.table.notice)
         self.assertEqual(before, reopened.store.data)
 
-    def test_table_drafts_shared_with_single_editor_and_saved_atomically(self):
+    def test_table_drafts_saved_atomically_across_visible_and_hidden_groups(self):
         self.variable()
         view = self.app.group_variables
-        view.choice.value = 'co2'
-        view.fields['Alloy A'].value = '2.5'
-        view.view.value = 'table'
+        set_cell(view, 'co2', 'Alloy A', '2.5')
         self.assertEqual(view.table.columns[1]['values']['Alloy A'], '2.5')
         self.assertEqual(self.app.store.data['group_variables']['co2']['values']['Alloy A'], 0)
         view.add.click()
         ident = view.table.columns[-1]['id']
         view.table._message(None, dict(type='paste', row=0, column=2, text='Temperature\n°C\n500'), [])
-        view.view.value = 'single'
-        self.assertEqual(view.choice.value, ident)
-        self.assertEqual(view.name.value, 'Temperature')
-        self.assertEqual(view.fields['Alloy A'].value, '500')
-        view.view.value = 'table'
+        self.assertEqual(column(view, ident)['name'], 'Temperature')
+        self.assertEqual(cell(view, ident, 'Alloy A'), '500')
         view.all_groups.value = True
         self.assertEqual(view.table.groups, ['Alloy A', 'Alloy Z', 'Heat treated'])
         view.table._message(None, dict(type='paste', row=3, column=2, text='870\n600'), [])
@@ -225,7 +215,6 @@ class GroupVariablesTests(unittest.TestCase):
         self.variable()
         view = self.app.group_variables
         self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
-        view.view.value = 'table'
         view.table._message(None, dict(type='paste', row=2, column=1, text='0\n9'), [])
         self.app.display_order_select.value = 'Heat treated'
         self.app._move_display_order(-1)
@@ -269,18 +258,15 @@ class GroupVariablesTests(unittest.TestCase):
         # Interactive titles are displayed by the viewer above the Plotly canvas.
         self.assertEqual(figure_to_plotly(custom['figure']).layout.xaxis.title.text, 'Gas CO₂ (vol.%)')
 
-    def test_new_single_variable_draft_survives_table_switch_and_force_reload(self):
+    def test_new_column_draft_survives_scope_switch_and_force_reload(self):
         view = self.app.group_variables
-        view.choice.value = ''
-        view.name.value, view.unit.value = 'Gas', '%'
-        view.fields['Alloy A'].value = '0'
-        view.view.value = 'table'
+        view.add.click()
+        view.table._message(None, dict(type='paste', row=0, column=1, text='Gas\n%\n0'), [])
         ident = view.table.columns[1]['id']
-        view.view.value = 'single'
-        self.assertEqual(view.choice.value, ident)
-        self.assertEqual(view.fields['Alloy A'].value, '0')
-        view.save.click()
-        view.view.value = 'table'
+        view.all_groups.value = True
+        view.all_groups.value = False
+        self.assertEqual(cell(view, ident, 'Alloy A'), '0')
+        view.save_all.click()
         view.table._message(None, dict(type='paste', row=2, column=1, text='9'), [])
         view.refresh(['Alloy A'], force=True)
         self.assertEqual(view.table.columns[1]['values']['Alloy A'], '0.0')
@@ -292,9 +278,8 @@ class GroupVariablesTests(unittest.TestCase):
         cached = self.session.render(self.state(properties_by_group_x_variable='co2'))
         view = self.app.group_variables
         self.assertEqual(view.ui.get_title(0), 'Custom variables · shared by all graphs')
-        view.choice.value = 'co2'
         before = deepcopy(self.app.store.data)
-        view.remove.click()
+        view.table._message(None, dict(type='delete', id='co2'), [])
         self.assertEqual(view._pending_delete['id'], 'co2')
         self.assertIn('Chart 1', view.delete_message.value)
         self.assertIn('new X-axis selection', view.delete_message.value)
@@ -302,7 +287,7 @@ class GroupVariablesTests(unittest.TestCase):
         view.delete_cancel.click()
         view.delete_confirm.click()
         self.assertEqual(before, self.app.store.data)
-        view.remove.click()
+        view.table._message(None, dict(type='delete', id='co2'), [])
         view.delete_confirm.click()
         self.assertNotIn('co2', self.app.store.data['group_variables'])
         self.assertEqual(self.app.store.data['graphs'], before['graphs'])
@@ -323,7 +308,6 @@ class GroupVariablesTests(unittest.TestCase):
     def test_table_delete_keeps_other_drafts_and_does_not_resurrect_deleted_columns(self):
         self.variable()
         view = self.app.group_variables
-        view.view.value = 'table'
         view.add.click()
         new_id = view.table.columns[-1]['id']
         view.table._message(None, dict(type='paste', row=0, column=2, text='Temperature\n°C\n500'), [])
@@ -349,8 +333,7 @@ class GroupVariablesTests(unittest.TestCase):
     def test_delete_failure_and_changed_target_keep_variable_and_force_reload_cancels(self):
         self.variable()
         view = self.app.group_variables
-        view.choice.value = 'co2'
-        view.remove.click()
+        view.table._message(None, dict(type='delete', id='co2'), [])
         with patch.object(view, 'on_save_all', side_effect=OSError('Save failed')):
             view.delete_confirm.click()
         self.assertIn('Not deleted', view.delete_message.value)

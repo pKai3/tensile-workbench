@@ -92,7 +92,11 @@ class VariableTable(anywidget.AnyWidget):
     .tw-variable-grid input {box-sizing:border-box;width:190px;height:30px;padding:4px 6px;
       border:1px solid #b6c1cd;border-radius:3px;background:white;color:#24354a;font:inherit;}
     .tw-variable-grid tbody input {text-align:right;font-variant-numeric:tabular-nums;}
+    .tw-variable-grid input[readonly] {background:#f3f6f9;color:#526170;}
     .tw-variable-grid input:focus {outline:2px solid #1767a5;outline-offset:0;}
+    .tw-variable-count {display:flex;align-items:center;gap:6px;width:190px;}
+    .tw-variable-count-prefix {color:#667085;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .tw-variable-count input {width:0;min-width:54px;flex:1 1 auto;}
     .tw-variable-heading {display:flex;align-items:center;gap:6px;}
     .tw-variable-delete {width:25px;height:28px;flex:0 0 25px;border:1px solid #cbd5e1;
       border-radius:3px;background:#fff;color:#a42b2b;cursor:pointer;font-size:18px;}
@@ -130,12 +134,13 @@ class VariableTable(anywidget.AnyWidget):
             const cell=document.createElement(r<2 ? 'th' : 'td'),input=document.createElement('input');
             input.type='text';input.dataset.row=r;input.dataset.col=c;
             input.setAttribute('aria-label',r===0 ? 'Variable name '+(c+1) :
-              r===1 ? 'Variable unit '+(c+1) : caption+' · variable '+(c+1));
+              r===1 ? 'Variable unit '+(c+1) : caption+' · '+(column.name || 'variable '+(c+1)));
             input.value=r===0 ? column.name : r===1 ? column.unit : (column.values[label] || defaults[column.id]?.[label] || '');
             input.placeholder=r===0 ? 'Variable name' : r===1 ? 'Optional unit' : (defaults[column.id]?.[label] ?? 'Not set');
             input.readOnly=r<2 && !!required[column.id];
             if(r===1 && required[column.id]) input.placeholder='—';
             if(required[column.id]) input.title=r<2 ? 'Required variable · name and unit are fixed' : 'Whole number';
+            if(r>=2) input.inputMode=required[column.id] ? 'numeric' : 'decimal';
             input.addEventListener('input',()=>{
               const updated=structuredClone(model.get('columns'));
               if(r<2) updated[c][r===0 ? 'name' : 'unit']=input.value;
@@ -163,6 +168,17 @@ class VariableTable(anywidget.AnyWidget):
               remove.setAttribute('aria-label','Delete variable '+(column.name || 'column '+(c+1)));
               remove.addEventListener('click',()=>model.send({type:'delete',id:column.id}));
               heading.append(input);if(!required[column.id]) heading.append(remove);cell.append(heading);
+            } else if(r>=2 && column.id==='__specimen_count__' && required[column.id]) {
+              // Counts come from the imported inventory, not the editable total.
+              // Keep this display-only prefix outside the input/clipboard data.
+              const count=defaults[column.id]?.[label];
+              const wrapper=document.createElement('div'),prefix=document.createElement('span');
+              wrapper.className='tw-variable-count';prefix.className='tw-variable-count-prefix';
+              prefix.textContent=(count ?? '—')+' tested of';
+              prefix.title=count===undefined ? 'Tested count unavailable: this group is not in the imported data.' :
+                'Tested specimens found in the imported data, including excluded specimens.';
+              input.setAttribute('aria-label',caption+' · Total specimen count ('+(count ?? 'unknown')+' tested)');
+              wrapper.append(prefix,input);cell.append(wrapper);
             } else {cell.append(input);}
             tr.append(cell);
           });

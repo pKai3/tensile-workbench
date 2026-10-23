@@ -1029,23 +1029,23 @@ class TensileWorkbench:
         self.specimen_charts = SpecimenChartsView(w, lambda: self.store.data.get('specimen_variables', {}),
                                                   self._changed, self.title_inputs[SPECIMEN_FAMILY])
         self.group_variables = GroupVariablesView(w, lambda: self.store.data.get('group_variables', {}),
-                                                   lambda: list(self.session.files), self._save_group_variable,
+                                                   lambda: list(self.session.files),
                                                    self._save_group_variables, lambda ident: variable_usage(self.store.data, ident),
-            required=REQUIRED_VARIABLES['group'], default_variable=SPECIMEN_COUNT,
+            required=REQUIRED_VARIABLES['group'],
             get_defaults=lambda: {SPECIMEN_COUNT: self.session.imported_counts})
         self._specimen_variable_labels, self._specimen_numbers = {}, {}
         self._specimen_variables_force = True
         self.specimen_variables = GroupVariablesView(w, lambda: self.store.data.get('specimen_variables', {}),
-            self._all_specimen_variable_ids, self._save_specimen_variable, self._save_specimen_variables,
+            self._all_specimen_variable_ids, self._save_specimen_variables,
             lambda ident: variable_usage(self.store.data, ident, scope='specimen'), scope='specimen',
             row_label=lambda ident: self._specimen_variable_labels.get(ident, ident + ' (unavailable)'),
-            required=REQUIRED_VARIABLES['specimen'], default_variable=LOCATION,
+            required=REQUIRED_VARIABLES['specimen'],
             get_defaults=lambda: {LOCATION: self._specimen_numbers},
             on_scope_change=lambda: self._refresh_specimen_variables(redraw=True))
         self.custom_variable_tabs = w.Tab(children=[w.VBox([
-            w.HTML('<b>Specimen count</b> is the total tested + untested for each group. Whole numbers only. '
-                   'Startup and Reload data raise it to at least the number of imported specimens, including excluded ones; '
-                   'larger totals are retained. Location charts keep positions 1 through this total visible.'),
+            w.HTML('<b>Specimen count</b> shows <span style="color:#667085">X tested of</span> an editable total. '
+                   'Enter the whole-number total tested + untested. The grey count comes from imported specimens, including excluded ones. '
+                   'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.'),
             self.group_variables.ui.children[0]]), self.specimen_variables.ui.children[0]])
         self.custom_variable_tabs.set_title(0, 'Sample groups')
         self.custom_variable_tabs.set_title(1, 'Individual specimens')

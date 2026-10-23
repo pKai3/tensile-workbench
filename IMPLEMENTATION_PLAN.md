@@ -1,8 +1,8 @@
 # Implementation record
 
-## Pending implementation
+## Change notes — 2026-10-23
 
-### Table-only custom-variable editing — planned, 2026-10-23
+### Table-only custom-variable editing — implemented
 
 - Remove the One variable editor and the One variable / Table view selector
   from both Sample groups and Individual specimens. Use the editable table
@@ -12,10 +12,10 @@
   defaults and required-variable protections; this is a UI simplification,
   not a change to the stored variable data.
 - Keep selected/all-group browsing, shared ordering and the lightweight specimen
-  catalogue. Update documentation and editor tests when implementing.
-- Plan only for now; no UI changes until implementation is requested.
+  catalogue. Update documentation and editor tests to use the table workflow;
+  do not retain hidden single-variable controls or duplicate save/delete paths.
 
-### Tested versus total specimen count — planned, 2026-10-23
+### Tested versus total specimen count — implemented
 
 - Present Specimen count as `X tested of [Y]`: a grey, read-only prefix and an
   editable whole-number total in the table-only variable editor.
@@ -26,11 +26,13 @@
   existing minimum of X and preserve larger totals across startup and reload.
 - Keep clipboard copy/paste and saved/exported variable values numeric: only Y
   is editable variable data; the prefix is display context, not another variable.
-- Verify the table editor, excluded specimens, reload updates, minimum-total
-  handling and clipboard behaviour using synthetic data. UI implementation
-  remains deferred until requested.
-
-## Change notes — 2026-10-23
+- Show an unavailable tested count as `— tested of`, not an invented zero. Keep
+  required headers read-only and name each total input for accessibility.
+- Verification: all 388 synthetic tests pass, covering both editor scopes,
+  1,000-specimen browsing, drafts, minimum counts, reload, persistence and
+  exports. Browser checks verified grey count labels, numeric TSV copy, CSV
+  paste with additional columns, confirmed/cancelled deletion, required headers
+  and Location override/reset. No research data or personal settings changed.
 
 ### Hash-number location defaults — implemented
 
