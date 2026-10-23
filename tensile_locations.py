@@ -13,9 +13,9 @@ REQUIRED_VARIABLES = {
 
 
 def specimen_number(record):
-    """Only an unambiguous operator number, never a CSV acquisition-row suffix."""
+    """Read a separated operator number (e.g. Wall_04 or Wall_#4), not a CSV row."""
     label = str(record.get('specimen_label') or '').strip()
-    match = re.fullmatch(r'(?:.*?[_\s-])?(\d+)', label)
+    match = re.fullmatch(r'(?:.*?[_\s#-])?(\d+)', label)
     return int(match[1]) if match and '/' not in label else None
 
 

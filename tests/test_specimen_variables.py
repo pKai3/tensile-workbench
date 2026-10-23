@@ -49,8 +49,13 @@ class SpecimenVariablesTests(unittest.TestCase):
 
     def test_number_from_operator_not_export_row_and_ambiguous_names(self):
         for label, expected in [('B14_007', 7), ('7', 7), ('Wall-02', 2), ('Wall 4', 4),
-                                ('B14_1 / B14_2', None), ('B14', None), ('B14_1 unsure', None), ('', None)]:
-            self.assertEqual(specimen_number(dict(specimen_label=label, sample='B14_99')), expected)
+                                ('705_AB_#1', 1), ('705_AB_#08', 8), ('705_AB_#12', 12),
+                                ('Wall#04', 4), ('Wall # 4', 4), ('#4', 4), ('  #04  ', 4),
+                                ('B14_1 / B14_2', None), ('705_AB_#1 / 705_AB_#2', None),
+                                ('B14', None), ('705_AB', None), ('705_AB_#1.5', None),
+                                ('B14_1 unsure', None), ('705_AB_#1 unsure', None), ('', None)]:
+            with self.subTest(label=label):
+                self.assertEqual(specimen_number(dict(specimen_label=label, sample='B14_99')), expected)
         self.assertIsNone(specimen_number(dict(sample='B14_99')))
         self.assertEqual(planned_positions('1:10'), list(range(1, 11)))
         self.assertEqual(planned_positions('0,5,20'), [0, 5, 20])
@@ -112,6 +117,37 @@ class SpecimenVariablesTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             reopened = TensileWorkbench(self.root)
         self.assertEqual(reopened.store.data['specimen_variables'], saved)
+
+    def test_hash_number_defaults_match_editor_plot_and_export_with_override(self):
+        for record, number in zip(self.session._load('Alloy A'), (1, 4, 7)):
+            record['specimen_label'] = f'705_AB_#{number}'
+        view = self.editor()
+        self.assertEqual([field.value for field in view.fields.values()], ['1', '4', '7'])
+        view.save.click()
+        self.assertEqual(self.app.store.data['specimen_variables'][LOCATION]['values'], {})
+        second = 'Alloy A/coupon_2.csv'
+        view.fields[second].value = '9'
+        view.save.click()
+        view.view.value = 'table'
+        self.assertEqual(view.table.defaults[LOCATION][second], '4')
+        state = self.state()
+        result = self.session.render(state)
+        for bars in self.bars(result).values():
+            np.testing.assert_array_equal(bars._tensile_locations, [1, 7, 9])
+        destination = self.session.export_properties(state, self.app._current()['definition'])
+        workbook = load_workbook(next(destination.glob('*_results.xlsx')), read_only=True, data_only=True)
+        try:
+            rows = list(workbook['Specimen variables'].values)
+        finally:
+            workbook.close()
+        for index, number in enumerate((1, 9, 7), start=1):
+            self.assertIn((f'Alloy A/coupon_{index}.csv', LOCATION, 'Location', None, number), rows)
+        view.view.value = 'single'
+        view.fields[second].value = ''
+        view.save.click()
+        self.app._refresh_specimen_variables(force=True)
+        self.assertEqual(view.fields[second].value, '4')
+        self.assertEqual(self.app.store.data['specimen_variables'][LOCATION]['values'], {})
 
     def test_independent_sections_variants_and_one_chart_per_group(self):
         view = self.app.specimen_charts

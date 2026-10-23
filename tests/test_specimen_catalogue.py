@@ -77,7 +77,8 @@ class SpecimenCatalogueTests(unittest.TestCase):
         make_fixture(self.root)
         other = self.root / 'data' / 'Unselected' / 'Batch.is_tens_Exports'
         other.mkdir(parents=True)
-        (other.parent / 'Batch.csv').write_text(SUMMARY)
+        numbered_summary = SUMMARY.replace('Wall_04', '705_AB_#04')
+        (other.parent / 'Batch.csv').write_text(numbered_summary)
         (other / 'Batch_1.csv').write_text(HEADER)
         with redirect_stdout(io.StringIO()):
             app = TensileWorkbench(self.root)
@@ -97,7 +98,7 @@ class SpecimenCatalogueTests(unittest.TestCase):
             view.all_groups.value = False
             self.assertEqual(view.fields['Alloy A/coupon_1.csv'].value, '12.5')
         self.assertEqual(set(app.session._records), before)
-        (other.parent / 'Batch.csv').write_text(SUMMARY.replace('Wall_04', 'Wall_08'))
+        (other.parent / 'Batch.csv').write_text(numbered_summary.replace('705_AB_#04', '705_AB_#08'))
         app.session.reload_data()
         self.assertEqual(app.session.specimen_variable_catalogue(['Unselected'])[0]['number'], 8)
 

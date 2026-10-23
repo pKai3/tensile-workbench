@@ -2,6 +2,18 @@
 
 ## Change notes — 2026-10-23
 
+### Hash-number location defaults — implemented
+
+- Recognise operator labels such as `705_AB_#1`, `Wall#04` and `#4` alongside
+  underscore-, hyphen- and space-separated specimen numbers. Do not infer a
+  location from a CSV row suffix, an unseparated group code or conflicting labels.
+- Keep one parser for the lightweight catalogue, variable editor, specimen
+  charts and exported effective locations. Preserve manual overrides; clearing
+  an override restores the detected number without saving defaults as edits.
+- Verification: all 21 focused synthetic location, catalogue and specimen-chart
+  tests pass, including editor/table defaults, reload, override/reset, chart
+  positions and Excel values. No research data or personal settings changed.
+
 ### Regression clean-up and safe Undo — implemented
 
 - Update older tests to the current consolidated workbooks, two-decimal result
