@@ -2,6 +2,16 @@
 
 ## Change notes — 2026-10-23
 
+### Variable editor follows sample group order — implemented
+
+- Apply the shared per-graph order to variable-entry rows, including the
+  Show all sample groups view; append unranked groups alphabetically.
+- Refresh on order changes and graph load without discarding unsaved numeric
+  entries. Preserve zero, deselected-group values and the variable name/units.
+  Numeric plot X positions still use their actual numeric values.
+- Verification: 18 synthetic variable/order tests passed, including reorder,
+  Show all toggling, draft preservation, save/reopen and switching graphs.
+
 ### Sample-group variables and multiple property charts — implemented
 
 - Add a collapsed Sample-group variables editor below sample selection/order.

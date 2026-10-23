@@ -47,6 +47,35 @@ class GroupVariablesTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 variable_axis(groups, ident, {'co2': v})
 
+    def test_variable_rows_follow_shared_order_without_losing_drafts(self):
+        self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
+        view = self.app.group_variables
+        view.name.value, view.unit.value = 'Gas', '%'
+        view.fields['Alloy A'].value = '0'
+        view.fields['Heat treated'].value = '5.25'
+        self.app.display_order_select.value = 'Heat treated'
+        self.app._move_display_order(-1)
+        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
+        self.assertEqual(view.fields['Alloy A'].value, '0')
+        self.assertEqual(view.fields['Heat treated'].value, '5.25')
+        self.assertEqual((view.name.value, view.unit.value), ('Gas', '%'))
+        view.all_groups.value = True
+        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A', 'Alloy Z'])
+        view.fields['Alloy Z'].value = '12.5'
+        view.all_groups.value = False
+        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
+        view.save.click()
+        self.assertEqual(list(view.fields), ['Heat treated', 'Alloy A'])
+        self.assertEqual(self.app.store.data['group_variables'][view.choice.value]['values'],
+                         {'Alloy A': 0, 'Heat treated': 5.25, 'Alloy Z': 12.5})
+        with redirect_stdout(io.StringIO()):
+            reopened = TensileWorkbench(self.root)
+        self.assertEqual(list(reopened.group_variables.fields), ['Heat treated', 'Alloy A'])
+        reopened._apply_graph('1')
+        self.assertEqual(list(reopened.group_variables.fields), ['Alloy A'])
+        reopened._apply_graph('0')
+        self.assertEqual(list(reopened.group_variables.fields), ['Heat treated', 'Alloy A'])
+
     def test_numeric_spacing_identity_and_unchanged_means(self):
         self.variable()
         result = self.session.render(self.state(properties_by_group_x_variable='co2', show_individuals=True))

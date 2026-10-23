@@ -1244,7 +1244,7 @@ class TensileWorkbench:
             for family, control in self.title_inputs.items():
                 control.value = graph["definition"].get("workbench_titles", {}).get(family, legacy.get(title_keys.get(family), ""))
             self.property_variants.load(state.get(VARIANTS_KEY), self._capture_property_chart())
-            self.group_variables.refresh(self.controls['groups'].value, force=True)
+            self.group_variables.refresh(self.controls['groups'].value, order=self._display_order, force=True)
             self.override_group.options = self.session.visible_groups(state["groups"])
             self._sync_gauge_rows(force=True)
             self._sample_data_note()
@@ -1388,7 +1388,7 @@ class TensileWorkbench:
             return
         self._sync_display_order()
         self._sync_group_labels()
-        self.group_variables.refresh(self.controls['groups'].value)
+        self.group_variables.refresh(self.controls['groups'].value, order=self._display_order)
         self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True

@@ -3,6 +3,7 @@ from copy import deepcopy
 from html import escape
 import math
 import uuid
+from tensile_order import ordered_groups
 
 
 def validate_variables(variables):
@@ -56,6 +57,7 @@ class GroupVariablesView:
     def __init__(self, w, get_variables, get_groups, on_save):
         self.w, self.get_variables, self.get_groups, self.on_save = w, get_variables, get_groups, on_save
         self.groups, self.fields, self._draft = [], {}, {}
+        self.order = []
         self._paused = False
         self.choice = w.Dropdown(description='Variable:', options=[('New variable…', '')],
                                  layout=w.Layout(width='450px', max_width='100%'))
@@ -69,6 +71,7 @@ class GroupVariablesView:
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
             w.HTML('Numeric values attached to sample groups, shared by all graphs. Create as many variables as needed. '
+                   'Rows follow this graph’s sample group order. '
                    'Leave unknown values blank; zero is a valid value. Save before switching variables or graphs.'),
             self.choice, w.HBox([self.name, self.unit], layout=w.Layout(flex_flow='row wrap')),
             self.all_groups, self.rows, self.save, self.status
@@ -78,10 +81,12 @@ class GroupVariablesView:
         self.all_groups.observe(lambda _: self._render_rows(), names='value')
         self.save.on_click(self._save)
 
-    def refresh(self, groups, *, force=False):
+    def refresh(self, groups, *, order=None, force=False):
         groups = list(groups)
-        changed = groups != self.groups
+        order = list(order) if order is not None else self.order
+        changed = groups != self.groups or order != self.order
         self.groups = groups
+        self.order = order
         variables = self.get_variables()
         selected = self.choice.value
         self._paused = True
@@ -107,6 +112,7 @@ class GroupVariablesView:
     def _render_rows(self):
         w = self.w
         groups = sorted(set(self.get_groups()) | set(self._draft)) if self.all_groups.value else self.groups
+        groups = ordered_groups(groups, self.order)
         old = self.rows.children
         self.fields = {}
         rows = []
