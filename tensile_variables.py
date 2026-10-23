@@ -9,7 +9,7 @@ from tensile_order import ordered_groups
 
 def validate_variables(variables):
     if not isinstance(variables, dict):
-        raise ValueError('Sample-group variables must be a mapping.')
+        raise ValueError('Custom variables must be a mapping.')
     names = set()
     for ident, variable in variables.items():
         if not isinstance(ident, str) or not ident or not isinstance(variable, dict):
@@ -65,7 +65,7 @@ def variable_axis(groups, ident, variables):
     if len({values[group] for group in ordered}) != len(ordered):
         warnings.append('Some groups share an x-value. They remain separate, not pooled; markers may overlap.')
     if not ordered:
-        raise ValueError('No selected groups have a value for ' + variable_label(variable) + '. Add values under Sample-group variables.')
+        raise ValueError('No selected groups have a value for ' + variable_label(variable) + '. Add values under Custom variables.')
     return ordered, [values[group] for group in ordered], variable_label(variable, for_plot=True), ' '.join(warnings)
 
 
@@ -112,7 +112,7 @@ class GroupVariablesView:
                    'Leave unknown values blank; zero is a valid value. Save before switching graphs.'),
             self.view, self.all_groups, self.single_ui, self.table_ui, self.status
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
-        self.ui.set_title(0, 'Sample-group variables · shared by all graphs')
+        self.ui.set_title(0, 'Custom variables · shared by all graphs')
         self.choice.observe(self._choose, names='value')
         self.all_groups.observe(lambda _: self._render(), names='value')
         self.view.observe(self._switch_view, names='value')

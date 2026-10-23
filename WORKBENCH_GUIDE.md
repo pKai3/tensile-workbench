@@ -364,9 +364,9 @@ Individual dots always require both properties. An unresolved YS therefore preve
 
 Each view has its own title and independent x/y limits under Settings. The with/without-individuals versions of a given scatter plot always share automatic limits based on the included paired dots, selected group means and any displayed SD bars; manual limits override these for both versions. Colours and group legend labels follow the graph's overrides. Static and Plotly views show the same values. Individual hover labels use matched operator names, or CSV stems when unavailable, not long folder paths or arbitrary curve numbers. Full source identity remains in the tables. Exports are numbered `08_ys_vs_el` and `09_uts_vs_el`, with adjacent `with_individuals` / `without_individuals` filenames. Export settings and calculation logs retain the averaging choice and its counts. Existing saved graphs gain these options without changing their current selected plots.
 
-## YS, UTS and elongation by sample
+## YS, UTS and elongation by sample & by custom variable
 
-Select **YS, UTS and elongation by sample** under Plot views. Sample groups run left to right on a categorical x-axis; **0.2% YS** and **UTS** use the left strength axis, and failure **EL** uses the right percentage axis. Three lines connect the group means as visual guides, not fitted trends. Each property uses its own available included specimens, so an unresolved YS does not discard a valid UTS or EL. Missing values leave a gap. EL follows each group's Calc/Reconstruct setting, including manual endpoint overrides.
+Select **YS, UTS and elongation by sample & by custom variable** under Plot views. Choose sample names or a saved numeric variable for the x-axis in Settings. **0.2% YS** and **UTS** use the left strength axis, and failure **EL** uses the right percentage axis when strength is also shown. The connecting lines are visual guides, not fitted trends. Each property uses its own available included specimens, so an unresolved YS does not discard a valid UTS or EL. Missing values leave a gap. EL follows each group's Calc/Reconstruct setting, including manual endpoint overrides.
 
 Set the left-to-right sample order using the shared **Sample group order** panel directly below the sample selector. This is the same order used by tables and group legends; there is no separate ordering control for this plot. Open the plot's **Settings** for **Connecting lines**: **Straight / solid**, **Dash**, **Dot** or **None · markers only**, applied equally to YS, UTS and EL. Selecting None retains the mean markers and any enabled SD bars. Settings also provide independent left/right axis limits, a title, property colours, and optional ±1 sample SD bars. A single specimen has no SD bar.
 
@@ -393,7 +393,7 @@ used as a fallback. Other table sorts take precedence;
 **Descending** reverses the saved group order. Table filters/sorts do not change
 the export order. Click **Update plots** to apply changes when live preview is off.
 Both static and Plotly plots, with and without individuals, follow this order.
-The **YS, UTS and elongation by sample** legend still identifies properties
+The **YS, UTS and elongation by sample & by custom variable** legend still identifies properties
 (YS, UTS, EL), not groups, so its property order does not change.
 
 ## Per-graph colours

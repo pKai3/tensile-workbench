@@ -91,13 +91,13 @@ Group identities include their relative folder path, so different colleagues can
 | Representative tensile curves | Showing one measured specimen per group, with an optional selection override |
 | Work-hardening views | Comparing the pre-necking hardening response |
 | YS or UTS vs elongation | Comparing strength and ductility, with optional individual points |
-| YS, UTS and elongation by sample | Comparing groups by name or against a numeric variable, with multiple chart variants |
+| YS, UTS and elongation by sample & by custom variable | Comparing groups by name or against a numeric variable, with multiple chart variants |
 
 For the last view, **Settings → Add chart variant** creates another separate chart within the same saved graph. Select **Edit chart** to configure each one's title, X-axis, YS/UTS/EL switches, connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**), property colours, axis limits and SD bars. All variants render and export together. A chart with only EL uses a single axis; when strength and EL are both shown, EL uses the right axis. Adding a variant copies the current settings; removing one leaves the others untouched.
 
 To plot against a numeric variable, such as shielding-gas CO₂ concentration:
 
-1. Select sample groups, then expand **Sample-group variables** below the sample selector/order controls.
+1. Select sample groups, then expand **Custom variables** below the sample selector/order controls.
 2. Enter a variable name, optional units and each group's value. Leave unknown values blank; `0` is a real value. **Show all sample groups** lets you edit groups outside the current selection.
 3. Click **Save variable and values**. Or choose **View → Table** to edit all variables together: names in row 1, units in row 2, then sample-group data. **Add variable (column)** creates another column; **Save all variables** applies the complete table. Variables are shared across saved graphs.
 4. In the property chart's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more chart variants to compare other variables or property combinations.

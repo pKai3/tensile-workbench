@@ -2,6 +2,14 @@
 
 ## Change notes — 2026-10-23
 
+### Property plot and custom-variable labels — implemented
+
+- Rename the plot-view label to "YS, UTS and elongation by sample & by custom
+  variable" and update the matching documentation. The internal plot ID, saved
+  definitions and generated/custom chart titles are unchanged.
+- Rename the editor section to "Custom variables · shared by all graphs" and
+  keep navigation guidance and messages consistent.
+
 ### Automatic title units — implemented
 
 - Put units in parentheses in both the property-chart automatic title and its

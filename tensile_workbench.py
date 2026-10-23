@@ -104,7 +104,7 @@ FAMILIES = [
     ("Representative tensile curves", "representative"),
     ("0.2% YS vs elongation", "ys_vs_el"),
     ("UTS vs elongation", "uts_vs_el"),
-    ("YS, UTS and elongation by sample", GROUP_FAMILY),
+    ("YS, UTS and elongation by sample & by custom variable", GROUP_FAMILY),
 ]
 
 PROPERTY_FAMILIES = ('ys_vs_el', 'uts_vs_el')
@@ -706,7 +706,7 @@ class PreviewSession:
         if any(r.get('selection_signature') != self.selection_signature() for r in results):
             raise ValueError('Specimen inclusion changed. Update plots before exporting.')
         if any(r.get('variable_signature') != self.variable_signature(r['state']) for r in results):
-            raise ValueError('Sample-group variables changed. Update plots before exporting.')
+            raise ValueError('Custom variables changed. Update plots before exporting.')
         result = results[0]
         graph = self.engine.safe_filename(result["graph_spec"]["name"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:6]
@@ -981,7 +981,7 @@ class TensileWorkbench:
                 label_settings.set_title(0, 'X-axis labels · this plot only')
                 local += [w.HTML('Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
                                  'with their actual spacing. Missing values omit that group from this chart only. '
-                                 'Edit values in <b>Sample-group variables</b> below the sample selector.'),
+                                 'Edit values in <b>Custom variables</b> below the sample selector.'),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),

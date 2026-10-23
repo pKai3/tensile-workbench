@@ -92,7 +92,7 @@ class VariableTable(anywidget.AnyWidget):
       const copy=document.createElement('button');copy.type='button';copy.className='tw-variable-copy';
       copy.textContent='Copy variable cells (TSV)';
       const box=document.createElement('div');box.className='tw-variable-grid';box.tabIndex=0;
-      box.setAttribute('role','region');box.setAttribute('aria-label','Editable sample-group variables');
+      box.setAttribute('role','region');box.setAttribute('aria-label','Editable custom variables');
       const note=document.createElement('div');note.className='tw-variable-grid-note';note.setAttribute('role','status');
       el.append(copy,box,note);
       let local=false;
