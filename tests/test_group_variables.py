@@ -11,7 +11,7 @@ import numpy as np
 from openpyxl import load_workbook
 
 import test_group_properties as fixture
-from tensile_variables import validate_variables, variable_axis
+from tensile_variables import GroupVariablesView, validate_variables, variable_axis
 from tensile_property_variants import VARIANTS_KEY, TITLE_KEY, validate_variants
 from tensile_group_plot import GROUP_FAMILY
 from tensile_moves import migrate_settings, forget_group, references
@@ -75,6 +75,32 @@ class GroupVariablesTests(unittest.TestCase):
         self.assertEqual(list(reopened.group_variables.fields), ['Alloy A'])
         reopened._apply_graph('0')
         self.assertEqual(list(reopened.group_variables.fields), ['Heat treated', 'Alloy A'])
+
+    def test_many_variable_rows_scroll_without_shrinking_or_changing_selection(self):
+        import ipywidgets as w
+        groups = [f'Owner/Batch/Alloy {i:02d}' for i in range(60)]
+        selected = [groups[2], groups[0]]
+        view = GroupVariablesView(w, lambda: {}, lambda: groups, lambda *_: None)
+        view.refresh(selected, order=selected)
+        view.fields[groups[2]].value = '0'
+        view.all_groups.value = True
+        self.assertEqual(len(view.fields), 60)
+        self.assertEqual(list(view.fields)[:2], selected)
+        self.assertEqual(view.groups, selected)
+        self.assertEqual(view.rows.layout.overflow, 'auto')
+        self.assertEqual(view.rows.layout.max_height, '300px')
+        self.assertEqual(view.rows.layout.flex, '0 0 auto')
+        for row in view.rows.children:
+            self.assertEqual(row.layout.flex, '0 0 auto')
+            self.assertEqual(row.layout.min_height, '32px')
+            self.assertEqual(row.layout.flex_flow, 'row wrap')
+        self.assertEqual(view.save.layout.align_self, 'flex-start')
+        view.fields[groups[-1]].value = '12.5'
+        view.all_groups.value = False
+        self.assertEqual(list(view.fields), selected)
+        self.assertEqual(view.fields[groups[2]].value, '0')
+        view.all_groups.value = True
+        self.assertEqual(view.fields[groups[-1]].value, '12.5')
 
     def test_numeric_spacing_identity_and_unchanged_means(self):
         self.variable()

@@ -64,10 +64,11 @@ class GroupVariablesView:
         self.name = w.Text(description='Name:', placeholder='e.g. Shielding gas CO₂', continuous_update=False)
         self.unit = w.Text(description='Units:', placeholder='e.g. %, °C, mm', continuous_update=False)
         self.all_groups = w.Checkbox(description='Show all sample groups', indent=False,
+                                     tooltip='Include groups not selected in this graph, without changing the graph selection.',
                                      layout=w.Layout(width='auto'))
-        self.rows = w.VBox(layout=w.Layout(width='100%', max_height='300px', overflow='auto'))
+        self.rows = w.VBox(layout=w.Layout(width='100%', max_height='300px', overflow='auto', flex='0 0 auto'))
         self.save = w.Button(description='Save variable and values', button_style='primary',
-                             layout=w.Layout(width='auto'))
+                             layout=w.Layout(width='auto', align_self='flex-start', flex='0 0 auto'))
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
             w.HTML('Numeric values attached to sample groups, shared by all graphs. Create as many variables as needed. '
@@ -121,8 +122,10 @@ class GroupVariablesView:
                            layout=w.Layout(width='160px', flex='0 0 160px'))
             field.observe(lambda change, g=group: self._draft.__setitem__(g, change['new']), names='value')
             self.fields[group] = field
+            # Flex children otherwise shrink into the capped viewport instead
+            # of overflowing it, clipping every input when many groups appear.
             rows.append(w.HBox([w.HTML(escape(group), layout=w.Layout(width='450px', max_width='100%')), field],
-                                layout=w.Layout(flex_flow='row wrap', gap='8px')))
+                                layout=w.Layout(flex_flow='row wrap', gap='8px', flex='0 0 auto', min_height='32px')))
         self.rows.children = tuple(rows) or (w.HTML('Select sample groups above, or enable Show all sample groups.'),)
         for row in old:
             for child in getattr(row, 'children', ()):

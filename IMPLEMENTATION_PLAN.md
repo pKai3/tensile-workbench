@@ -2,6 +2,16 @@
 
 ## Change notes — 2026-10-23
 
+### Show all sample groups scrolling — implemented
+
+- Prevent variable-entry rows from shrinking into the capped list viewport;
+  keep readable inputs and scroll through all groups. Allow wrapping on narrow
+  screens and keep the save button compact. Clarify that Show all does not
+  change the graph's selected groups.
+- Verification: 19 synthetic variable/order tests passed. A standalone browser
+  preview with 60 fake groups confirmed readable rows and scrolling to the
+  final group. Draft values and selection remain unchanged when toggling.
+
 ### Setup-test fixtures and lightweight preflight — implemented
 
 - Include the required template and favicon in synthetic installation fixtures
