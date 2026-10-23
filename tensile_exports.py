@@ -12,6 +12,7 @@ from tensile_gauge import group_basis_label, group_policy
 from tensile_fit import fit_display_places
 from tensile_fracture import FRACTURE_METHOD
 from tensile_order import sort_group_frame
+from tensile_locations import LOCATION, SPECIMEN_COUNT
 
 
 def write_workbook(path, sheets):
@@ -77,6 +78,10 @@ def write_workbook(path, sheets):
             sheet.row_dimensions[1].height = 45
             sheet.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{len(frame) + 1}'
             sheet.append(header_cells)
+            whole_variable = name in ('Group variables', 'Specimen variables') and 'Variable ID' in headers
+            id_column = headers.index('Variable ID') if whole_variable else None
+            value_column = headers.index('Value') if whole_variable else None
+            integer_style = style(sheet, '0') if whole_variable else None
             for row in frame.itertuples(index=False, name=None):
                 cells = []
                 for i, value in enumerate(row):
@@ -93,6 +98,11 @@ def write_workbook(path, sheets):
                         cells.append(None)  # Preserve position, omit the blank cell from XML.
                         continue
                     cell = WriteOnlyCell(sheet, value)
+                    if (whole_variable and i == value_column and row[id_column] in (LOCATION, SPECIMEN_COUNT)
+                            and isinstance(value, (int, float)) and not isinstance(value, bool)):
+                        cell._style = integer_style
+                        cells.append(cell)
+                        continue
                     if isinstance(value, str):
                         cell.data_type = 's'
                         cell._style = text_styles[i]

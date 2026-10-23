@@ -6,6 +6,7 @@ import re
 import uuid
 from tensile_order import ordered_groups
 from tensile_selection import valid_specimen_id
+from tensile_locations import REQUIRED_VARIABLES, SPECIMEN_COUNT, whole_number
 
 
 def validate_variables(variables, *, scope='group'):
@@ -21,6 +22,9 @@ def validate_variables(variables, *, scope='group'):
         names.add(name.strip().casefold())
         if not isinstance(unit, str):
             raise ValueError('Variable units must be text.')
+        required = REQUIRED_VARIABLES.get(scope, {}).get(ident)
+        if required and (name != required['name'] or unit != required['unit']):
+            raise ValueError(required['name'] + ' is a permanent variable; its name and unit cannot be changed.')
         values = variable.get('values', {})
         if not isinstance(values, dict):
             raise ValueError('Variable values must map identities to numbers.')
@@ -30,6 +34,9 @@ def validate_variables(variables, *, scope='group'):
                 raise ValueError('Variable values must be finite numbers. Leave missing values blank.')
             if scope == 'specimen' and not valid_specimen_id(group):
                 raise ValueError('Specimen variable values need relative specimen IDs, not display names or absolute paths.')
+            if required and (not whole_number(value) or (ident == SPECIMEN_COUNT and value < 0)):
+                raise ValueError(required['name'] + ' must use whole numbers' +
+                                 (' greater than or equal to zero.' if ident == SPECIMEN_COUNT else '.'))
 
 
 def plot_text(text):
@@ -60,7 +67,8 @@ def variable_usage(project, ident, *, scope='group'):
     used = []
     for graph, prefix in graphs:
         settings = graph.get('settings', {})
-        charts = settings.get('properties_by_group_variants') or [dict(name='Chart 1', settings=settings)]
+        charts = [*(settings.get('properties_by_group_variants') or [dict(name='Chart 1', settings=settings)]),
+                  *settings.get('properties_by_specimen_variants', [])]
         for chart in charts:
             config = chart.get('settings', {})
             if (config.get('properties_by_group_level', 'group') == scope
@@ -91,12 +99,15 @@ def variable_axis(groups, ident, variables):
 class GroupVariablesView:
     """Compact editor; an explicit save commits names, units and values together."""
     def __init__(self, w, get_variables, get_groups, on_save, on_save_all=None, get_usage=None,
-                 *, scope='group', row_label=None, on_scope_change=None):
+                 *, scope='group', row_label=None, on_scope_change=None, required=None,
+                 get_defaults=None, default_variable=''):
         from tensile_variable_table import VariableTable
         self.w, self.get_variables, self.get_groups, self.on_save = w, get_variables, get_groups, on_save
         self.on_save_all = on_save_all
         self.scope = scope
         self.on_scope_change = on_scope_change
+        self.required = required or {}
+        self.get_defaults = get_defaults or (lambda: {})
         self._page = 0
         self._page_size = 100 if scope == 'specimen' else None
         self.row_label = row_label or str
@@ -106,7 +117,7 @@ class GroupVariablesView:
         self.groups, self.fields, self._draft = [], {}, {}
         self.order = []
         self._paused = False
-        self._active = ''
+        self._active = default_variable
         self._drafts = self._editable(get_variables())
         self.view = w.ToggleButtons(description='View:', options=[('One variable', 'single'), ('Table', 'table')],
                                      style={'button_width': 'auto'})
@@ -126,7 +137,8 @@ class GroupVariablesView:
                                  layout=w.Layout(display='none', flex_flow='row wrap'))
         self.save = w.Button(description='Save variable and values', button_style='primary',
                              layout=w.Layout(width='auto', align_self='flex-start', flex='0 0 auto'))
-        self.table = VariableTable(on_delete=self._request_delete, layout=w.Layout(width='100%', min_width='0'))
+        self.table = VariableTable(on_delete=self._request_delete, required=self.required,
+                                   layout=w.Layout(width='100%', min_width='0'))
         self.remove = w.Button(description='Delete variable', button_style='danger', disabled=True,
                                layout=w.Layout(width='auto'))
         self.delete_message = w.HTML()
@@ -153,7 +165,7 @@ class GroupVariablesView:
                    'Rows follow this graph’s sample group order. '
                    'Leave unknown values blank; zero is a valid value. Save before switching graphs.'
                    + (' Specimen rows use operator labels when available; hover a row label for its stable CSV identity. '
-                      'Location can start from the operator specimen number; edit it to match your extraction map. '
+                      'Location defaults to the operator specimen number. Enter a whole number to override it; clear the cell to restore the default. '
                       'CSV row numbers are never used as locations. '
                       'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else '')),
             self.view, self.all_groups, self.delete_panel, self.single_ui, self.table_ui, self.status
@@ -175,7 +187,8 @@ class GroupVariablesView:
     @staticmethod
     def _editable(variables):
         return {ident: dict(name=v['name'], unit=v.get('unit', ''),
-                           values={g: str(value) for g, value in v.get('values', {}).items()})
+                           values={g: str(int(value)) if any(ident in r for r in REQUIRED_VARIABLES.values()) and whole_number(value)
+                                   else str(value) for g, value in v.get('values', {}).items()})
                 for ident, v in variables.items()}
 
     @staticmethod
@@ -218,7 +231,8 @@ class GroupVariablesView:
         variable = self._drafts.get(self._active, dict(name='', unit='', values={}))
         self.name.value, self.unit.value = variable['name'], variable['unit']
         self._draft = dict(variable['values'])
-        self.remove.disabled = not bool(self._active)
+        self.remove.disabled = not bool(self._active) or self._active in self.required
+        self.name.disabled = self.unit.disabled = self._active in self.required
         if render and self.view.value == 'single':
             self._render_rows()
 
@@ -299,6 +313,7 @@ class GroupVariablesView:
                 self.table.groups = self._visible_groups()
                 self.table.labels = {ident: self.row_label(ident) for ident in self.table.groups}
                 self.table.columns = [dict(id=k, **deepcopy(v)) for k, v in self._drafts.items() if k]
+                self.table.defaults = self._editable_defaults()
         finally:
             self._paused = old
 
@@ -316,6 +331,9 @@ class GroupVariablesView:
         self.table.notice = 'New column added. Enter its name, optional unit and values, then Save all variables.'
 
     def _request_delete(self, ident):
+        if ident in self.required:
+            self.status.value = escape(self.required[ident]['name']) + ' is required and cannot be deleted.'
+            return
         if not ident or ident not in self._drafts:
             return
         if self.view.value == 'single':
@@ -347,6 +365,9 @@ class GroupVariablesView:
         if pending is None:
             return
         ident = pending['id']
+        if ident in self.required:
+            self._cancel_delete()
+            return
         try:
             variables = deepcopy(self.get_variables())
             if variables.get(ident) != pending['saved'] or (ident in variables) != pending['persisted']:
@@ -383,8 +404,10 @@ class GroupVariablesView:
         old = self.rows.children
         self.fields = {}
         rows = []
+        defaults = self._editable_defaults().get(self._active, {})
         for group in groups:
-            field = w.Text(value=self._draft.get(group, ''), placeholder='Not set', continuous_update=False,
+            field = w.Text(value=self._draft.get(group, '').strip() or defaults.get(group, ''),
+                           placeholder=defaults.get(group, 'Not set'), continuous_update=False,
                            layout=w.Layout(width='160px', flex='0 0 160px'))
             field.observe(lambda change, g=group: self._draft.__setitem__(g, change['new']), names='value')
             self.fields[group] = field
@@ -399,6 +422,11 @@ class GroupVariablesView:
                 child.close()
             row.close()
 
+    def _editable_defaults(self):
+        return {ident: {group: str(int(value)) if ident in self.required and whole_number(value) else str(value)
+                        for group, value in values.items() if value is not None}
+                for ident, values in self.get_defaults().items()}
+
     def _save(self, _=None):
         self._cancel_delete()
         try:
@@ -412,7 +440,7 @@ class GroupVariablesView:
             if not self._active:
                 self._drafts.pop('', None)
             self._active = ident
-            self._drafts.update(self._editable({ident: variable}))
+            self._drafts.update(self._editable({ident: self.get_variables().get(ident, variable)}))
             self._sync_choices()
             self._load_single()
             self.status.value = 'Saved for all graphs. Choose this variable as an X-axis in the YS/UTS/EL plot settings.'
@@ -428,7 +456,7 @@ class GroupVariablesView:
             if self.on_save_all is None:
                 raise ValueError('Saving the table is unavailable in this preview.')
             self.on_save_all(variables)
-            self._drafts = self._editable(variables)
+            self._drafts = self._editable(self.get_variables())
             self._sync_choices()
             self._load_single()
             self._sync_table()

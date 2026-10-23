@@ -187,8 +187,9 @@ def _axis_to_plotly(ax, *, width=640):
         if landmark_counts is not None:
             custom = [[landmark_counts['x'], landmark_counts['y']] for _ in x]
             count_hover = '<br>Strain n=%{customdata[0]}<br>Stress n=%{customdata[1]}'
+        places = getattr(ax, '_tensile_x_places', 2)
         x_hover = ('Sample group: %{customdata[0]}' if categories is not None else
-                   escape(plain(ax.get_xlabel())) + ': %{x:.2f}')
+                   escape(plain(ax.get_xlabel())) + ': %{x:.' + str(places) + 'f}')
         if point_labels is not None:
             kind = escape(getattr(line, '_tensile_point_kind', 'Sample group'))
             x_hover = kind + ': %{customdata[0]}' + ('<br>' + x_hover if categories is None else '')
@@ -225,6 +226,8 @@ def _axis_to_plotly(ax, *, width=640):
                             ticktext=[wrapped(label, 22) for label in categories])
     elif hasattr(ax, '_tensile_numeric_ticks'):
         result.update_xaxes(tickmode='array', tickvals=list(ax._tensile_numeric_ticks))
+    if getattr(ax, '_tensile_x_places', None) == 0:
+        result.update_xaxes(tickformat='.0f', hoverformat='.0f')
     resize_chart(result, width)
     return result
 

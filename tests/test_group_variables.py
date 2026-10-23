@@ -17,6 +17,7 @@ from tensile_group_plot import GROUP_FAMILY
 from tensile_moves import migrate_settings, forget_group, references
 from tensile_plotly import figure_to_plotly
 from tensile_workbench import TensileWorkbench
+from tensile_locations import SPECIMEN_COUNT
 
 
 class GroupVariablesTests(unittest.TestCase):
@@ -50,6 +51,7 @@ class GroupVariablesTests(unittest.TestCase):
     def test_variable_rows_follow_shared_order_without_losing_drafts(self):
         self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
         view = self.app.group_variables
+        view.choice.value = ''
         view.name.value, view.unit.value = 'Gas', '%'
         view.fields['Alloy A'].value = '0'
         view.fields['Heat treated'].value = '5.25'
@@ -144,6 +146,7 @@ class GroupVariablesTests(unittest.TestCase):
 
     def test_global_editor_persistence_and_cache_invalidation(self):
         view = self.app.group_variables
+        view.choice.value = ''
         view.name.value, view.unit.value = 'Shielding CO₂', '%'
         view.fields['Alloy A'].value = '0'
         view.save.click()
@@ -179,11 +182,11 @@ class GroupVariablesTests(unittest.TestCase):
         view.choice.value = 'co2'
         view.fields['Alloy A'].value = '2.5'
         view.view.value = 'table'
-        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '2.5')
+        self.assertEqual(view.table.columns[1]['values']['Alloy A'], '2.5')
         self.assertEqual(self.app.store.data['group_variables']['co2']['values']['Alloy A'], 0)
         view.add.click()
         ident = view.table.columns[-1]['id']
-        view.table._message(None, dict(type='paste', row=0, column=1, text='Temperature\n°C\n500'), [])
+        view.table._message(None, dict(type='paste', row=0, column=2, text='Temperature\n°C\n500'), [])
         view.view.value = 'single'
         self.assertEqual(view.choice.value, ident)
         self.assertEqual(view.name.value, 'Temperature')
@@ -191,7 +194,7 @@ class GroupVariablesTests(unittest.TestCase):
         view.view.value = 'table'
         view.all_groups.value = True
         self.assertEqual(view.table.groups, ['Alloy A', 'Alloy Z', 'Heat treated'])
-        view.table._message(None, dict(type='paste', row=3, column=1, text='870\n600'), [])
+        view.table._message(None, dict(type='paste', row=3, column=2, text='870\n600'), [])
         view.all_groups.value = False
         view.save_all.click()
         self.assertEqual(self.app.store.data['group_variables'][ident]['values'],
@@ -204,15 +207,15 @@ class GroupVariablesTests(unittest.TestCase):
         # Invalid names or numeric entries reject the entire batch, not just one column.
         saved = deepcopy(self.app.store.data)
         columns = deepcopy(view.table.columns)
-        columns[0]['values']['Alloy A'] = '10'
-        columns[1]['name'] = columns[0]['name']
+        columns[1]['values']['Alloy A'] = '10'
+        columns[2]['name'] = columns[1]['name']
         view.table.columns = columns
         view.save_all.click()
         self.assertIn('Not saved', view.table.notice)
         self.assertEqual(saved, self.app.store.data)
         columns = deepcopy(view.table.columns)
-        columns[1]['name'] = 'Temperature'
-        columns[1]['values']['Alloy A'] = 'nan'
+        columns[2]['name'] = 'Temperature'
+        columns[2]['values']['Alloy A'] = 'nan'
         view.table.columns = deepcopy(columns)
         view.save_all.click()
         self.assertIn('finite number', view.table.notice)
@@ -223,14 +226,14 @@ class GroupVariablesTests(unittest.TestCase):
         view = self.app.group_variables
         self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
         view.view.value = 'table'
-        view.table._message(None, dict(type='paste', row=2, column=0, text='0\n9'), [])
+        view.table._message(None, dict(type='paste', row=2, column=1, text='0\n9'), [])
         self.app.display_order_select.value = 'Heat treated'
         self.app._move_display_order(-1)
         self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A'])
-        self.assertEqual(view.table.columns[0]['values']['Heat treated'], '9')
+        self.assertEqual(view.table.columns[1]['values']['Heat treated'], '9')
         view.all_groups.value = True
         self.assertEqual(view.table.groups, ['Heat treated', 'Alloy A', 'Alloy Z'])
-        view.table._message(None, dict(type='paste', row=2, column=0, text='\n0\n12.5'), [])
+        view.table._message(None, dict(type='paste', row=2, column=1, text='\n0\n12.5'), [])
         view.save_all.click()
         self.assertEqual(self.app.store.data['group_variables']['co2']['values'], {'Alloy A': 0, 'Alloy Z': 12.5})
 
@@ -268,18 +271,19 @@ class GroupVariablesTests(unittest.TestCase):
 
     def test_new_single_variable_draft_survives_table_switch_and_force_reload(self):
         view = self.app.group_variables
+        view.choice.value = ''
         view.name.value, view.unit.value = 'Gas', '%'
         view.fields['Alloy A'].value = '0'
         view.view.value = 'table'
-        ident = view.table.columns[0]['id']
+        ident = view.table.columns[1]['id']
         view.view.value = 'single'
         self.assertEqual(view.choice.value, ident)
         self.assertEqual(view.fields['Alloy A'].value, '0')
         view.save.click()
         view.view.value = 'table'
-        view.table._message(None, dict(type='paste', row=2, column=0, text='9'), [])
+        view.table._message(None, dict(type='paste', row=2, column=1, text='9'), [])
         view.refresh(['Alloy A'], force=True)
-        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '0.0')
+        self.assertEqual(view.table.columns[1]['values']['Alloy A'], '0.0')
         self.assertEqual(self.app.store.data['group_variables'][ident]['values']['Alloy A'], 0)
 
     def test_delete_saved_variable_confirms_usage_preserves_charts_and_invalidates_exports(self):
@@ -322,14 +326,14 @@ class GroupVariablesTests(unittest.TestCase):
         view.view.value = 'table'
         view.add.click()
         new_id = view.table.columns[-1]['id']
-        view.table._message(None, dict(type='paste', row=0, column=1, text='Temperature\n°C\n500'), [])
+        view.table._message(None, dict(type='paste', row=0, column=2, text='Temperature\n°C\n500'), [])
         view.table._message(None, dict(type='delete', id='co2'), [])
         view.delete_confirm.click()
-        self.assertEqual(self.app.store.data['group_variables'], {})
-        self.assertEqual([c['id'] for c in view.table.columns], [new_id])
-        self.assertEqual(view.table.columns[0]['values']['Alloy A'], '500')
+        self.assertEqual(set(self.app.store.data['group_variables']), {SPECIMEN_COUNT})
+        self.assertEqual([c['id'] for c in view.table.columns], [SPECIMEN_COUNT, new_id])
+        self.assertEqual(view.table.columns[1]['values']['Alloy A'], '500')
         view.save_all.click()
-        self.assertEqual(set(self.app.store.data['group_variables']), {new_id})
+        self.assertEqual(set(self.app.store.data['group_variables']), {SPECIMEN_COUNT, new_id})
         # Removing an unsaved column never writes the saved project.
         view.add.click()
         unsaved_id = view.table.columns[-1]['id']
@@ -338,7 +342,7 @@ class GroupVariablesTests(unittest.TestCase):
             self.assertIn('unsaved column', view.delete_message.value)
             view.delete_confirm.click()
             save.assert_not_called()
-        self.assertEqual([c['id'] for c in view.table.columns], [new_id])
+        self.assertEqual([c['id'] for c in view.table.columns], [SPECIMEN_COUNT, new_id])
         view.table._message(None, dict(type='delete', id='unknown'), [])
         self.assertIsNone(view._pending_delete)
 
@@ -425,8 +429,8 @@ class GroupVariablesTests(unittest.TestCase):
         workbook = load_workbook(next(destination.glob('*_results.xlsx')), read_only=True, data_only=True)
         rows = list(workbook['Group variables'].values)
         self.assertEqual(rows[0][-1], 'Value')
-        self.assertEqual(rows[1][-1], 0)
-        self.assertEqual(rows[2][-1], 5)
+        values = [row[-1] for row in rows[1:] if row[1] != SPECIMEN_COUNT]
+        self.assertEqual(values[:2], [0, 5])
         workbook.close()
 
     def test_separate_numeric_variables_render_independently(self):

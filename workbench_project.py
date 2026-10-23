@@ -12,7 +12,8 @@ import uuid
 from tensile_selection import valid_specimen_id, validate_data_mode
 from tensile_fit import validate_threshold, validate_override
 from tensile_settings import validate_group_policy, validate_failure_override, validate_group_display
-from tensile_property_variants import VARIANTS_KEY, validate_variants
+from tensile_property_variants import VARIANTS_KEY, SPECIMEN_VARIANTS_KEY, validate_variants, split_property_charts
+from tensile_locations import ensure_required_variables
 from tensile_order import validate_group_order
 from tensile_variables import validate_variables
 from tensile_colors import DEFAULT_PALETTE, validate_palette
@@ -95,8 +96,9 @@ def validate_project(project):
         validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(settings)
-        if VARIANTS_KEY in settings:
-            validate_variants(settings[VARIANTS_KEY])
+        for key in (VARIANTS_KEY, SPECIMEN_VARIANTS_KEY):
+            if key in settings:
+                validate_variants(settings[key])
         validate_group_order(settings.get('group_order', []))
         for family in ('ys_vs_el', 'uts_vs_el'):
             if settings.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
@@ -189,7 +191,7 @@ class ProjectStore:
     def reload(self):
         try:
             raw = self.path.read_bytes()
-            project = json.loads(raw)
+            project = split_property_charts(ensure_required_variables(json.loads(raw)))
             validate_project(project)
             _discard_obsolete_settings(project)
         except Exception as error:
@@ -200,7 +202,7 @@ class ProjectStore:
         return deepcopy(project)
 
     def save(self, project):
-        project = deepcopy(project)
+        project = split_property_charts(ensure_required_variables(project))
         validate_project(project)
         _discard_obsolete_settings(project)
         self.path.parent.mkdir(parents=True, exist_ok=True)

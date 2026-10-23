@@ -1,10 +1,52 @@
 """Independent property-chart configurations within one saved graph."""
 from copy import deepcopy
 import uuid
-from tensile_settings import GROUP_DEFAULTS, validate_group_display
+from tensile_settings import GROUP_DEFAULTS, GROUP_FAMILY, validate_group_display, planned_positions
+from tensile_locations import LOCATION, SPECIMEN_COUNT
 
 VARIANTS_KEY = 'properties_by_group_variants'
+SPECIMEN_FAMILY = 'properties_by_specimen'
+SPECIMEN_VARIANTS_KEY = 'properties_by_specimen_variants'
 TITLE_KEY = 'properties_by_group_title'
+SPECIMEN_DEFAULTS = {**GROUP_DEFAULTS, 'properties_by_group_level': 'specimen',
+                     'properties_by_group_x_variable': LOCATION,
+                     'properties_by_group_line_style': 'none', 'properties_by_group_error_bars': False}
+
+
+def split_property_charts(project):
+    """Move saved trial specimen variants into their own plot section once."""
+    from tensile_moves import graph_blocks
+    project = deepcopy(project)
+    counts = project.get('group_variables', {}).get(SPECIMEN_COUNT, {}).get('values', {})
+    for graph in graph_blocks(project):
+        settings = graph.get('settings', {})
+        if SPECIMEN_VARIANTS_KEY in settings:
+            continue
+        original = settings.get(VARIANTS_KEY, [{'id': 'default', 'name': 'Chart 1', 'settings': {
+            **{k: deepcopy(settings.get(k, v)) for k, v in GROUP_DEFAULTS.items()},
+            TITLE_KEY: graph.get('definition', {}).get('workbench_titles', {}).get(GROUP_FAMILY, '')}}])
+        specimens = [deepcopy(v) for v in original if v['settings'].get('properties_by_group_level') == 'specimen']
+        if not specimens:
+            continue
+        groups = [deepcopy(v) for v in original if v['settings'].get('properties_by_group_level', 'group') == 'group']
+        settings[SPECIMEN_VARIANTS_KEY] = specimens
+        settings[VARIANTS_KEY] = groups or [{'id': 'default', 'name': 'Chart 1', 'settings': deepcopy(GROUP_DEFAULTS)}]
+        settings.update({k: deepcopy(settings[VARIANTS_KEY][0]['settings'].get(k, default))
+                         for k, default in GROUP_DEFAULTS.items()})
+        if GROUP_FAMILY in settings.get('families', []):
+            settings['families'] = [f for f in settings['families'] if groups or f != GROUP_FAMILY]
+            if SPECIMEN_FAMILY not in settings['families']:
+                settings['families'].append(SPECIMEN_FAMILY)
+        for chart in specimens:
+            values = chart['settings']
+            planned = planned_positions(values.get('properties_by_group_planned_positions', ''))
+            # The former 1:N reservation becomes the shared count. Preserve any
+            # other old numeric domain inside the saved chart for compatibility.
+            if planned and planned == list(range(1, int(max(planned)) + 1)) and values.get('properties_by_group_x_variable') == LOCATION:
+                for group in settings.get('groups', []):
+                    counts[group] = max(counts.get(group, 0), int(max(planned)))
+                values['properties_by_group_planned_positions'] = ''
+    return project
 
 
 def validate_variants(variants):

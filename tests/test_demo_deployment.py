@@ -17,6 +17,7 @@ from migrate_tensile_project import migrate
 from tensile_startup import (DEFAULT_FOLDERS, DEFAULT_SAMPLE_DATA, SETTINGS_NAME, WorkbenchLauncher,
                              save_folders, save_sample_data_visibility, sample_data_settings)
 from tensile_selection import SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX, valid_specimen_id
+from tensile_property_variants import SPECIMEN_FAMILY
 from tensile_workbench import FAMILIES, PreviewSession, TensileWorkbench, upgrade_legacy_demo_graph
 from workbench_project import ProjectStore, validate_project
 
@@ -264,9 +265,16 @@ class DemoDeploymentTests(unittest.TestCase):
                     self.assertLess(properties['Yield (MPa)'], properties['UTS (MPa)'])
                     self.assertGreater(properties['Failure elongation (%)'], 10)
             for _, family in FAMILIES:
-                result = session.render({**session.defaults(), 'family': family})
-                self.assertIsNotNone(result['figure'], family)
-                session.engine.plt.close(result['figure'])
+                state = {**session.defaults(), 'family': family}
+                # Specimen property charts are one figure per group. These
+                # minimal deployment fixtures have no operator-name metadata.
+                states = [{**state, 'groups': [group],
+                           'properties_by_group_x_variable': ''}
+                          for group in session.files] if family == SPECIMEN_FAMILY else [state]
+                for plot_state in states:
+                    result = session.render(plot_state)
+                    self.assertIsNotNone(result['figure'], family)
+                    session.engine.plt.close(result['figure'])
         self.assertFalse((self.root / 'output').exists())
 
     def test_ignore_rules_exempt_only_known_demo_filenames(self):

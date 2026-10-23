@@ -9,7 +9,7 @@ import anywidget
 import traitlets
 
 
-def paste_cells(columns, groups, row, column, text):
+def paste_cells(columns, groups, row, column, text, required=None):
     """Apply a rectangular CSV/TSV block atomically, never inventing sample groups."""
     if (type(row) is not int or type(column) is not int
             or not 0 <= row < len(groups) + 2 or not 0 <= column < len(columns)):
@@ -46,8 +46,12 @@ def paste_cells(columns, groups, row, column, text):
         r = row + dr
         for dc, value in enumerate(line):
             target = result[column + dc]
+            fixed = (required or {}).get(target['id'])
             if r < 2:
-                target['name' if r == 0 else 'unit'] = value
+                key = 'name' if r == 0 else 'unit'
+                if fixed and value != fixed[key]:
+                    raise ValueError(f'{fixed["name"]}: the name and unit are fixed. Nothing pasted.')
+                target[key] = value
             else:
                 if value.strip():
                     try:
@@ -57,6 +61,8 @@ def paste_cells(columns, groups, row, column, text):
                     if not valid:
                         raise ValueError(f'{groups[r - 2]}, variable {column + dc + 1}: '
                                          'use a finite number or a blank cell (no formulas). Nothing pasted.')
+                    if fixed and not float(value).is_integer():
+                        raise ValueError(f'{fixed["name"]}: use whole numbers. Nothing pasted.')
                 target['values'][groups[r - 2]] = value
     return result
 
@@ -65,6 +71,8 @@ class VariableTable(anywidget.AnyWidget):
     columns = traitlets.List(traitlets.Dict()).tag(sync=True)
     groups = traitlets.List(traitlets.Unicode()).tag(sync=True)
     labels = traitlets.Dict().tag(sync=True)
+    required = traitlets.Dict().tag(sync=True)
+    defaults = traitlets.Dict().tag(sync=True)
     notice = traitlets.Unicode('').tag(sync=True)
 
     _css = """
@@ -112,6 +120,7 @@ class VariableTable(anywidget.AnyWidget):
         const focus=box.contains(active) && active.matches('input') ?
           {r:active.dataset.row,c:active.dataset.col,start:active.selectionStart,end:active.selectionEnd} : null;
         const columns=model.get('columns'),groups=model.get('groups'),labels=model.get('labels');
+        const required=model.get('required'),defaults=model.get('defaults');
         const table=document.createElement('table'),head=table.createTHead(),body=table.createTBody();
         ['Name','Unit',...groups].forEach((label,r)=>{
           const tr=(r<2 ? head : body).insertRow(),group=document.createElement('th');
@@ -122,8 +131,11 @@ class VariableTable(anywidget.AnyWidget):
             input.type='text';input.dataset.row=r;input.dataset.col=c;
             input.setAttribute('aria-label',r===0 ? 'Variable name '+(c+1) :
               r===1 ? 'Variable unit '+(c+1) : caption+' · variable '+(c+1));
-            input.value=r===0 ? column.name : r===1 ? column.unit : (column.values[label] ?? '');
-            input.placeholder=r===0 ? 'Variable name' : r===1 ? 'Optional unit' : 'Not set';
+            input.value=r===0 ? column.name : r===1 ? column.unit : (column.values[label] || defaults[column.id]?.[label] || '');
+            input.placeholder=r===0 ? 'Variable name' : r===1 ? 'Optional unit' : (defaults[column.id]?.[label] ?? 'Not set');
+            input.readOnly=r<2 && !!required[column.id];
+            if(r===1 && required[column.id]) input.placeholder='—';
+            if(required[column.id]) input.title=r<2 ? 'Required variable · name and unit are fixed' : 'Whole number';
             input.addEventListener('input',()=>{
               const updated=structuredClone(model.get('columns'));
               if(r<2) updated[c][r===0 ? 'name' : 'unit']=input.value;
@@ -150,7 +162,7 @@ class VariableTable(anywidget.AnyWidget):
               remove.textContent='×';remove.title='Delete this variable';
               remove.setAttribute('aria-label','Delete variable '+(column.name || 'column '+(c+1)));
               remove.addEventListener('click',()=>model.send({type:'delete',id:column.id}));
-              heading.append(input,remove);cell.append(heading);
+              heading.append(input);if(!required[column.id]) heading.append(remove);cell.append(heading);
             } else {cell.append(input);}
             tr.append(cell);
           });
@@ -167,15 +179,16 @@ class VariableTable(anywidget.AnyWidget):
       copy.addEventListener('click',async()=>{
         const columns=model.get('columns'),groups=model.get('groups');
         const quote=value=>/["\t\r\n]/.test(value) ? '"'+value.replaceAll('"','""')+'"' : value;
-        const rows=[columns.map(c=>c.name),columns.map(c=>c.unit),...groups.map(g=>columns.map(c=>c.values[g] ?? ''))];
+        const defaults=model.get('defaults');
+        const rows=[columns.map(c=>c.name),columns.map(c=>c.unit),...groups.map(g=>columns.map(c=>c.values[g] || defaults[c.id]?.[g] || ''))];
         try {
           await navigator.clipboard.writeText(rows.map(row=>row.map(quote).join('\t')).join('\n'));
           note.textContent='Copied names, units and visible values. Group labels are not included.';
         } catch {note.textContent='Clipboard access was unavailable. You can still paste from Excel into a cell.';}
       });
-      model.on('change:columns',scheduleRender);model.on('change:groups',scheduleRender);model.on('change:labels',scheduleRender);model.on('change:notice',status);
+      model.on('change:columns',scheduleRender);model.on('change:groups',scheduleRender);model.on('change:labels',scheduleRender);model.on('change:defaults',scheduleRender);model.on('change:notice',status);
       render();status();
-      return ()=>{cancelAnimationFrame(renderFrame);model.off('change:columns',scheduleRender);model.off('change:groups',scheduleRender);model.off('change:labels',scheduleRender);model.off('change:notice',status);};
+      return ()=>{cancelAnimationFrame(renderFrame);model.off('change:columns',scheduleRender);model.off('change:groups',scheduleRender);model.off('change:labels',scheduleRender);model.off('change:defaults',scheduleRender);model.off('change:notice',status);};
     }};
     """
 
@@ -186,6 +199,9 @@ class VariableTable(anywidget.AnyWidget):
 
     def _message(self, _, message, buffers):
         if message.get('type') == 'delete':
+            if message.get('id') in self.required:
+                self.notice = 'This variable is required and cannot be deleted.'
+                return
             if self._on_delete:
                 self._on_delete(message.get('id'))
             return
@@ -193,7 +209,7 @@ class VariableTable(anywidget.AnyWidget):
             return
         try:
             self.columns = paste_cells(self.columns, self.groups, message.get('row'),
-                                       message.get('column'), message.get('text'))
+                                       message.get('column'), message.get('text'), self.required)
             self.notice = 'Pasted into the draft. Click Save all variables to apply.'
         except ValueError as error:
             self.notice = str(error)

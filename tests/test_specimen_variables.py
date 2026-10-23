@@ -13,7 +13,8 @@ from tensile_workbench import TensileWorkbench
 from tensile_specimen_plot import specimen_number, SPECIMEN_NUMBER
 from tensile_settings import planned_positions, validate_group_display
 from tensile_variables import validate_variables, variable_usage
-from tensile_property_variants import VARIANTS_KEY
+from tensile_property_variants import VARIANTS_KEY, SPECIMEN_VARIANTS_KEY, SPECIMEN_FAMILY
+from tensile_locations import LOCATION, SPECIMEN_COUNT
 from tensile_group_plot import GROUP_FAMILY
 from tensile_plotly import figure_to_plotly
 from tensile_moves import migrate_settings, forget_group, references
@@ -29,8 +30,8 @@ class SpecimenVariablesTests(unittest.TestCase):
                 record['specimen_label'] = f'Wall_{number:02d}'
 
     def state(self, **kwargs):
-        return fixture.GroupPropertiesTests.state(self, groups=['Alloy A'],
-            properties_by_group_level='specimen', properties_by_group_x_variable=SPECIMEN_NUMBER,
+        return fixture.GroupPropertiesTests.state(self, groups=['Alloy A'], family=SPECIMEN_FAMILY,
+            properties_by_group_level='specimen', properties_by_group_x_variable=LOCATION,
             properties_by_group_line_style='none', **kwargs)
 
     def location(self):
@@ -56,7 +57,8 @@ class SpecimenVariablesTests(unittest.TestCase):
                 planned_positions(invalid)
 
     def test_planned_untested_locations_and_trend_do_not_create_observations(self):
-        state = self.state(properties_by_group_planned_positions='1:10', properties_by_group_trend='linear')
+        self.app._save_group_variable(SPECIMEN_COUNT, dict(name='Specimen count', unit='', values={'Alloy A': 10}))
+        state = self.state(properties_by_group_trend='linear')
         result = self.session.render(state)
         for line in self.means(result).values():
             np.testing.assert_array_equal(line.get_xdata(), [1, 4, 7])
@@ -81,53 +83,56 @@ class SpecimenVariablesTests(unittest.TestCase):
         self.assertIn('Specimen:', trace.hovertemplate)
         self.assertEqual(trace.customdata[0][0], 'Alloy A · Wall_01')
 
-    def test_location_editor_prefills_numbers_preserves_blanks_and_clipboard(self):
+    def test_location_editor_defaults_override_reset_and_clipboard(self):
         view = self.editor()
         self.assertEqual(view.name.value, 'Location')
         self.assertEqual([v.value for v in view.fields.values()], ['1', '4', '7'])
         first = 'Alloy A/coupon_1.csv'
-        view.fields[first].value = '2.5'
+        view.fields[first].value = '2'
         view.save.click()
         ident = view.choice.value
-        self.assertEqual(self.app.store.data['specimen_variables'][ident]['values'][first], 2.5)
+        self.assertEqual(ident, LOCATION)
+        self.assertEqual(self.app.store.data['specimen_variables'][ident]['values'][first], 2)
         view.fields[first].value = ''
         view.save.click()
         self.app._refresh_specimen_variables(force=True)
-        self.assertEqual(view.fields[first].value, '')
-        self.app.fill_specimen_locations.click()
         self.assertEqual(view.fields[first].value, '1')
+        self.assertNotIn(first, self.app.store.data['specimen_variables'][LOCATION]['values'])
         view.view.value = 'table'
-        view.table._message(None, dict(type='paste', row=0, column=0, text='Location\tTemperature\nmm\t°C\n0\t500\n5\t600\n20\t700'), [])
+        view.table._message(None, dict(type='paste', row=0, column=0, text='Location\tTemperature\n\t°C\n0\t500\n5\t600\n20\t700'), [])
         view.save_all.click()
         saved = self.app.store.data['specimen_variables']
         self.assertEqual(len(saved), 2)
         self.assertEqual(saved[ident]['values'][first], 0)
         self.assertEqual(view.table.labels[first], 'Alloy A · Wall_01')
-        self.assertFalse(self.app.store.data.get('group_variables'))
+        self.assertEqual(set(self.app.store.data['group_variables']), {SPECIMEN_COUNT})
         with redirect_stdout(io.StringIO()):
             reopened = TensileWorkbench(self.root)
         self.assertEqual(reopened.store.data['specimen_variables'], saved)
 
-    def test_scope_switch_defaults_variants_and_single_chart_not_duplicate(self):
-        self.app.controls['properties_by_group_level'].value = 'specimen'
-        self.assertEqual(self.app.controls['properties_by_group_x_variable'].value, SPECIMEN_NUMBER)
-        self.assertEqual(self.app.controls['properties_by_group_line_style'].value, 'none')
-        self.assertTrue(self.app.controls['properties_by_group_error_bars'].disabled)
-        self.app.controls['properties_by_group_planned_positions'].value = '1:10'
-        self.app.controls['properties_by_group_trend'].value = 'quadratic'
+    def test_independent_sections_variants_and_one_chart_per_group(self):
+        view = self.app.specimen_charts
+        self.assertNotIn('properties_by_group_level', self.app.controls)
+        self.assertEqual(view.controls['properties_by_group_x_variable'].value, LOCATION)
+        self.assertEqual(view.controls['properties_by_group_line_style'].value, 'none')
+        view.controls['properties_by_group_trend'].value = 'quadratic'
+        self.app.controls['groups'].value = ('Alloy A', 'Heat treated')
         self.app.controls['show_both_versions'].value = True
-        self.app.family_boxes[GROUP_FAMILY].value = True
+        self.app.family_boxes[SPECIMEN_FAMILY].value = True
         with patch.object(self.app.viewer, 'set_items') as display:
             self.app.update()
-        self.assertEqual(len(self.app._results), 1, self.app.details.value)
+        self.assertEqual(len(self.app._results), 2, self.app.details.value)
         self.assertIn('individual specimens', display.call_args.args[0][0]['label'])
-        first = self.app.property_variants.active
-        self.app.property_variants.add.click()
-        self.app.controls['properties_by_group_level'].value = 'group'
-        self.app.property_variants.choice.value = first
-        self.assertEqual(self.app.controls['properties_by_group_x_variable'].value, SPECIMEN_NUMBER)
-        self.assertEqual(self.app.controls['properties_by_group_planned_positions'].value, '1:10')
-        self.assertEqual(self.app.controls['properties_by_group_trend'].value, 'quadratic')
+        self.assertEqual(len({i['key'] for i in display.call_args.args[0]}), 2)
+        for result in self.app._results:
+            self.assertEqual(len(result['state']['groups']), 1)
+            self.assertEqual(set(self.means(result)), {'0.2% YS', 'UTS', 'EL'})
+        first = view.variants.active
+        view.variants.add.click()
+        view.controls['properties_by_group_trend'].value = 'linear'
+        view.variants.choice.value = first
+        self.assertEqual(view.controls['properties_by_group_trend'].value, 'quadratic')
+        self.assertEqual(self.app.property_variants.snapshot()[0]['settings']['properties_by_group_level'], 'group')
 
     def test_custom_locations_duplicates_and_missing_are_not_pooled(self):
         self.location()
@@ -143,12 +148,8 @@ class SpecimenVariablesTests(unittest.TestCase):
     def test_groups_stay_separate_and_insufficient_trend_remains_undrawn(self):
         state = {**self.state(), 'groups': ['Alloy A', 'Heat treated'],
                  'properties_by_group_planned_positions': '1:10', 'properties_by_group_trend': 'quadratic'}
-        result = self.session.render(state)
-        lines = self.means(result)
-        self.assertEqual(len(lines), 6)
-        self.assertTrue(all(len(line.get_xdata()) == 3 for line in lines.values()))
-        self.assertTrue(all(len({label.split(' · ')[0] for label in line._tensile_point_labels}) == 1
-                            for line in lines.values()))
+        with self.assertRaisesRegex(ValueError, 'one sample group'):
+            self.session.render(state)
         self.location()
         self.app._save_specimen_variable('height', dict(name='Height', values={'Alloy A/coupon_1.csv': 1}))
         result = self.session.render({**self.state(), 'properties_by_group_x_variable': 'height',
@@ -196,9 +197,9 @@ class SpecimenVariablesTests(unittest.TestCase):
         rows = list(workbook['Specimen variables'].values)
         workbook.close()
         self.assertEqual(rows[0], ('Specimen ID', 'Variable ID', 'Variable', 'Unit', 'Value'))
-        self.assertEqual(rows[1], ('Alloy A/coupon_1.csv', 'height', 'Height', 'mm', 0))
-        self.app.controls['properties_by_group_level'].value = 'specimen'
-        self.app.controls['properties_by_group_x_variable'].value = 'height'
+        self.assertIn(('Alloy A/coupon_1.csv', 'height', 'Height', 'mm', 0), rows)
+        self.assertIn(('Alloy A/coupon_1.csv', LOCATION, 'Location', None, 1), rows)
+        self.app.specimen_charts.controls['properties_by_group_x_variable'].value = 'height'
         self.assertTrue(variable_usage(self.app.store.data, 'height', scope='specimen'))
         self.assertFalse(variable_usage(self.app.store.data, 'height'))
         view = self.editor()

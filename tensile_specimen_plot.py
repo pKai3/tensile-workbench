@@ -7,17 +7,10 @@ from tensile_order import ordered_groups
 from tensile_variables import variable_label, property_chart_title, plot_text, validate_variables
 from tensile_group_plot import fit_group_tick_labels, wrap_group_label
 from tensile_settings import GROUP_DEFAULTS, GROUP_LINE_STYLES, validate_group_display, planned_positions
+from tensile_locations import LOCATION, LEGACY_NUMBER, specimen_number, location_values
+from tensile_property_variants import SPECIMEN_FAMILY
 
-SPECIMEN_NUMBER = '__specimen_number__'
-
-
-def specimen_number(record):
-    """Only unambiguous operator labels, never the CSV acquisition-row suffix."""
-    label = str(record.get('specimen_label') or '').strip()
-    match = re.fullmatch(r'(?:.*?[_\s-])?(\d+)', label)
-    if not match or '/' in label:
-        return None
-    return int(match[1])
+SPECIMEN_NUMBER = LEGACY_NUMBER  # Read old direct/headless callers; no longer a second UI variable.
 
 
 def specimen_sort_key(record):
@@ -28,22 +21,24 @@ def specimen_sort_key(record):
 
 def render_specimen_properties(engine, records, state, *, out_path, variables=None,
                                color_map=None, name_overrides=None, title=None,
-                               preview=False, fit_fractions=None, xlim=None, ylim=None, **_):
+                               preview=False, fit_fractions=None, xlim=None, ylim=None, specimen_counts=None, **_):
     """Independent specimen values at actual positions; lines only within a group."""
     e = engine
     validate_group_display(state)
     fit_fractions = fit_fractions or e.LANDMARK_YIELD_FIT_FRACTIONS
     groups = ordered_groups(sorted(state['groups']), state.get('group_order', []))
+    if state.get('family') == SPECIMEN_FAMILY and len(groups) != 1:
+        raise ValueError('Specimen charts require one sample group per figure.')
     rows = {g: sorted(records.get(g, []), key=specimen_sort_key) for g in groups}
     labels = {specimen_id(r): f'{e.get_display_name(g, name_overrides)} · {label}' for g, specimens in rows.items()
               for r, label in zip(specimens, e.scatter_specimen_labels(specimens))}
     variable_id = state.get('properties_by_group_x_variable', SPECIMEN_NUMBER)
     variable = None
     warnings = []
-    if variable_id == SPECIMEN_NUMBER:
-        variable = dict(name='Specimen number', unit='')
-        values = {specimen_id(r): n for specimens in rows.values() for r in specimens
-                  if (n := specimen_number(r)) is not None}
+    if variable_id in (SPECIMEN_NUMBER, LOCATION):
+        variable = dict(name='Location', unit='')
+        values = location_values((variables or {}).get(LOCATION, {}),
+                                 [r for specimens in rows.values() for r in specimens])
     elif variable_id:
         if variable_id not in (variables or {}):
             raise ValueError('The selected specimen variable is unavailable. Choose one in the plot settings.')
@@ -58,6 +53,12 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
     plotted_rows = {g: sorted((r for r in specimens if specimen_id(r) in values),
                              key=lambda r: values[specimen_id(r)]) for g, specimens in rows.items()}
     planned = planned_positions(state.get('properties_by_group_planned_positions', ''))
+    if variable_id in (SPECIMEN_NUMBER, LOCATION):
+        total = max(((specimen_counts or {}).get(group, 0) for group in groups), default=0)
+        # Large specimen counts extend the domain without constructing millions
+        # of ticks or pretending the untested positions are observations.
+        if total > 0:
+            planned = sorted(set(planned + (list(range(1, total + 1)) if total <= 40 else [1, total])))
     if planned and not variable_id:
         raise ValueError('Planned locations require a numeric x-axis, not specimen names.')
     domain = [values[specimen_id(r)] for specimens in plotted_rows.values() for r in specimens] + planned
@@ -72,6 +73,9 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
     strength = show['ys'] or show['uts']
     figure, left = e.plt.subplots(figsize=e.PLOT_FIGSIZE)
     right = left.twinx() if strength and show['el'] else left
+    if variable_id in (SPECIMEN_NUMBER, LOCATION):
+        for axis in (left, right):
+            axis._tensile_x_places = 0
     figure._tensile_group_plot = True
     handles, plotted, missing_properties = [], False, set()
     multiple = sum(bool(v) for v in plotted_rows.values()) > 1
@@ -132,9 +136,12 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         warnings.append('Dashed: fitted trend within measured locations. Dotted: extrapolation beyond measurements, '
                         'not measured results or a validated prediction. Untested locations do not enter the fit.')
     figure._tensile_variable_warning = ' '.join(warnings)
+    heading = plot_text(title) if title else property_chart_title(variable, [k for k in show if show[k]], scope='specimen')
+    if state.get('family') == SPECIMEN_FAMILY:
+        heading = plot_text(e.get_display_name(groups[0], name_overrides)) + ' · ' + heading
     left.set(xlabel=variable_label(variable, for_plot=True) if variable else 'Specimen',
              ylabel='Strength (MPa)' if strength else 'Elongation at failure (%)',
-             title=plot_text(title) if title else property_chart_title(variable, [k for k in show if show[k]], scope='specimen'))
+             title=heading)
     if show['el']:
         right.set_ylabel('Elongation at failure (%)')
         if state.get('properties_by_group_el_ylim') is not None:
@@ -145,6 +152,10 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         axis.margins(y=.12)
     left.margins(x=.08)
     if variable_id:
+        if variable_id in (SPECIMEN_NUMBER, LOCATION):
+            from matplotlib.ticker import MaxNLocator, StrMethodFormatter
+            left.xaxis.set_major_locator(MaxNLocator(integer=True))
+            left.xaxis.set_major_formatter(StrMethodFormatter('{x:.0f}'))
         if planned and len(set(domain)) <= 40:
             left.set_xticks(sorted(set(domain)))
             left._tensile_numeric_ticks = sorted(set(domain))

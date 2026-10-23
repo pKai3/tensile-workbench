@@ -12,6 +12,7 @@ import re
 
 from tensile_selection import SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX, valid_specimen_id
 from tensile_overrides import DISABLED
+from tensile_locations import SPECIMEN_COUNT
 
 GROUP_MAPS = ('name_overrides', 'color_overrides', 'youngs_modulus_overrides',
               'representative_overrides', 'gauge_reconstruction')
@@ -33,8 +34,9 @@ def graph_blocks(project):
 
 def references(project):
     groups = set(project.get('display_names', {}))
-    for variable in project.get('group_variables', {}).values():
-        groups.update(variable.get('values', {}))
+    for ident, variable in project.get('group_variables', {}).items():
+        groups.update(g for g, value in variable.get('values', {}).items()
+                      if ident != SPECIMEN_COUNT or value > variable.get('minimums', {}).get(g, 0))
     specimens = set()
     for variable in project.get('specimen_variables', {}).values():
         specimens.update(variable.get('values', {}))
@@ -49,7 +51,7 @@ def references(project):
         for key in ('groups', 'group_order'):
             groups.update(settings.get(key, []))
         groups.update(settings.get('properties_by_group_labels', {}))
-        for chart in settings.get('properties_by_group_variants', []):
+        for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             groups.update(chart.get('settings', {}).get('properties_by_group_labels', {}))
         for key in GROUP_MAPS:
             groups.update(definition.get(key, {}))
@@ -270,8 +272,16 @@ def migrate_settings(project, proposal, *, audit=True):
     old, new, specimens = proposal['old'], proposal['new'], proposal['mapping']
     groups = {old: new} if old != new else {}
     remap_keys(result, 'display_names', groups)
-    for variable in result.get('group_variables', {}).values():
-        remap_keys(variable, 'values', groups)
+    for ident, variable in result.get('group_variables', {}).items():
+        if ident == SPECIMEN_COUNT:
+            # Discovery may already have seeded a minimum at the new path.
+            # Preserve the larger planned total; this is not a conflicting measurement.
+            for key in ('values', 'minimums'):
+                values = variable.get(key, {})
+                if old != new and old in values:
+                    values[new] = max(values.get(new, 0), values.pop(old))
+        else:
+            remap_keys(variable, 'values', groups)
     for variable in result.get('specimen_variables', {}).values():
         remap_keys(variable, 'values', specimens)
     for key in SPECIMEN_MAPS:
@@ -288,7 +298,7 @@ def migrate_settings(project, proposal, *, audit=True):
             if key in settings:
                 settings[key] = list(dict.fromkeys(groups.get(g, g) for g in settings[key]))
         remap_keys(settings, 'properties_by_group_labels', groups)
-        for chart in settings.get('properties_by_group_variants', []):
+        for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             remap_keys(chart['settings'], 'properties_by_group_labels', groups)
         representatives = definition.get('representative_overrides', {})
         if old in representatives:
@@ -334,6 +344,7 @@ def forget_group(project, group, *, live_groups=()):
     result.get('display_names', {}).pop(group, None)
     for variable in result.get('group_variables', {}).values():
         variable.get('values', {}).pop(group, None)
+        variable.get('minimums', {}).pop(group, None)
     for variable in result.get('specimen_variables', {}).values():
         variable['values'] = {ident: value for ident, value in variable.get('values', {}).items() if not owned(ident)}
     for block in [result, *(g.get('definition', {}) for g in graph_blocks(result))]:
@@ -353,7 +364,7 @@ def forget_group(project, group, *, live_groups=()):
             if key in settings:
                 settings[key] = [g for g in settings[key] if g != group]
         settings.get('properties_by_group_labels', {}).pop(group, None)
-        for chart in settings.get('properties_by_group_variants', []):
+        for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             chart.get('settings', {}).get('properties_by_group_labels', {}).pop(group, None)
         for key in GROUP_MAPS:
             definition.get(key, {}).pop(group, None)

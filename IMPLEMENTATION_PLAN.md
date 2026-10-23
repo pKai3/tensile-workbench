@@ -2,6 +2,38 @@
 
 ## Change notes — 2026-10-23
 
+### Separate specimen charts and required integer variables — implemented
+
+- Split **YS/UTS/EL by specimen** from **YS/UTS/EL by sample group & custom
+  variable**. Specimen variants have independent settings and generate one
+  figure per selected group, in shared group order, with a simple property
+  legend and no duplicate with/without-individuals versions.
+- Make **Location** the single permanent specimen variable. Default to the
+  unambiguous operator specimen number, allow integer overrides, and restore
+  the default when cleared. Do not substitute CSV row numbers or save defaults
+  as overrides. Keep integer display in editors, axes, hovers and Excel.
+- Make **Specimen count** a permanent whole-number sample-group variable in
+  Custom variables. At startup and Reload data, use the lightweight catalogue
+  to raise it to at least the imported count, including excluded specimens.
+  Preserve larger tested + untested totals. Location charts extend to 1–count
+  without fabricated observations, zero-valued points or trendline fit weight.
+- Protect both variables from deletion/renaming and reject fractional edits
+  and pastes. Keep unrestricted numeric custom variables for physical units.
+  Migrate trial specimen charts and saved integer Location values; convert
+  old 1:N reservations into shared counts. Preserve fractional/unit-based
+  legacy locations separately rather than rounding away their values.
+- Include counts and locations in stale-preview/export checks, approved moves
+  and forgetting groups. Automatic inventory counts do not cause move
+  protection to fingerprint every data group. Split-chart exports retain all
+  rendered groups and use unique figure filenames.
+- Verification: all 93 focused synthetic tests pass. Expanded coverage ran
+  193 tests: 184 passed and nine older failures/errors reproduce unchanged at
+  the preceding commit (selection/export expectations, inspector layout,
+  graph undo and old workbook filenames). These were not new regressions.
+  Browser checks verified all-specimen browsing, editing/clearing Location,
+  minimum-count correction, integer ticks and separate group charts. No
+  research data, outputs or personal settings were changed.
+
 ### Fast individual-specimen variable catalogue — implemented
 
 - Build the location/name editor from bounded CSV header and summary reads,
