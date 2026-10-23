@@ -1,5 +1,22 @@
 # Implementation record
 
+## Pending implementation
+
+### Tested versus total specimen count — planned, 2026-10-23
+
+- Present Specimen count as `X tested of [Y]`: a grey, read-only prefix and an
+  editable whole-number total. Apply this in both One variable and Table views.
+- Derive X from imported specimens in each group and refresh it at startup and
+  Reload data. Include excluded specimens; exclusion does not mean untested.
+  Clarify that the count covers tests found in the imported data, not unseen files.
+- Y remains the saved total of tested plus reserved/untested specimens. Keep the
+  existing minimum of X and preserve larger totals across startup and reload.
+- Keep clipboard copy/paste and saved/exported variable values numeric: only Y
+  is editable variable data; the prefix is display context, not another variable.
+- Verify both editor views, excluded specimens, reload updates, minimum-total
+  handling and clipboard behaviour using synthetic data. UI implementation is
+  deferred while the user raises the next item.
+
 ## Change notes — 2026-10-23
 
 ### Hash-number location defaults — implemented
