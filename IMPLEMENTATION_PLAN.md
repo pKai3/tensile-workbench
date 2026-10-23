@@ -2,6 +2,13 @@
 
 ## Change notes — 2026-10-23
 
+### Automatic title units — implemented
+
+- Put units in parentheses in both the property-chart automatic title and its
+  grey placeholder, matching the variable-axis label: Heat Treat Time (h).
+  Omit parentheses when units are blank; retain script formatting and custom
+  title overrides. Verify with synthetic title/editor/plot regression checks.
+
 ### Variable table, clipboard editing and automatic chart titles — implemented
 
 - Add a Table / One variable editor switch. The table shows editable names in

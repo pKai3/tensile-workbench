@@ -47,8 +47,7 @@ def property_chart_title(variable=None, properties=('ys', 'uts', 'el')):
     shown = '/'.join(key.upper() for key in properties)
     if variable is None:
         return shown + ' by sample'
-    label = ' '.join(part.strip() for part in (variable['name'], variable.get('unit', '')) if part.strip())
-    return plot_text(shown + ' vs. ' + label)
+    return shown + ' vs. ' + variable_label(variable, for_plot=True)
 
 
 def variable_axis(groups, ident, variables):

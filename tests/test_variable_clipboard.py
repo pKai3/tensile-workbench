@@ -49,3 +49,7 @@ class VariableClipboardTests(unittest.TestCase):
         self.assertEqual(plot_text('CO_2; H_{12}; mm^2; m^{-3}; Na^{+1}'), 'CO₂; H₁₂; mm²; m⁻³; Na⁺¹')
         self.assertEqual(plot_text('my_variable, CO₂, mm²'), 'my_variable, CO₂, mm²')
         self.assertEqual(property_chart_title(dict(name='CO_2', unit='')), 'YS/UTS/EL vs. CO₂')
+        self.assertEqual(property_chart_title(dict(name='Heat Treat Time', unit='h')),
+                         'YS/UTS/EL vs. Heat Treat Time (h)')
+        self.assertEqual(property_chart_title(dict(name='Area', unit=' mm^2 '), ['uts']),
+                         'UTS vs. Area (mm²)')

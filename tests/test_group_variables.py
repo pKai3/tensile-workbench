@@ -107,7 +107,7 @@ class GroupVariablesTests(unittest.TestCase):
         result = self.session.render(self.state(properties_by_group_x_variable='co2', show_individuals=True))
         ax = result['figure'].axes[0]
         self.assertEqual(ax.get_xlabel(), 'Shielding CO₂ (%)')
-        self.assertEqual(ax.get_title(), 'YS/UTS/EL vs. Shielding CO₂ %')
+        self.assertEqual(ax.get_title(), 'YS/UTS/EL vs. Shielding CO₂ (%)')
         for line in self.means(result).values():
             np.testing.assert_equal(line.get_xdata(), [0, 5, 12.5])
         chart = figure_to_plotly(result['figure'])
@@ -239,7 +239,7 @@ class GroupVariablesTests(unittest.TestCase):
         self.app._save_group_variable('area', dict(name='Area', unit='mm^2', values={'Alloy A': 10}))
         title = self.app.title_inputs[GROUP_FAMILY]
         self.app.controls['properties_by_group_x_variable'].value = 'gas'
-        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ %')
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ (%)')
         self.assertEqual(title.value, '')
         self.assertEqual(self.app._capture_property_chart()[TITLE_KEY], '')
         title.value = 'Custom CO_2 comparison'
@@ -248,16 +248,16 @@ class GroupVariablesTests(unittest.TestCase):
         title.value = ''
         self.app.controls['properties_by_group_x_variable'].value = 'area'
         self.app.controls['properties_by_group_show_el'].value = False
-        self.assertEqual(title.placeholder, 'YS/UTS vs. Area mm²')
+        self.assertEqual(title.placeholder, 'YS/UTS vs. Area (mm²)')
         result = self.session.render(self.state(properties_by_group_x_variable='area',
                                                properties_by_group_show_el=False, **{TITLE_KEY: ''}))
         self.assertEqual(result['figure'].axes[0].get_title(), title.placeholder)
         self.assertEqual(result['figure'].axes[0].get_xlabel(), 'Area (mm²)')
         self.app.property_variants.choice.value = first
         self.assertEqual(title.value, 'Custom CO_2 comparison')
-        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ %')
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Shielding CO₂ (%)')
         self.app._save_group_variable('gas', dict(name='Gas CO_2', unit='vol.%', values={'Alloy A': 0}))
-        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Gas CO₂ vol.%')
+        self.assertEqual(title.placeholder, 'YS/UTS/EL vs. Gas CO₂ (vol.%)')
         self.assertEqual(title.value, 'Custom CO_2 comparison')
         self.assertEqual(self.app.store.data['group_variables']['gas']['name'], 'Gas CO_2')
         custom = self.session.render(self.state(properties_by_group_x_variable='gas',
