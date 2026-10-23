@@ -1,11 +1,18 @@
-"""Categorical strength/elongation comparison from shared specimen properties."""
+"""Strength/elongation comparisons on categorical or user-supplied numeric axes."""
 import textwrap
+import math
 import numpy as np
 from tensile_order import ordered_groups
+from tensile_variables import variable_axis
 
 GROUP_FAMILY = 'properties_by_group'
 GROUP_LINE_STYLES = {'solid': '-', 'dash': '--', 'dot': ':', 'none': 'None'}
 GROUP_DEFAULTS = {
+    'properties_by_group_x_variable': '',
+    'properties_by_group_xlim': None,
+    'properties_by_group_show_ys': True,
+    'properties_by_group_show_uts': True,
+    'properties_by_group_show_el': True,
     'properties_by_group_line_style': 'solid',
     'properties_by_group_labels': {},
     'properties_by_group_ylim': None,
@@ -18,9 +25,26 @@ GROUP_DEFAULTS = {
 
 
 def validate_group_display(settings):
+    from matplotlib.colors import is_color_like
+    for key in ('xlim', 'ylim', 'el_ylim'):
+        limits = settings.get('properties_by_group_' + key)
+        if limits is not None and (not isinstance(limits, (tuple, list)) or len(limits) != 2
+                or any(isinstance(v, bool) or not isinstance(v, (float, int)) or not math.isfinite(v) for v in limits)
+                or limits[0] >= limits[1]):
+            raise ValueError('Property chart limits must be finite and increase from min to max.')
+    for key in ('ys', 'uts', 'el'):
+        if not is_color_like(settings.get(f'properties_by_group_{key}_color', GROUP_DEFAULTS[f'properties_by_group_{key}_color'])):
+            raise ValueError('Invalid property chart colour.')
+    if not isinstance(settings.get('properties_by_group_x_variable', ''), str):
+        raise ValueError('The property-plot x-variable must be a saved variable ID.')
+    for key in ('ys', 'uts', 'el'):
+        if not isinstance(settings.get(f'properties_by_group_show_{key}', True), bool):
+            raise ValueError('Property visibility must be on or off.')
     style = settings.get('properties_by_group_line_style', 'solid')
     if not isinstance(style, str) or style not in GROUP_LINE_STYLES:
         raise ValueError('Property-plot connecting lines must be solid, dash, dot or none.')
+    if not isinstance(settings.get('properties_by_group_error_bars', True), bool):
+        raise ValueError('Property error bars must be on or off.')
     labels = settings.get('properties_by_group_labels', {})
     if not isinstance(labels, dict) or any(not isinstance(group, str) or not group
                                          or not isinstance(label, str) for group, label in labels.items()):
@@ -55,21 +79,31 @@ def fit_group_tick_labels(figure, axis, labels):
 
 def render_group_properties(engine, records, state, *, out_path, show_individual=False,
                             ylim=None, name_overrides=None, title=None, preview=False,
-                            fit_fractions=None, **_):
+                            fit_fractions=None, variables=None, xlim=None, **_):
     """One mean per metric/group, independently counted; missing values leave gaps."""
     e = engine
     if fit_fractions is None:
         fit_fractions = e.LANDMARK_YIELD_FIT_FRACTIONS
     groups = ordered_groups(sorted(state['groups']), state.get('group_order', []))
     validate_group_display(state)
+    variable = state.get('properties_by_group_x_variable', '')
+    warning = ''
+    if variable:
+        groups, positions, xlabel, warning = variable_axis(groups, variable, variables or {})
+    else:
+        positions, xlabel = np.arange(len(groups), dtype=float), 'Sample group'
     full_labels = [e.get_display_name(group, name_overrides) for group in groups]
     overrides = state.get('properties_by_group_labels', {})
     labels = [overrides.get(group, '').strip() or full for group, full in zip(groups, full_labels)]
     style = GROUP_LINE_STYLES[state.get('properties_by_group_line_style', 'solid')]
+    show = {key: state.get(f'properties_by_group_show_{key}', True) for key in ('ys', 'uts', 'el')}
+    if not any(show.values()):
+        raise ValueError('Turn on at least one property: YS, UTS or EL.')
+    strength = show['ys'] or show['uts']
     figure, left = e.plt.subplots(figsize=e.PLOT_FIGSIZE)
-    right = left.twinx()
+    right = left.twinx() if strength and show['el'] else left
     figure._tensile_group_plot = True
-    positions = np.arange(len(groups), dtype=float)
+    figure._tensile_variable_warning = warning
     stats = {g: [(r, e.specimen_properties(r, fit_fractions)) for r in records.get(g, [])]
              for g in groups}
     metrics = [('Yield (MPa)', '0.2% YS', 'o', left, 'ys'),
@@ -78,6 +112,8 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
     handles, plotted = [], False
     errors = state.get('properties_by_group_error_bars', True)
     for field, label, marker, ax, key in metrics:
+        if not show[key]:
+            continue
         color = state.get(f'properties_by_group_{key}_color', GROUP_DEFAULTS[f'properties_by_group_{key}_color'])
         means, deviations, counts = [], [], []
         for x, group in zip(positions, groups):
@@ -110,31 +146,49 @@ def render_group_properties(engine, records, state, *, out_path, show_individual
             line, = ax.plot(positions, means, marker=marker, linestyle=style,
                             color=color, markersize=6, label=label)
         line._tensile_counts = counts
+        if variable:
+            line._tensile_point_labels = [f'{group} · {full}' if group != full else group
+                                           for group, full in zip(groups, full_labels)]
         handles.append(line)
     if not plotted:
         e.plt.close(figure)
         return None
-    for ax in (left, right):
-        ax._tensile_category_labels = labels
-        ax._tensile_category_hover_labels = [f'{group} · {full}' if group != full else group
+    for ax in figure.axes:
+        if not variable:
+            ax._tensile_category_labels = labels
+            ax._tensile_category_hover_labels = [f'{group} · {full}' if group != full else group
                                              for group, full in zip(groups, full_labels)]
         ax.margins(y=.12)
-    left.set_xticks(positions, [wrap_group_label(label, 22) for label in labels])
-    left.set_xlim(-.5, len(groups) - .5)
-    left.set(title=title or 'YS, UTS and elongation by sample', xlabel='Sample group', ylabel='Strength (MPa)')
-    right.set_ylabel('Elongation at failure (%)')
-    if ylim is not None:
+    if variable:
+        left.margins(x=.08)
+        if xlim is not None:
+            left.set_xlim(xlim)
+    else:
+        left.set_xticks(positions, [wrap_group_label(label, 22) for label in labels])
+        left.set_xlim(-.5, len(groups) - .5)
+    shown = ', '.join(label for _, label, _, _, key in metrics if show[key])
+    left.set(title=title or (shown + (' vs ' + xlabel if variable else ' by sample')),
+             xlabel=xlabel, ylabel='Strength (MPa)' if strength else 'Elongation at failure (%)')
+    if show['el']:
+        right.set_ylabel('Elongation at failure (%)')
+    if strength and ylim is not None:
         left.set_ylim(ylim)
-    if state.get('properties_by_group_el_ylim') is not None:
+    if show['el'] and state.get('properties_by_group_el_ylim') is not None:
         right.set_ylim(state['properties_by_group_el_ylim'])
     left.grid(True, linestyle='--', alpha=.4)
-    right.grid(False)
+    if right is not left:
+        right.grid(False)
     # A single compact legend outside the data, with room for the title.
     left.legend(handles, [line.get_label() for line in handles], loc='lower center',
                 bbox_to_anchor=(.5, 1.01), ncol=3)
     left.set_title(left.get_title(), pad=38)
-    fit_group_tick_labels(figure, left, labels)
-    print('[PLOT INFO] Lines join categorical group means, not fitted trends. '
+    if variable:
+        figure.tight_layout()
+    else:
+        fit_group_tick_labels(figure, left, labels)
+    if warning:
+        print('[GROUP VARIABLE] ' + warning)
+    print('[PLOT INFO] Lines join group means, not fitted trends. '
           'Each metric uses its available included specimens independently. '
           'EL uses Calc or the enabled gauge reconstruction; bars are ±1 sample SD.')
     return e.finish_plot(figure, out_path, preview)

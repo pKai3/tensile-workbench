@@ -222,6 +222,13 @@ def export_results(frames, path, metadata):
         'Missing comparisons remain absent; n=1 has no SD. Checks are retained, not automatic exclusions. '
         'UTS is retained here for audit, but omitted from the comparison charts; discrepancies stay in specimen Checks.')
     sheets = {'Summary': summary, 'Specimens': specimens}
+    variables = metadata.get('group_variables', {})
+    if variables:
+        sheets['Group variables'] = pd.DataFrame([
+            {'Group': group, 'Variable ID': ident, 'Variable': variable['name'],
+             'Unit': variable.get('unit', ''), 'Value': value}
+            for ident, variable in variables.items() for group, value in variable.get('values', {}).items()
+        ], columns=['Group', 'Variable ID', 'Variable', 'Unit', 'Value'])
     if not agreement.empty:
         sheets['Calc-Instron agreement'] = agreement
     sheets.update({'Audit': checks, 'Export info': flatten_info(metadata)})

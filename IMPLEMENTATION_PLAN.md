@@ -2,6 +2,41 @@
 
 ## Change notes — 2026-10-23
 
+### Sample-group variables and multiple property charts — implemented
+
+- Add a collapsed Sample-group variables editor below sample selection/order.
+  Save named numeric variables with optional units and per-group values across
+  all graphs. Blank means missing, zero remains valid; reject nonfinite values
+  and duplicate names. Keep values in the ignored personal project, preserve
+  unselected groups and remap/forget them with approved folder operations.
+- Extend the YS/UTS/EL chart to choose sample names or a numeric variable.
+  Use real numeric spacing and ascending X order, with separate groups at
+  equal X values. Flag missing values/overlap outside publication figures.
+  Keep group/specimen identities and valid n in interactive hover text.
+- Add any number of separately configured chart variants within one graph.
+  Each has independent X variable, YS/UTS/EL switches, title, axis limits,
+  short categorical labels, connecting lines, colours and SD bars. The editor
+  switches between saved variants; Add copies the current one, Remove deletes
+  only that chart. Existing graphs load as one compatible chart. Only EL or
+  only strength uses a single axis; mixed charts retain dual axes.
+- Preserve property eligibility, independent means, sample SDs, reconstruction
+  policy and shared limits with/without individuals. Variables affect display,
+  not specimen calculations. Invalidate cached numeric plots when values
+  change and reject exports from stale variable settings.
+- Render/export every variant with unique readable filenames and complete
+  settings provenance. Include a numeric Group variables workbook sheet;
+  do not generate unselected average curves or duplicate property tables.
+- Verification: 57 focused synthetic checks passed across numeric plotting,
+  all property-switch combinations, two independent numeric X variables,
+  static/Plotly conversion, control save/reopen, legacy categorical behaviour,
+  folder moves, export values/filenames and related colour/order/writer tests.
+  Visually inspected a synthetic dual-axis numeric plot. No research outputs
+  regenerated; personal graph definitions and data were not edited.
+- Broader setup checks: five existing failures reproduced unchanged from
+  commit 33b1c1d (four fixtures omit required web assets; one test forbids a
+  NumPy import already made by project validation). They are not caused or
+  repaired by this feature.
+
 ### Shared group order — implemented
 
 - Add a saved per-graph Group order list with Move up/down in a collapsible

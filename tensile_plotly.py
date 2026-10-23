@@ -178,6 +178,10 @@ def _axis_to_plotly(ax, *, width=640):
         counts = getattr(line, '_tensile_counts', None)
         custom = ([[escape(category_hover[int(value)]), counts[i] if counts is not None else None]
                    for i, value in enumerate(x)] if categories is not None else None)
+        point_labels = getattr(line, '_tensile_point_labels', None)
+        if point_labels is not None:
+            custom = [[escape(label), counts[i] if counts is not None else None]
+                      for i, label in enumerate(point_labels)]
         count_hover = '<br>n=%{customdata[1]}' if counts is not None else ''
         landmark_counts = getattr(line, '_tensile_landmark_counts', None)
         if landmark_counts is not None:
@@ -185,6 +189,8 @@ def _axis_to_plotly(ax, *, width=640):
             count_hover = '<br>Strain n=%{customdata[0]}<br>Stress n=%{customdata[1]}'
         x_hover = ('Sample group: %{customdata[0]}' if categories is not None else
                    escape(plain(ax.get_xlabel())) + ': %{x:.2f}')
+        if point_labels is not None:
+            x_hover = 'Sample group: %{customdata[0]}<br>' + x_hover
         trace = go.Scatter(x=x.tolist(), y=y.tolist(), mode=mode, name=plain(name),
             customdata=custom,
             meta=dict(legend_label=plain(name)),

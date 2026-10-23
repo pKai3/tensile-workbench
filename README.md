@@ -91,9 +91,20 @@ Group identities include their relative folder path, so different colleagues can
 | Representative tensile curves | Showing one measured specimen per group, with an optional selection override |
 | Work-hardening views | Comparing the pre-necking hardening response |
 | YS or UTS vs elongation | Comparing strength and ductility, with optional individual points |
-| YS, UTS and elongation by sample | Comparing ordered groups on a dual-axis chart |
+| YS, UTS and elongation by sample | Comparing groups by name or against a numeric variable, with multiple chart variants |
 
-For the last view, **Settings** include sample order, connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**), property colours, SD bars and **X-axis labels · this plot only**. Short axis labels here do not shorten names elsewhere.
+For the last view, **Settings → Add chart variant** creates another separate chart within the same saved graph. Select **Edit chart** to configure each one's title, X-axis, YS/UTS/EL switches, connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**), property colours, axis limits and SD bars. All variants render and export together. A chart with only EL uses a single axis; when strength and EL are both shown, EL uses the right axis. Adding a variant copies the current settings; removing one leaves the others untouched.
+
+To plot against a numeric variable, such as shielding-gas CO₂ concentration:
+
+1. Select sample groups, then expand **Sample-group variables** below the sample selector/order controls.
+2. Enter a variable name, optional units and each group's value. Leave unknown values blank; `0` is a real value. **Show all sample groups** lets you edit groups outside the current selection.
+3. Click **Save variable and values** before switching variables. Create as many variables as needed; they are shared across saved graphs.
+4. In the property chart's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more chart variants to compare other variables or property combinations.
+
+Numeric X values use their actual spacing in ascending order. Groups with missing values are flagged and omitted from that chart only; groups sharing an X value remain separate, not pooled. Lines connect means, not fitted trends. Statistics, eligibility and ±1 sample SD bars follow the existing property calculations. With **Sample names** as the X-axis, the shared **Sample group order** applies; **X-axis labels · this plot only** provides short labels without renaming groups elsewhere.
+
+Variables and chart variants are stored in the ignored personal project file, not deployed to colleagues. Values follow an approved sample-folder move. Exports include the chart settings and variable values; table exports add a numeric **Group variables** sheet when variables exist.
 
 Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
 

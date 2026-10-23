@@ -33,6 +33,8 @@ def graph_blocks(project):
 
 def references(project):
     groups = set(project.get('display_names', {}))
+    for variable in project.get('group_variables', {}).values():
+        groups.update(variable.get('values', {}))
     specimens = set()
     for block in [project, *(g.get('definition', {}) for g in graph_blocks(project))]:
         for key in SPECIMEN_MAPS:
@@ -45,6 +47,8 @@ def references(project):
         for key in ('groups', 'group_order'):
             groups.update(settings.get(key, []))
         groups.update(settings.get('properties_by_group_labels', {}))
+        for chart in settings.get('properties_by_group_variants', []):
+            groups.update(chart.get('settings', {}).get('properties_by_group_labels', {}))
         for key in GROUP_MAPS:
             groups.update(definition.get(key, {}))
     return ({g for g in groups if not g.startswith(SAMPLE_GROUP_PREFIX)},
@@ -264,6 +268,8 @@ def migrate_settings(project, proposal, *, audit=True):
     old, new, specimens = proposal['old'], proposal['new'], proposal['mapping']
     groups = {old: new} if old != new else {}
     remap_keys(result, 'display_names', groups)
+    for variable in result.get('group_variables', {}).values():
+        remap_keys(variable, 'values', groups)
     for key in SPECIMEN_MAPS:
         remap_keys(result, key, specimens)
         remap_keys(result.get(DISABLED, {}), key, specimens)
@@ -278,6 +284,8 @@ def migrate_settings(project, proposal, *, audit=True):
             if key in settings:
                 settings[key] = list(dict.fromkeys(groups.get(g, g) for g in settings[key]))
         remap_keys(settings, 'properties_by_group_labels', groups)
+        for chart in settings.get('properties_by_group_variants', []):
+            remap_keys(chart['settings'], 'properties_by_group_labels', groups)
         representatives = definition.get('representative_overrides', {})
         if old in representatives:
             matches = {PurePosixPath(b).stem for a, b in specimens.items()
@@ -320,6 +328,8 @@ def forget_group(project, group, *, live_groups=()):
     def owned(ident):
         return under(ident, group) and not any(under(ident, live) for live in live_groups)
     result.get('display_names', {}).pop(group, None)
+    for variable in result.get('group_variables', {}).values():
+        variable.get('values', {}).pop(group, None)
     for block in [result, *(g.get('definition', {}) for g in graph_blocks(result))]:
         for key in SPECIMEN_MAPS:
             if key in block:
@@ -337,6 +347,8 @@ def forget_group(project, group, *, live_groups=()):
             if key in settings:
                 settings[key] = [g for g in settings[key] if g != group]
         settings.get('properties_by_group_labels', {}).pop(group, None)
+        for chart in settings.get('properties_by_group_variants', []):
+            chart.get('settings', {}).get('properties_by_group_labels', {}).pop(group, None)
         for key in GROUP_MAPS:
             definition.get(key, {}).pop(group, None)
     for key in HISTORIES:

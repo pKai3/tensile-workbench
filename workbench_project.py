@@ -14,7 +14,9 @@ from tensile_fit import validate_threshold, validate_override
 from tensile_gauge import validate_group_policy
 from tensile_fracture import validate_failure_override
 from tensile_group_plot import validate_group_display
+from tensile_property_variants import VARIANTS_KEY, validate_variants
 from tensile_order import validate_group_order
+from tensile_variables import validate_variables
 from tensile_colors import DEFAULT_PALETTE, validate_palette
 from tensile_moves import validate_tracking, graph_blocks
 from tensile_overrides import DISABLED, validate_disabled
@@ -30,6 +32,7 @@ def validate_project(project):
     validate_tracking(project)
     validate_disabled(project)
     validate_threshold(project.get('yield_r2_warning', .98))
+    validate_variables(project.get('group_variables', {}))
     modes = project.get('specimen_data_modes', {})
     if not isinstance(modes, dict):
         raise ValueError('Specimen data-use modes must be a mapping.')
@@ -93,6 +96,8 @@ def validate_project(project):
         validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
         validate_group_display(settings)
+        if VARIANTS_KEY in settings:
+            validate_variants(settings[VARIANTS_KEY])
         validate_group_order(settings.get('group_order', []))
         for family in ('ys_vs_el', 'uts_vs_el'):
             if settings.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):

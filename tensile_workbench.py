@@ -26,6 +26,8 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
+from tensile_variables import GroupVariablesView, variable_label
+from tensile_property_variants import PropertyVariantsView, VARIANTS_KEY, TITLE_KEY
 from tensile_order import sort_group_frame, validate_group_order
 from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
 from tensile_fit import fit_policy, validate_override, validate_threshold
@@ -57,6 +59,11 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
         graph['settings']['groups'] = [rename[group] for group in groups]
         if 'group_order' in graph['settings']:
             graph['settings']['group_order'] = [rename.get(group, group) for group in graph['settings']['group_order']]
+        for variable in project.get('group_variables', {}).values():
+            variable['values'] = {rename.get(k, k): v for k, v in variable.get('values', {}).items()}
+        for settings in [graph['settings'], *(v['settings'] for v in graph['settings'].get(VARIANTS_KEY, []))]:
+            if 'properties_by_group_labels' in settings:
+                settings['properties_by_group_labels'] = {rename.get(k, k): v for k, v in settings['properties_by_group_labels'].items()}
         for key in ('name_overrides', 'color_overrides', 'youngs_modulus_overrides', 'representative_overrides', 'gauge_reconstruction'):
             if key in graph['definition']:
                 graph['definition'][key] = {rename.get(k, k): v for k, v in graph['definition'][key].items()}
@@ -106,6 +113,7 @@ PROPERTY_DEFAULTS = {'property_error_bars': True,
                      **{family + suffix: None for family in PROPERTY_FAMILIES
                         for suffix in ('_xlim', '_ylim')}}
 AXIS_DEFAULTS = {'tensile_xlim': [0, 30], 'tensile_ylim': [0, 1000],
+                 'properties_by_group_xlim': [0, 100],
                  'properties_by_group_ylim': [0, 1000], 'properties_by_group_el_ylim': [0, 30],
                  'wh_xlim': [0, 7], 'wh_ylim': [0, 4500],
                  **{family + suffix: limits for family in PROPERTY_FAMILIES
@@ -384,14 +392,21 @@ class PreviewSession:
         destination.mkdir(parents=True, exist_ok=False)
         export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
                        {'graph': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
+                        'group_variables': self.variable_provenance(state),
                         'specimen_selection': self.selection_provenance(state, spec),
                         'engine_sha256': self.engine_sha256})
         (destination / 'settings.json').write_text(json.dumps({'graph_definition': spec, 'settings': state,
+            'group_variables': self.variable_provenance(state),
             'specimen_fit_policy': self.fit_provenance(state),
             'specimen_selection': self.selection_provenance(state, spec),
             'engine_sha256_at_load': self.engine_sha256,
             'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Audit sheet for source hashes.'}, indent=2))
         return destination
+
+    def variable_provenance(self, state):
+        return {ident: {**variable, 'values': {group: value for group, value in variable.get('values', {}).items()
+                                             if group in state['groups']}}
+                for ident, variable in self.project.get('group_variables', {}).items()}
 
     def specimen_inspection(self, state, spec, ident):
         """Inspect only a currently selected group's loaded record; no file-path lookup.
@@ -472,13 +487,14 @@ class PreviewSession:
         state.pop('properties_by_group_order', None)
         self._validate(state)
         key_state = deepcopy(state)
-        for key in ("families", "show_both_versions", "graph_index", *VIEW_ONLY_SETTINGS):
+        for key in ("families", "show_both_versions", "graph_index", VARIANTS_KEY, *VIEW_ONLY_SETTINGS):
             key_state.pop(key, None)
         family = state["family"]
         for key in PROPERTY_DEFAULTS:
             if family not in PROPERTY_FAMILIES or (key != 'property_error_bars' and not key.startswith(family + '_')):
                 key_state.pop(key, None)
         if family != GROUP_FAMILY:
+            key_state.pop(TITLE_KEY, None)
             for key in GROUP_DEFAULTS:
                 key_state.pop(key, None)
         if family in (*PROPERTY_FAMILIES, GROUP_FAMILY):
@@ -494,7 +510,8 @@ class PreviewSession:
             if family == "work_hardening":
                 key_state.pop("landmark_points", None)
         key = json.dumps([key_state, self.graphs[state["graph_index"]], self.project.get("display_names", {}),
-                          self.selection_signature()], sort_keys=True)
+                          self.selection_signature(), self.project.get('group_variables', {}).get(
+                              state.get('properties_by_group_x_variable')) if family == GROUP_FAMILY else None], sort_keys=True)
         if key not in self._previews:
             self._previews[key] = self._render_uncached(state)
             if len(self._previews) > 12:
@@ -504,8 +521,15 @@ class PreviewSession:
         spec["tensile_mean_tail"] = {**self.engine.TENSILE_MEAN_TAIL, **spec.get("tensile_mean_tail", {}),
             "enabled": state["tail_enabled"], "fit_window_percent": state["tail_window"], "setback_percent": state["tail_setback"]}
         return {**self._previews[key], "state": deepcopy(state), "graph_spec": spec,
+                'variable_signature': self.variable_signature(state),
                 'selection_signature': self.selection_signature(),
                 'fit_signature': self.fit_signature(), 'specimen_fit_policy': self.fit_provenance(state)}
+
+    def variable_signature(self, state):
+        if state.get('family') != GROUP_FAMILY or not state.get('properties_by_group_x_variable'):
+            return None
+        ident = state['properties_by_group_x_variable']
+        return json.dumps(self.variable_provenance(state).get(ident), sort_keys=True)
 
     def _render_uncached(self, state):
         """Compute one preview in memory. Never invoke main() or any exporters."""
@@ -585,6 +609,9 @@ class PreviewSession:
                 title = next((titles[k] for k in title_keys.get(family, ()) if k in titles),
                              dict((value, label) for label, value in FAMILIES)[family])
                 title = spec.get("workbench_titles", {}).get(family) or title
+                if family == GROUP_FAMILY:
+                    # An empty variant title requests an automatic property/variable title.
+                    title = state.get(TITLE_KEY, spec.get('workbench_titles', {}).get(family, ''))
                 common = dict(out_path=Path("preview.png"), color_map=self.color_map(state, spec),
                               show_individual=state["show_individuals"], xlim=xlim, ylim=ylim,
                               title=title, name_overrides=spec.get('name_overrides', {}), preview=True,
@@ -593,6 +620,7 @@ class PreviewSession:
                       'specimen_labels': {g: e.scatter_specimen_labels(rows) for g, rows in shape_records.items()}}
                 if family == GROUP_FAMILY:
                     fig = render_group_properties(e, records, state,
+                        variables=self.project.get('group_variables', {}),
                         fit_fractions=spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
                         **common)
                 elif family in PROPERTY_FAMILIES:
@@ -677,6 +705,8 @@ class PreviewSession:
             raise ValueError('Specimen fit or EL settings changed. Update plots before exporting.')
         if any(r.get('selection_signature') != self.selection_signature() for r in results):
             raise ValueError('Specimen inclusion changed. Update plots before exporting.')
+        if any(r.get('variable_signature') != self.variable_signature(r['state']) for r in results):
+            raise ValueError('Sample-group variables changed. Update plots before exporting.')
         result = results[0]
         graph = self.engine.safe_filename(result["graph_spec"]["name"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:6]
@@ -696,11 +726,18 @@ class PreviewSession:
             "note": "Interactive preview snapshot. No batch outputs were regenerated. Source hashes describe data cached at load time.",
         }
         try:
+            chart_numbers = {}
             for view in results:
                 view_state = view["state"]
                 variant = "with_individuals" if view_state["show_individuals"] else "without_individuals"
                 family_number = {"pointwise": "01", "landmark": "02", "comparison": "03", "representative": "04", "work_hardening": "05", "work_hardening_landmark": "06", "work_hardening_comparison": "07", "ys_vs_el": "08", "uts_vs_el": "09", GROUP_FAMILY: "10"}[view_state["family"]]
-                plot = destination / f"{graph}_{family_number}_{view_state['family']}_{variant}.png"
+                chart_id = view_state.get('property_chart_id')
+                chart_suffix = ''
+                if chart_id:
+                    number = chart_numbers.setdefault(chart_id, len(chart_numbers) + 1)
+                    chart_name = self.engine.safe_filename(view_state.get('property_chart_name', 'Chart'))
+                    chart_suffix = f'_chart{number:02d}_{chart_name}'
+                plot = destination / f"{graph}_{family_number}_{view_state['family']}{chart_suffix}_{variant}.png"
                 view["figure"].savefig(plot, dpi=self.engine.PLOT_DPI)
             (destination / "settings.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
             (destination / "calculation_log.txt").write_text("\n\n".join(r["log"] for r in results), encoding="utf-8")
@@ -717,6 +754,7 @@ class PreviewSession:
         graph = self.engine.safe_filename(spec['name'])
         export_results(self.property_tables(state, spec), destination / f'{graph}_results.xlsx',
                        {'graph': spec, 'views': [r['state'] for r in results],
+                        'group_variables': self.variable_provenance(state),
                         'specimen_selection': self.selection_provenance(state, spec),
                         'fit_policy': self.fit_provenance(state), 'engine_sha256': self.engine_sha256})
         export_curves(results, self.engine, destination / f'{graph}_curves.xlsx')
@@ -780,6 +818,11 @@ class TensileWorkbench:
                 value='independent', style={'description_width': 'initial'},
                 layout=w.Layout(width='450px', max_width='100%'))
         self._check('properties_by_group_error_bars', 'Group mean ±1 SD bars')
+        self.controls['properties_by_group_x_variable'] = w.Dropdown(
+            description='X-axis:', options=[('Sample names', '')],
+            layout=w.Layout(width='500px', max_width='100%'))
+        for key, label in (('ys', 'YS'), ('uts', 'UTS'), ('el', 'EL')):
+            self._check('properties_by_group_show_' + key, label)
         self.controls['properties_by_group_line_style'] = w.Dropdown(
             description='Connecting lines:', options=[('Straight / solid', 'solid'), ('Dash', 'dash'),
                                                        ('Dot', 'dot'), ('None · markers only', 'none')],
@@ -840,8 +883,9 @@ class TensileWorkbench:
                            ("wh_xlim", "WH plastic strain (%)"), ("wh_ylim", "WH rate (MPa)"),
                            ("ys_vs_el_xlim", "Elongation at failure (%)"), ("ys_vs_el_ylim", "0.2% YS (MPa)"),
                            ("uts_vs_el_xlim", "Elongation at failure (%)"), ("uts_vs_el_ylim", "UTS (MPa)"),
+                           ('properties_by_group_xlim', 'X-axis · numeric variables only'),
                            ('properties_by_group_ylim', 'Left axis · strength (MPa)'),
-                           ('properties_by_group_el_ylim', 'Right axis · elongation at failure (%)')):
+                           ('properties_by_group_el_ylim', 'Elongation at failure (%) · right axis when strength is shown')):
             auto = w.Checkbox(description="Automatic", indent=False)
             lo, hi = w.FloatText(description="Min:", continuous_update=False), w.FloatText(description="Max:", continuous_update=False)
             row = w.VBox([w.HTML("<b>" + title + "</b>"), auto, self._row([lo, hi])])
@@ -910,28 +954,38 @@ class TensileWorkbench:
         general.set_title(0, "Labels and colours · this graph, all plot types")
         self.plot_settings = {}
         self.plot_selectors = {}
+        self.property_variants = PropertyVariantsView(w, self._capture_property_chart,
+                                                       self._apply_property_chart, self._changed)
+        self.group_variables = GroupVariablesView(w, lambda: self.store.data.get('group_variables', {}),
+                                                   lambda: list(self.session.files), self._save_group_variable)
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             local = [self.title_inputs[family]]
             wh = family.startswith("work_hardening")
             property_plot = family in PROPERTY_FAMILIES
             axes_prefix = family if property_plot else ("wh" if wh else "tensile")
-            axis_keys = ([GROUP_FAMILY + '_ylim', GROUP_FAMILY + '_el_ylim'] if family == GROUP_FAMILY
+            axis_keys = ([GROUP_FAMILY + suffix for suffix in ('_xlim', '_ylim', '_el_ylim')] if family == GROUP_FAMILY
                          else [axes_prefix + suffix for suffix in ('_xlim', '_ylim')])
             axes = w.Accordion(children=[w.VBox([self.axes[key][3] for key in axis_keys])], selected_index=None)
             axes.set_title(0, 'Axes · this plot' if property_plot or family == GROUP_FAMILY else "Axes · linked across " + ("WH plots" if wh else "tensile plots"))
             local.append(axes)
             if family == GROUP_FAMILY:
+                local.insert(0, self.property_variants.ui)
+                local.insert(1, self.controls['properties_by_group_x_variable'])
+                local.insert(2, self._row([self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')]))
                 label_settings = w.Accordion(children=[w.VBox([
                     w.HTML('Short x-axis labels for this plot only. Leave blank to use the usual display name. '
                            'Line breaks are allowed. Other plots and tables keep their existing names.'),
                     self.group_labels_box])], selected_index=None)
                 label_settings.set_title(0, 'X-axis labels · this plot only')
-                local += [w.HTML('Sample order follows the shared <b>Sample group order</b> below the sample selector.'),
+                local += [w.HTML('Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
+                                 'with their actual spacing. Missing values omit that group from this chart only. '
+                                 'Edit values in <b>Sample-group variables</b> below the sample selector.'),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
-                          w.HTML('Lines connect group means. YS and UTS use the left axis; EL uses the right. '
+                          w.HTML('Lines connect group means, not a fitted trend. YS and UTS use the left axis; EL uses the right '
+                                 '(or the only axis when shown alone). '
                                  'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
                                  'Show individuals adds faint specimen points. Colours here identify properties, not groups.')]
             if property_plot:
@@ -978,6 +1032,7 @@ class TensileWorkbench:
             w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
                    "A mixed tick means only some groups are selected. Groups are still analysed separately."),
             self.display_order_panel,
+            self.group_variables.ui,
             self.move_review.ui,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
@@ -1092,7 +1147,63 @@ class TensileWorkbench:
         state["families"] = [family for family, box in self.family_boxes.items() if box.value]
         for key, (auto, lo, hi, _) in self.axes.items():
             state[key] = None if auto.value else [lo.value, hi.value]
+        variants = self.property_variants.snapshot()
+        if variants:
+            state[VARIANTS_KEY] = variants
+            # Keep the original top-level keys as the first chart for compatibility.
+            state.update({key: value for key, value in variants[0]['settings'].items() if key in GROUP_DEFAULTS})
         return state
+
+    def _capture_property_chart(self):
+        values = {key: control.value for key, control in self.controls.items() if key in GROUP_DEFAULTS}
+        values['properties_by_group_labels'] = dict(self._group_labels)
+        for key in GROUP_DEFAULTS.keys() & self.axes.keys():
+            auto, low, high, _ = self.axes[key]
+            values[key] = None if auto.value else [low.value, high.value]
+        values[TITLE_KEY] = self.title_inputs[GROUP_FAMILY].value.strip()
+        return values
+
+    def _variable_options(self, selected=None):
+        control = self.controls['properties_by_group_x_variable']
+        selected = control.value if selected is None else selected
+        variables = self.store.data.get('group_variables', {})
+        options = [('Sample names', '')] + [(variable_label(v), k) for k, v in variables.items()]
+        if selected and selected not in variables:
+            options.append(('Unavailable variable · choose another', selected))
+        control.options = options
+        control.value = selected
+
+    def _apply_property_chart(self, values):
+        old, self._paused = self._paused, True
+        try:
+            self._variable_options(values.get('properties_by_group_x_variable', ''))
+            for key, control in self.controls.items():
+                if key in GROUP_DEFAULTS:
+                    control.value = values.get(key, GROUP_DEFAULTS[key])
+            self._group_labels = dict(values.get('properties_by_group_labels', {}))
+            self._sync_group_labels(force=True)
+            for key in GROUP_DEFAULTS.keys() & self.axes.keys():
+                auto, low, high, _ = self.axes[key]
+                pair = values.get(key)
+                auto.value = pair is None
+                low.value, high.value = pair or AXIS_DEFAULTS[key]
+            self.title_inputs[GROUP_FAMILY].value = values.get(TITLE_KEY, '')
+        finally:
+            self._paused = old
+
+    def _save_group_variable(self, ident, variable):
+        if not self.save_current():
+            raise ValueError('Save the current graph settings before updating variables.')
+        project = deepcopy(self.store.data)
+        project.setdefault('group_variables', {})[ident] = variable
+        self.store.save(project)
+        self.session.set_project(self.store.data)
+        old, self._paused = self._paused, True
+        try:
+            self._variable_options()
+        finally:
+            self._paused = old
+        self._changed()
 
     def _apply_graph(self, ident):
         self._cancel_delete_graph()
@@ -1109,6 +1220,7 @@ class TensileWorkbench:
                          if group.startswith(SAMPLE_GROUP_PREFIX) else group)
                 return label if group in self.session.files else label + ' (unavailable)'
             self.controls["groups"].options = [(group_label(g), g) for g in choices]
+            self._variable_options(state.get('properties_by_group_x_variable', ''))
             for key, control in self.controls.items():
                 value = state.get(key, {"color_palette": DEFAULT_PALETTE, "export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
                 if key == "groups":
@@ -1131,6 +1243,8 @@ class TensileWorkbench:
             title_keys = {"landmark": "tensile_landmark_aligned", "pointwise": "tensile_averages_only", "comparison": "tensile_comparison", "representative": "tensile_representative", "work_hardening": "work_hardening_averages_only", "work_hardening_landmark": "work_hardening_landmark"}
             for family, control in self.title_inputs.items():
                 control.value = graph["definition"].get("workbench_titles", {}).get(family, legacy.get(title_keys.get(family), ""))
+            self.property_variants.load(state.get(VARIANTS_KEY), self._capture_property_chart())
+            self.group_variables.refresh(self.controls['groups'].value, force=True)
             self.override_group.options = self.session.visible_groups(state["groups"])
             self._sync_gauge_rows(force=True)
             self._sample_data_note()
@@ -1246,6 +1360,7 @@ class TensileWorkbench:
                 graph["settings"] = state
             graph["definition"]["name"] = graph["name"]
             graph["definition"]["workbench_titles"] = {family: field.value.strip() for family, field in self.title_inputs.items()}
+            graph['definition']['workbench_titles'][GROUP_FAMILY] = state[VARIANTS_KEY][0]['settings'].get(TITLE_KEY, '')
             project["selected_graph"] = graph["id"]
             if project != self.store.data:
                 self.store.save(project)
@@ -1273,6 +1388,7 @@ class TensileWorkbench:
             return
         self._sync_display_order()
         self._sync_group_labels()
+        self.group_variables.refresh(self.controls['groups'].value)
         self._cancel_delete_graph()
         self._sync_disabled()
         self.export_button.disabled = True
@@ -1703,7 +1819,7 @@ class TensileWorkbench:
         for key in VIEW_ONLY_SETTINGS:
             graph['settings'].pop(key, None)
         return json.dumps([graph, fit_policy(self.store.data), self.store.data.get('specimen_exclusions', {}),
-                           self.store.data.get('specimen_data_modes', {})], sort_keys=True)
+                           self.store.data.get('specimen_data_modes', {}), self.store.data.get('group_variables', {})], sort_keys=True)
 
     def _fit_settings_saved(self):
         self.session.set_project(self.store.data)
@@ -1909,15 +2025,30 @@ class TensileWorkbench:
         start, items, messages, failed = perf_counter(), [], [], 0
         try:
             variants = [False, True] if state["show_both_versions"] else [state["show_individuals"]]
-            for family in state["families"]:
+            charts = []
+            for family in state['families']:
+                if family == GROUP_FAMILY:
+                    charts.extend((family, chart) for chart in state[VARIANTS_KEY])
+                else:
+                    charts.append((family, None))
+            for family, chart in charts:
                 for individuals in variants:
                     label = dict((value, label) for label, value in FAMILIES)[family]
+                    chart_state = {**state, **chart['settings']} if chart else state
+                    chart_key = ''
+                    if chart:
+                        label = 'YS / UTS / EL · ' + chart['name']
+                        chart_key = '_' + chart['id']
+                        chart_state['property_chart_id'] = chart['id']
+                        chart_state['property_chart_name'] = chart['name']
                     subtitle = "with individuals" if individuals else "without individuals"
-                    item = {"key": family + ("_with" if individuals else "_without"), "label": label + " · " + subtitle}
+                    item = {"key": family + chart_key + ("_with" if individuals else "_without"), "label": label + " · " + subtitle}
                     try:
                         if family in PROPERTY_FAMILIES:
                             item['warning'] = self.session.scatter_omission_warning(state, self._current()['definition'], family)
-                        result = self.session.render({**state, "graph_index": self._index(), "family": family, "show_individuals": individuals})
+                        result = self.session.render({**chart_state, "graph_index": self._index(), "family": family, "show_individuals": individuals})
+                        if chart:
+                            item['warning'] = getattr(result['figure'], '_tensile_variable_warning', '')
                         self._results.append(result)
                         items.append({**item, "result": result})
                         messages.append(label + ":\n" + result["log"])
