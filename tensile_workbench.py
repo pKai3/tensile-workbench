@@ -844,7 +844,7 @@ class TensileWorkbench:
         upgraded = migrate_specimen_selections(migrate_group_gauges(
             upgrade_legacy_demo_graph(self.session.project, self.session.data_dir, self.session.sample_data_dir)))
         if upgraded != self.store.data:
-            self.store.save(upgraded)
+            self.store.save(upgraded, reason='pre-migration')
             self.session.set_project(self.store.data)
         self._paused, self._busy = True, False
         self._results, self._signature = [], None
@@ -1240,6 +1240,8 @@ class TensileWorkbench:
     def _show_saved(self):
         detail = 'Revision ' + str(self.store.data['revision']) + ' · ' + self.store.path.name
         self.save_status.value = '<span title="' + escape(detail, quote=True) + '">✓ Changes saved automatically</span>'
+        if self.store.backup_warning:
+            self.save_status.value += '<br><b>' + escape(self.store.backup_warning) + '</b> Open Backups & restore to retry.'
         deleted = self.store.data.get('deleted_graphs', [])
         self.undo_delete_button.disabled = not deleted
         self.undo_delete_button.tooltip = ('Restore ' + deleted[-1]['graph']['name']) if deleted else 'No deleted graphs to restore'
@@ -1659,7 +1661,7 @@ class TensileWorkbench:
             upgraded = reconcile_specimen_counts(migrate_specimen_selections(migrate_group_gauges(self.store.data)),
                                                 self.session.imported_counts)
             if upgraded != self.store.data:
-                self.store.save(upgraded)
+                self.store.save(upgraded, reason='pre-migration')
             self.session.set_project(self.store.data)
             self._paused = True
             self._refresh_graph_options()
@@ -1972,7 +1974,7 @@ class TensileWorkbench:
             self.session.show_sample_data = change['new']
             self.session.reload_data()
             self._save_reconciled_counts()
-            save_sample_data_visibility(self.project_dir, change['new'])
+            folder_backup_warning = save_sample_data_visibility(self.project_dir, change['new'])
         except Exception as error:
             self.session.show_sample_data = previous
             try:
@@ -1995,6 +1997,8 @@ class TensileWorkbench:
                 self.update(save=False)
             else:
                 self.status.value = 'Sample visibility saved. Click Update plots when ready.'
+            if folder_backup_warning:
+                self.status.value += '<br><b>' + escape(folder_backup_warning) + '</b> Open Backups & restore to retry.'
         finally:
             self.sample_data_toggle.disabled = False
 

@@ -171,11 +171,31 @@ Your settings are local to the application folder:
 | .tensile-paths.json | Data/output locations and sample-data visibility |
 | tensile_workbench_defaults.json | Shared starter definitions—not personal settings |
 
-The first two files are ignored by Git. **Back them up separately.** A fresh download does not include your personal settings, research data or results. To share a project, provide the personal project file and corresponding data deliberately; choose data/output paths again on the other computer.
+The first two files are ignored by Git. They are saved automatically, with backup history **outside the application folder**. A fresh download does not include your personal settings, research data or results. To share a project, provide the personal project file and corresponding data deliberately; choose data/output paths again on the other computer.
+
+### Automatic backups and recovery
+
+Open **Backups & restore**, just below Folders. It lists dated snapshots, with graph counts and revision numbers for project settings. **Back up now** makes a protected copy of both saved settings files. Unsaved editor drafts, research CSVs and exported results are not part of these backups.
+
+- Automatic history retains the latest **20 changed versions** and **30 daily checkpoints**, per settings file. Manual copies and safety copies made before a settings upgrade or restore are retained without automatic expiry.
+- Choose **Project** or **Folders**, select a snapshot, then **Restore selected… → Confirm restore**. Only that settings file is restored. The current file is preserved first, even if damaged, and the workbench reopens. Cancel changes nothing.
+- A missing or damaged project opens recovery controls instead of silently replacing your graphs with starter definitions. The older `.project.previous.json` copy is also offered when usable. Restored folder paths that are unavailable require you to confirm new locations.
+- If backup storage is unavailable, ordinary settings saves continue with a visible warning. Upgrades and restores stop if their required safety copy cannot be made. Another open session must reload before editing restored project settings.
+
+Default backup locations:
+
+| Platform | Location |
+|---|---|
+| macOS | `~/Library/Application Support/Tensile Workbench/backups/` |
+| Windows | `%LOCALAPPDATA%/Tensile Workbench/backups/` |
+
+The panel shows the exact folder for this installation. History is separated by the application folder's path; updating in place keeps it available. Moving the application folder leaves its old history in the old installation's backup subfolder. For an advanced/custom location, set `TENSILE_WORKBENCH_BACKUP_DIR` before launching.
+
+History begins when this version is first launched; it cannot recover older changes that were never backed up. These are local backups, not protection against loss of the computer. Include your settings, backup folder, research data and outputs in your usual off-device backup.
 
 To update:
 
-1. Close the app and stop its launcher. Back up your personal settings.
+1. Use **Back up now**, then close the app and stop its launcher. Keep an additional off-device copy of important settings.
 2. Pull the new code, or copy the extracted ZIP contents over the existing application folder. **Do not delete the old folder first**; preserve local settings, data and outputs.
 3. Rerun Setup if dependencies changed or Launch reports missing packages. On Mac, run [Install_Tensile_Workbench_App.command](Install_Tensile_Workbench_App.command) to rebuild/update the Dock app without reinstalling packages; Setup also does this. Then launch again.
 

@@ -21,7 +21,7 @@ def check_project_files(root):
     required = ('tensile_workbench.ipynb', 'tensile_workbench.py', 'tensile_core.py',
                 'tensile_plot_view.py', 'tensile_group_picker.py', 'tensile_moves.py', 'tensile_move_review.py', 'tensile_overrides.py', 'tensile_override_view.py', 'tensile_plotly.py', 'tensile_group_plot.py', 'tensile_group_review.py', 'tensile_comparison.py', 'tensile_colors.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_tables.py', 'tensile_gauge.py', 'tensile_fracture.py', 'tensile_exports.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_inspector.py', 'tensile_fit.py', 'tensile_startup.py',
-                'workbench_project.py', 'migrate_tensile_project.py', 'launch_workbench.py',
+                'workbench_project.py', 'workbench_backups.py', 'tensile_backup_ui.py', 'migrate_tensile_project.py', 'launch_workbench.py',
                 'workbench_environment.py', 'workbench_app.py', 'workbench_server.py',
                 'tensile_activity.py', 'tensile_page_layout.py', 'tensile_order.py', 'tensile_variables.py', 'tensile_variable_table.py', 'tensile_property_variants.py', 'tensile_specimen_plot.py', 'tensile_specimen_charts.py', 'tensile_locations.py', 'tensile_settings.py',
                 'web/templates/index.html.j2', 'web/templates/spinner.macro.html.j2',
@@ -143,15 +143,25 @@ for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines()
     actual = importlib.metadata.version(requirement.name)
     if actual not in requirement.specifier:
         raise RuntimeError(f'{requirement.name} {actual} does not satisfy {requirement}; run Setup again.')
-from workbench_project import validate_project
+from workbench_project import validate_project, decode_project
+personal_recovery = False
 for name in ('tensile_workbench_defaults.json', 'tensile_workbench.project.json'):
     path = root / name
     if path.is_file():
-        validate_project(json.loads(path.read_text(encoding='utf-8')))
+        if name == 'tensile_workbench_defaults.json':
+            validate_project(json.loads(path.read_text(encoding='utf-8')))
+        else:
+            try:
+                decode_project(path.read_bytes())
+            except Exception as error:
+                personal_recovery = True
+                print(f'Settings recovery needed: {error}. Open Backups & restore in the workbench. '
+                      'The existing file has not been changed.', flush=True)
 '''
 
 QUICK_CHECK = PREFLIGHT_CHECK + r'''
-print('Dependencies and saved definitions OK. No data processed.', flush=True)
+print('Dependencies OK. Personal settings need recovery; no data processed.' if personal_recovery else
+      'Dependencies and saved definitions OK. No data processed.', flush=True)
 '''
 
 # Setup and explicit check still exercise imports to catch broken installations.
@@ -164,7 +174,8 @@ for module in ('numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets',
                'tensile_plotly', 'tensile_plot_view', 'tensile_workbench', 'tensile_startup',
                'workbench_server'):
     importlib.import_module(module)
-print('Dependencies, imports and saved definitions OK. No data processed.', flush=True)
+print('Dependencies and imports OK. Personal settings need recovery; no data processed.' if personal_recovery else
+      'Dependencies, imports and saved definitions OK. No data processed.', flush=True)
 '''
 
 

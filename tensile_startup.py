@@ -3,9 +3,11 @@ from html import escape
 import json
 import os
 from pathlib import Path
-import tempfile
 from tensile_activity import BusyOverlay, busy
 from tensile_page_layout import ContentWidth
+from tensile_backup_ui import BackupPanel
+from workbench_backups import (BackupVault, PROJECT_NAME, RecoveryRequired, atomic_bytes,
+                               backup_warning, read_optional, recovery_problem, settings_lock, validate_paths)
 
 SETTINGS_NAME = '.tensile-paths.json'
 DEFAULT_FOLDERS = {'data_directory': './data', 'output_directory': './output'}
@@ -15,11 +17,10 @@ DEFAULT_SAMPLE_DATA = {'sample_data_directory': './examples/data', 'show_sample_
 def local_settings(root):
     path = Path(root) / SETTINGS_NAME
     if not path.exists():
+        if BackupVault(path).has_history():
+            raise RecoveryRequired('Folder preferences are missing, but saved history exists. Use Backups & restore.')
         return {}
-    document = json.loads(path.read_text(encoding='utf-8'))
-    if not isinstance(document, dict) or document.get('schema_version') != 1:
-        raise ValueError('Unrecognised folder-settings version.')
-    return document
+    return validate_paths(path.read_bytes())
 
 
 def sample_data_settings(root):
@@ -70,36 +71,35 @@ def validate_folders(values, root, create=False):
 
 
 def save_folders(root, values):
-    # Preserve the hidden sample source and its visibility when changing folders.
-    try:
-        existing = local_settings(root)
-    except (ValueError, TypeError):
-        existing = {}  # Explicit folder confirmation can repair invalid settings.
-    content = {**DEFAULT_SAMPLE_DATA, **existing, 'schema_version': 1,
-               **{key: str(values[key]).strip() for key in DEFAULT_FOLDERS}}
-    _save_local_settings(root, content)
+    # Explicit confirmation may repair invalid preferences, after preserving them.
+    return _save_local_settings(root, {key: str(values[key]).strip() for key in DEFAULT_FOLDERS}, repair=True)
 
 
 def save_sample_data_visibility(root, visible):
     """Update only the sample preference; never replace chosen folder paths."""
-    content = {**DEFAULT_FOLDERS, **DEFAULT_SAMPLE_DATA, **local_settings(root),
-               'schema_version': 1, 'show_sample_data': bool(visible)}
-    _save_local_settings(root, content)
+    return _save_local_settings(root, {'show_sample_data': bool(visible)})
 
 
-def _save_local_settings(root, content):
+def _save_local_settings(root, changes, *, repair=False):
     root = Path(root)
-    handle, temporary = tempfile.mkstemp(prefix='.tensile-paths-', suffix='.tmp', dir=root)
-    try:
-        with os.fdopen(handle, 'w', encoding='utf-8') as stream:
-            json.dump(content, stream, indent=2, ensure_ascii=False)
-            stream.write('\n')
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, root / SETTINGS_NAME)
-    finally:
-        if Path(temporary).exists():
-            Path(temporary).unlink()
+    path = root / SETTINGS_NAME
+    vault = BackupVault(path)
+    with settings_lock(path):
+        raw = read_optional(path)
+        try:
+            existing = local_settings(root)
+        except (ValueError, TypeError):
+            if not repair:
+                raise
+            vault.capture(raw, reason='pre-restore', force=True)
+            existing = {}
+        content = {**DEFAULT_FOLDERS, **DEFAULT_SAMPLE_DATA, **existing, **changes, 'schema_version': 1}
+        encoded = (json.dumps(content, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+        validate_paths(encoded)
+        vault.try_capture(raw)
+        if raw != encoded:
+            atomic_bytes(path, encoded)
+        return vault.try_capture(encoded)
 
 
 class WorkbenchLauncher:
@@ -138,6 +138,7 @@ class WorkbenchLauncher:
         self.message = w.HTML()
         self.locations = w.HTML()
         self.body = w.VBox()
+        self.backups = BackupPanel(self.root, before_backup=self._before_backup, after_restore=self._after_restore)
         content = w.VBox([
             w.HTML('<p>Choose where to read tensile data and save results. Paste folder paths below. '
                    'Absolute paths can be anywhere you can access. Relative paths start from '
@@ -151,7 +152,7 @@ class WorkbenchLauncher:
         ])
         self.folders = w.Accordion(children=[content], selected_index=0)
         self.folders.set_title(0, 'Folders · first-run setup' if not saved else 'Folders · data and output locations')
-        self.ui = w.VBox([self.activity, ContentWidth(), self.folders, self.body], layout=w.Layout(
+        self.ui = w.VBox([self.activity, ContentWidth(), self.folders, self.backups.ui, self.body], layout=w.Layout(
             width='var(--tw-content-width, 1600px)', max_width='100%', min_width='0'))
         self.ui.add_class('tw-launcher')
         self.save_button.on_click(self._save)
@@ -159,8 +160,16 @@ class WorkbenchLauncher:
         for field in self.fields.values():
             field.observe(self._preview, names='value')
         self._preview()
+        recovery = recovery_problem(settings)
+        project_recovery = recovery_problem(self.root / PROJECT_NAME)
         if problem:
-            self.message.value = '<b>' + escape(problem) + '</b> Choose folders and save to continue.'
+            self.message.value = '<b>' + escape(problem) + '</b> Restore a backup, or explicitly choose and save folders again.'
+        if recovery or project_recovery:
+            if saved and not recovery:
+                self.folders.selected_index = None
+            self.backups.show_recovery(recovery or project_recovery, SETTINGS_NAME if recovery else PROJECT_NAME)
+        elif problem:
+            pass
         elif saved:
             try:
                 paths = validate_folders(values, self.root)
@@ -170,6 +179,39 @@ class WorkbenchLauncher:
                 self.message.value = '<b>Folder setup needed:</b> ' + escape(str(error))
         else:
             self.message.value = 'First run: confirm both folders to open the workbench. No data has been loaded yet.'
+
+    def _before_backup(self):
+        return self.app is None or self.app.save_current()
+
+    @busy('Reopening restored settings…')
+    def _after_restore(self, _path):
+        # Never flush the old widgets back over a deliberately restored file.
+        if self.app is not None:
+            self.app._paused = True
+            self.app.ui.close()
+        self.app = None
+        self.body.children = ()
+        for name in (PROJECT_NAME, SETTINGS_NAME):
+            problem = recovery_problem(self.root / name)
+            if problem:
+                self.backups.show_recovery(problem, name)
+                return
+        values = {**DEFAULT_FOLDERS, **local_settings(self.root)}
+        for key in self.fields:
+            self.fields[key].value = values[key]
+        if not (self.root / SETTINGS_NAME).exists():
+            self.folders.selected_index = 0
+            self.message.value = 'Project restored. Confirm the data and output folders to continue.'
+            return
+        try:
+            paths = validate_folders(values, self.root)
+        except Exception as error:
+            self.folders.selected_index = 0
+            self.message.value = '<b>Settings restored. Confirm folders to continue:</b> ' + escape(str(error))
+            return
+        self._open(paths)
+        self.folders.selected_index = None
+        self.message.value = 'Reopened from restored settings.'
 
     def _values(self):
         return {key: field.value for key, field in self.fields.items()}
@@ -189,16 +231,26 @@ class WorkbenchLauncher:
 
     @busy('Opening Tensile Workbench…')
     def _open(self, paths, save_values=None):
+        problem = recovery_problem(self.root / PROJECT_NAME)
+        if problem:
+            self.backups.show_recovery(problem)
+            raise RecoveryRequired(problem)
         factory = self.factory
         kwargs = {}
         if factory is None:
             from tensile_workbench import TensileWorkbench
             factory = TensileWorkbench
             kwargs['activity'] = self.activity
-        candidate = factory(self.root, data_dir=paths['data_directory'], output_dir=paths['output_directory'], **kwargs)
+        try:
+            candidate = factory(self.root, data_dir=paths['data_directory'], output_dir=paths['output_directory'], **kwargs)
+        except RecoveryRequired as error:
+            self.backups.show_recovery(str(error))
+            raise
         try:
             if save_values is not None:
                 save_folders(self.root, save_values)
+            else:
+                BackupVault(self.root / SETTINGS_NAME).try_capture(read_optional(self.root / SETTINGS_NAME), reason='opened')
         except Exception:
             candidate.ui.close()
             raise
@@ -207,6 +259,11 @@ class WorkbenchLauncher:
         self.body.children = (candidate.ui,)
         if previous is not None:
             previous.ui.close()
+        warnings = [(name, backup_warning(self.root / name)) for name in (PROJECT_NAME, SETTINGS_NAME)]
+        warnings = [(name, warning) for name, warning in warnings if warning]
+        if warnings:
+            self.backups.show_recovery(' · '.join(f'{name}: {warning}' for name, warning in warnings),
+                                       warnings[0][0], heading='Backup warning · settings are saved')
 
     @busy('Applying folders and loading data…')
     def _save(self, _=None):
@@ -220,6 +277,8 @@ class WorkbenchLauncher:
             self.folders.set_title(0, 'Folders · data and output locations')
             self.folders.selected_index = None
             self.message.value = 'Folders saved for this installation. Expand Folders to change them at any time.'
+            if backup_warning(self.root / SETTINGS_NAME):
+                self.message.value += '<br><b>' + escape(backup_warning(self.root / SETTINGS_NAME)) + '</b>'
         except Exception as error:
             self.message.value = '<b>Could not apply folders:</b> ' + escape(str(error))
         finally:

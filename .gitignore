@@ -51,3 +51,4 @@ Thumbs.db
 *.key
 # First-run machine-specific folder choices.
 .tensile-paths.json
+.tensile-paths.lock

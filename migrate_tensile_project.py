@@ -5,13 +5,18 @@ import hashlib
 import json
 from pathlib import Path
 from workbench_project import validate_project
+from workbench_backups import BackupVault, atomic_bytes, settings_lock
 
 
 def migrate(root):
     root = Path(root)
     target = root / 'tensile_workbench.project.json'
     if target.exists():
-        validate_project(json.loads(target.read_text(encoding='utf-8')))
+        # The launcher must remain reachable to recover a corrupt personal file.
+        return target
+    vault = BackupVault(target)
+    if target.with_suffix('.previous.json').exists() or vault.has_history():
+        # Missing is not first-run when an installation has recovery history.
         return target
     candidates = [root / name for name in ('tensile_workbench_v18.project.json',
                                            'tensile_workbench_v17.project.json',
@@ -30,8 +35,14 @@ def migrate(root):
     validate_project(project)
     if source.read_bytes() != raw:
         raise RuntimeError('Source definitions changed during migration. Close the other workbench session and retry.')
-    with target.open('x', encoding='utf-8') as stream:
-        json.dump(project, stream, indent=2, ensure_ascii=False, allow_nan=False)
+    encoded = (json.dumps(project, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
+    with settings_lock(target):
+        if target.exists():
+            return target  # Another session completed startup first.
+        if source.name != 'tensile_workbench_defaults.json':
+            vault.capture(raw, reason='pre-migration', force=True)
+        atomic_bytes(target, encoded)
+        vault.try_capture(encoded)
     return target
 
 

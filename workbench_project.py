@@ -2,12 +2,9 @@
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-import hashlib
 import json
 import math
-import os
 import re
-import tempfile
 import uuid
 from tensile_selection import valid_specimen_id, validate_data_mode
 from tensile_fit import validate_threshold, validate_override
@@ -19,10 +16,9 @@ from tensile_variables import validate_variables
 from tensile_colors import DEFAULT_PALETTE, validate_palette
 from tensile_moves import validate_tracking, graph_blocks
 from tensile_overrides import DISABLED, validate_disabled
-
-
-class ProjectConflict(RuntimeError):
-    pass
+from workbench_backups import (BackupVault, ProjectConflict, RecoveryRequired,
+                               atomic_bytes as _atomic_bytes, backup_warning,
+                               digest, read_optional, settings_lock)
 
 
 def validate_project(project):
@@ -155,81 +151,98 @@ def validate_project(project):
         validate_project({'schema_version': 1, 'graphs': [graph], 'selected_graph': graph.get('id')})
 
 
-def _atomic_bytes(path, content):
-    """Replace one exact project/backup file, never a data file or plot."""
-    descriptor, temporary = tempfile.mkstemp(prefix='.' + path.name + '.', suffix='.tmp', dir=path.parent)
-    try:
-        with os.fdopen(descriptor, 'wb') as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary = Path(temporary)
-        if temporary.exists():
-            temporary.unlink()
-
-
 def _discard_obsolete_settings(project):
     """Retire the redundant plot-specific order without adopting it elsewhere."""
     for graph in graph_blocks(project):
         graph.get('settings', {}).pop('properties_by_group_order', None)
 
 
+def decode_project(raw):
+    """Validate/normalise a snapshot without reading data or writing settings."""
+    project = split_property_charts(ensure_required_variables(json.loads(raw)))
+    validate_project(project)
+    _discard_obsolete_settings(project)
+    return project
+
+
 class ProjectStore:
-    def __init__(self, path, defaults_path):
+    def __init__(self, path, defaults_path, *, backup_root=None):
         self.path = Path(path).expanduser().resolve()
         self.defaults_path = Path(defaults_path).resolve()
         self.digest = None
+        self.file_stamp = None
         self.data = None
+        self.backups = BackupVault(self.path, backup_root)
         if self.path.exists():
             self.reload()
+        elif self.path.with_suffix('.previous.json').exists() or self.backups.has_history():
+            raise RecoveryRequired('Saved definitions are missing, but backup history exists. '
+                                   'Use Backups & restore. Starter definitions were not written.')
         else:
             seed = json.loads(self.defaults_path.read_text(encoding='utf-8'))
             self.save(seed)
 
+    @property
+    def backup_warning(self):
+        return backup_warning(self.path)
+
+    def _stamp(self):
+        try:
+            info = self.path.stat()
+            return (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size)
+        except FileNotFoundError:
+            return None
+
+    def _protect_migration(self, raw):
+        try:
+            self.backups.capture(raw, reason='pre-migration', force=True)
+        except Exception as error:
+            raise RecoveryRequired('Settings upgrade paused: the safety backup could not be made. '
+                                   f'The original file was not changed. {error}') from error
+
     def reload(self):
         try:
             raw = self.path.read_bytes()
-            project = split_property_charts(ensure_required_variables(json.loads(raw)))
-            validate_project(project)
-            _discard_obsolete_settings(project)
+            project = decode_project(raw)
         except Exception as error:
-            raise ValueError(f'Cannot load {self.path}. Existing definitions were preserved. '
-                             f'The previous save, if available, is in {self.path.with_suffix(".previous.json")}. {error}') from error
+            raise RecoveryRequired(f'Cannot load {self.path.name}. Existing definitions were preserved. '
+                                   f'Use Backups & restore. {error}') from error
+        if project != json.loads(raw):
+            # Preserve the exact older schema before any upgrade can be saved.
+            self._protect_migration(raw)
+        else:
+            self.backups.try_capture(raw, reason='opened')
         self.data = project
-        self.digest = hashlib.sha256(raw).hexdigest()
+        self.digest = digest(raw)
+        self.file_stamp = self._stamp()
         return deepcopy(project)
 
-    def save(self, project):
+    def save(self, project, *, reason='autosave'):
         project = split_property_charts(ensure_required_variables(project))
         validate_project(project)
         _discard_obsolete_settings(project)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        lock = self.path.with_suffix('.lock')
-        try:
-            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError as error:
-            raise ProjectConflict('The project is being saved by another session. Try again; '
-                                  f'if a crashed session left a stale lock, close all notebooks before removing {lock}.') from error
-        try:
-            with os.fdopen(handle, 'w') as stream:
-                stream.write(str(os.getpid()))
-            existing = self.path.read_bytes() if self.path.exists() else None
-            digest = hashlib.sha256(existing).hexdigest() if existing is not None else None
-            if digest != self.digest:
+        with settings_lock(self.path):
+            existing = read_optional(self.path)
+            # The stamp also catches restoring byte-identical older contents:
+            # an already-open stale session must still reload after a restore.
+            if digest(existing) != self.digest or self._stamp() != self.file_stamp:
                 raise ProjectConflict('Definitions changed in another notebook or outside this session. '
                                       'Reload saved definitions before editing again; no changes were overwritten.')
             project['revision'] = int(self.data.get('revision', 0) if self.data else project.get('revision', 0)) + 1
             project['saved_at'] = datetime.now().astimezone().isoformat()
             encoded = (json.dumps(project, indent=2, ensure_ascii=False, allow_nan=False) + '\n').encode('utf-8')
             if existing is not None:
+                if reason == 'pre-migration':
+                    self._protect_migration(existing)
+                else:
+                    self.backups.try_capture(existing)
                 _atomic_bytes(self.path.with_suffix('.previous.json'), existing)
             _atomic_bytes(self.path, encoded)
-            self.digest = hashlib.sha256(encoded).hexdigest()
+            self.digest = digest(encoded)
+            self.file_stamp = self._stamp()
             self.data = project
-        finally:
-            lock.unlink()
+            self.backups.try_capture(encoded)
         return deepcopy(project)
 
     def add_graph(self, template=None):

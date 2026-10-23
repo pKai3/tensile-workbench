@@ -17,7 +17,7 @@
 - Verification uses synthetic data only. All 363 tests pass, including the
   original gap fixture without changing its strain curve and both UI Undo cases.
 
-### Settings backup history and recovery — in progress
+### Settings backup history and recovery — implemented
 
 - Keep 20 recent changed versions plus 30 daily checkpoints outside the
   installation. Preserve manual, pre-migration and pre-restore snapshots.
@@ -25,6 +25,19 @@
   atomic writes, conflict checks and visible backup failures.
 - Add Backups & restore with explicit confirmation, safe recovery at startup,
   and tests for corruption, interrupted writes and concurrent sessions.
+- Keep the previous-save fallback. Preserve damaged originals before repair;
+  never seed starter definitions when recovery history exists. Launch checks
+  report personal-file problems without preventing access to recovery; invalid
+  shared defaults and missing dependencies still block startup.
+- Restore project and folder preferences independently. Reopen from disk, do
+  not flush old widgets over restored settings, and require existing sessions to
+  reload even when a restore returns to byte-identical older contents. Do not
+  create missing restored data/output folders without explicit confirmation.
+- Verification: all 386 tests pass, including 23 new backup/recovery tests.
+  Tests redirect backups to temporary folders and use synthetic settings only.
+  Browser checks verified recovery from damaged settings, cancellation, explicit
+  restore confirmation, reopening graphs, manual backup of both files and
+  switching between project/folder histories. The temporary preview was stopped.
 
 ### Specimen bars, quadratic trends and chart group selection — implemented
 

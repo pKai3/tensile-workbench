@@ -248,7 +248,7 @@ class EnvironmentTests(unittest.TestCase):
         self.assertFalse((self.root / 'data').exists())
         self.assertFalse((self.root / 'output').exists())
 
-    def test_lightweight_validation_still_rejects_invalid_saved_policies(self):
+    def test_lightweight_validation_flags_invalid_policies_but_allows_recovery_ui(self):
         path = self.root / 'tensile_workbench.project.json'
         cases = [
             (('specimen_failure_overrides', 'Synthetic/a.csv', 'row'), 0, 'positive original'),
@@ -270,8 +270,9 @@ class EnvironmentTests(unittest.TestCase):
                 before = path.read_bytes()
                 result = subprocess.run([sys.executable, '-c', LIGHTWEIGHT_GUARD + environment.QUICK_CHECK,
                                          str(self.root), sys.prefix], capture_output=True, text=True)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(message, result.stderr)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('Settings recovery needed', result.stdout)
+                self.assertIn(message, result.stdout)
                 self.assertNotIn('Preflight imported', result.stderr)
                 self.assertEqual(path.read_bytes(), before)
 
@@ -284,14 +285,22 @@ class EnvironmentTests(unittest.TestCase):
         self.assertFalse((self.root / 'data').exists())
         self.assertFalse((self.root / 'output').exists())
 
-    def test_quick_check_still_rejects_invalid_definitions_and_dependencies(self):
+    def test_quick_check_allows_personal_recovery_but_rejects_bad_defaults_and_dependencies(self):
         project = self.root / 'tensile_workbench.project.json'
         project.write_text('{"schema_version": -1}')
         command = [sys.executable, '-c', environment.QUICK_CHECK, str(self.root), sys.prefix]
         result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Settings recovery needed', result.stdout)
+        self.assertIn('Unsupported workbench project schema', result.stdout)
+        self.assertEqual(project.read_text(), '{"schema_version": -1}')
+        defaults = self.root / 'tensile_workbench_defaults.json'
+        before = defaults.read_bytes()
+        defaults.write_text('{"schema_version": -1}')
+        result = subprocess.run(command, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Unsupported workbench project schema', result.stderr)
-        self.assertEqual(project.read_text(), '{"schema_version": -1}')
+        defaults.write_bytes(before)
         (self.root / 'requirements.txt').write_text('numpy>=999\n')
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
