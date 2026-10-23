@@ -100,6 +100,11 @@ class VariableTable(anywidget.AnyWidget):
       const note=document.createElement('div');note.className='tw-variable-grid-note';note.setAttribute('role','status');
       el.append(copy,box,note);
       let local=false;
+      let renderFrame;
+      const scheduleRender=()=>{
+        if(local || renderFrame!==undefined) return;
+        renderFrame=requestAnimationFrame(()=>{renderFrame=undefined;render();});
+      };
       function status() {note.textContent=model.get('notice');}
       function render() {
         if(local) return;
@@ -168,9 +173,9 @@ class VariableTable(anywidget.AnyWidget):
           note.textContent='Copied names, units and visible values. Group labels are not included.';
         } catch {note.textContent='Clipboard access was unavailable. You can still paste from Excel into a cell.';}
       });
-      model.on('change:columns',render);model.on('change:groups',render);model.on('change:labels',render);model.on('change:notice',status);
+      model.on('change:columns',scheduleRender);model.on('change:groups',scheduleRender);model.on('change:labels',scheduleRender);model.on('change:notice',status);
       render();status();
-      return ()=>{model.off('change:columns',render);model.off('change:groups',render);model.off('change:labels',render);model.off('change:notice',status);};
+      return ()=>{cancelAnimationFrame(renderFrame);model.off('change:columns',scheduleRender);model.off('change:groups',scheduleRender);model.off('change:labels',scheduleRender);model.off('change:notice',status);};
     }};
     """
 

@@ -91,11 +91,14 @@ def variable_axis(groups, ident, variables):
 class GroupVariablesView:
     """Compact editor; an explicit save commits names, units and values together."""
     def __init__(self, w, get_variables, get_groups, on_save, on_save_all=None, get_usage=None,
-                 *, scope='group', row_label=None):
+                 *, scope='group', row_label=None, on_scope_change=None):
         from tensile_variable_table import VariableTable
         self.w, self.get_variables, self.get_groups, self.on_save = w, get_variables, get_groups, on_save
         self.on_save_all = on_save_all
         self.scope = scope
+        self.on_scope_change = on_scope_change
+        self._page = 0
+        self._page_size = 100 if scope == 'specimen' else None
         self.row_label = row_label or str
         entity = 'individual specimens' if scope == 'specimen' else 'sample groups'
         self.get_usage = get_usage or (lambda _: [])
@@ -116,6 +119,11 @@ class GroupVariablesView:
                                      tooltip='Include unselected groups without changing the graph selection. Values include excluded specimens.',
                                      layout=w.Layout(width='auto'))
         self.rows = w.VBox(layout=w.Layout(width='100%', max_height='300px', overflow='auto', flex='0 0 auto'))
+        self.page_previous = w.Button(description='Previous rows', layout=w.Layout(width='auto'))
+        self.page_next = w.Button(description='Next rows', layout=w.Layout(width='auto'))
+        self.page_status = w.HTML()
+        self.pagination = w.HBox([self.page_previous, self.page_status, self.page_next],
+                                 layout=w.Layout(display='none', flex_flow='row wrap'))
         self.save = w.Button(description='Save variable and values', button_style='primary',
                              layout=w.Layout(width='auto', align_self='flex-start', flex='0 0 auto'))
         self.table = VariableTable(on_delete=self._request_delete, layout=w.Layout(width='100%', min_width='0'))
@@ -130,7 +138,7 @@ class GroupVariablesView:
         self.save_all = w.Button(description='Save all variables', button_style='primary',
                                  layout=w.Layout(width='auto'))
         self.single_ui = w.VBox([self.choice, w.HBox([self.name, self.unit], layout=w.Layout(flex_flow='row wrap')),
-                                self.rows, w.HBox([self.save, self.remove], layout=w.Layout(flex_flow='row wrap'))],
+                                self.pagination, self.rows, w.HBox([self.save, self.remove], layout=w.Layout(flex_flow='row wrap'))],
                                 layout=w.Layout(width='100%', min_width='0'))
         self.table_ui = w.VBox([
             w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
@@ -152,7 +160,9 @@ class GroupVariablesView:
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
         self.ui.set_title(0, 'Custom variables · shared by all graphs')
         self.choice.observe(self._choose, names='value')
-        self.all_groups.observe(lambda _: self._render(), names='value')
+        self.all_groups.observe(self._scope_changed, names='value')
+        self.page_previous.on_click(lambda _: self._move_page(-1))
+        self.page_next.on_click(lambda _: self._move_page(1))
         self.view.observe(self._switch_view, names='value')
         self.table.observe(self._table_changed, names='columns')
         self.save.on_click(self._save)
@@ -204,14 +214,15 @@ class GroupVariablesView:
         finally:
             self._paused = old
 
-    def _load_single(self):
+    def _load_single(self, *, render=True):
         variable = self._drafts.get(self._active, dict(name='', unit='', values={}))
         self.name.value, self.unit.value = variable['name'], variable['unit']
         self._draft = dict(variable['values'])
         self.remove.disabled = not bool(self._active)
-        self._render_rows()
+        if render and self.view.value == 'single':
+            self._render_rows()
 
-    def refresh(self, groups, *, order=None, force=False):
+    def refresh(self, groups, *, order=None, force=False, redraw=False):
         groups = list(groups)
         order = list(order) if order is not None else self.order
         changed = groups != self.groups or order != self.order
@@ -220,18 +231,30 @@ class GroupVariablesView:
         variables = self._editable(self.get_variables())
         if force:
             self._cancel_delete()
+            self._page = 0
             self._drafts = variables
             if self._active not in variables:
                 self._active = ''
-            self._load_single()
+            self._load_single(render=False)
             self.status.value = ''
             self.table.notice = ''
         else:
             for ident, variable in variables.items():
                 self._drafts.setdefault(ident, variable)
         self._sync_choices()
-        if force or changed:
+        if force or changed or redraw:
             self._render()
+
+    def _scope_changed(self, _=None):
+        self._page = 0
+        if self.on_scope_change is not None:
+            self.on_scope_change()
+        else:
+            self._render()
+
+    def _move_page(self, step):
+        self._page = max(0, self._page + step)
+        self._render_rows()
 
     def _choose(self, _=None):
         if self._paused:
@@ -349,6 +372,14 @@ class GroupVariablesView:
     def _render_rows(self):
         w = self.w
         groups = self._visible_groups()
+        size = self._page_size or max(1, len(groups))
+        self._page = min(self._page, max(0, (len(groups) - 1) // size))
+        start = self._page * size
+        self.pagination.layout.display = '' if len(groups) > size else 'none'
+        self.page_previous.disabled = start == 0
+        self.page_next.disabled = start + size >= len(groups)
+        self.page_status.value = f'Rows {start + 1}–{min(start + size, len(groups))} of {len(groups)} · Table view shows all rows'
+        groups = groups[start:start + size]
         old = self.rows.children
         self.fields = {}
         rows = []

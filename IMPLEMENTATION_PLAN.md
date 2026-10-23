@@ -2,6 +2,18 @@
 
 ## Change notes — 2026-10-23
 
+### Fast individual-specimen variable catalogue — implemented
+
+- Build the location/name editor from bounded CSV header and summary reads,
+  using the same identity-matching rules as analysis. Do not load numeric curves,
+  hash entire files, fit properties or run fracture detection to list specimens.
+- Cache the catalogue until data reload. Render the editor once per scope
+  change, paginate the single-variable editor at 100 rows, and coalesce table
+  redraws. Preserve unsaved values across pages and selected/all-group switches.
+- Verification: 38 focused synthetic catalogue, variable, clipboard and plotting
+  tests pass, including 1,000 editable specimen identities and a guard that
+  fails if Show all invokes curve loading or property calculations.
+
 ### Individual specimen properties versus location — trial implemented
 
 - Add Group means / Individual specimens modes to independent YS/UTS/EL chart

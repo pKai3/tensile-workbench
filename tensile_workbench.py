@@ -414,7 +414,16 @@ class PreviewSession:
         """Lazy catalogue includes excluded specimens, with stable identities and operator names."""
         result = []
         for group in self.visible_groups(groups):
-            rows = sorted(self._load(group), key=specimen_sort_key)
+            if group not in self.files:
+                continue
+            if group in self._records:
+                rows = self._records[group]
+            else:
+                rows = self.instron.catalogue(group, self.files[group], self.engine.STRAIN_COLS,
+                                              self.engine.STRESS_COLS + self.engine.FORCE_COLS)
+                rows = [{**row, 'specimen_id': ((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
+                        + Path(row['source_file']).relative_to(self.source_roots[group]).as_posix())} for row in rows]
+            rows = sorted(rows, key=specimen_sort_key)
             for record, label in zip(rows, self.engine.scatter_specimen_labels(rows)):
                 result.append({'id': specimen_id(record), 'label': group + ' · ' + label,
                                'number': specimen_number(record)})
@@ -995,7 +1004,8 @@ class TensileWorkbench:
         self.specimen_variables = GroupVariablesView(w, lambda: self.store.data.get('specimen_variables', {}),
             self._all_specimen_variable_ids, self._save_specimen_variable, self._save_specimen_variables,
             lambda ident: variable_usage(self.store.data, ident, scope='specimen'), scope='specimen',
-            row_label=lambda ident: self._specimen_variable_labels.get(ident, ident + ' (unavailable)'))
+            row_label=lambda ident: self._specimen_variable_labels.get(ident, ident + ' (unavailable)'),
+            on_scope_change=lambda: self._refresh_specimen_variables(redraw=True))
         self.fill_specimen_locations = w.Button(description='Fill blanks from specimen number',
             layout=w.Layout(width='auto', align_self='flex-start'),
             tooltip='Fills only blanks in the current variable; uses operator names, not CSV row numbers.')
@@ -1009,7 +1019,6 @@ class TensileWorkbench:
         self.custom_variables_panel.set_title(0, 'Custom variables · shared by all graphs')
         self.custom_variables_panel.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
         self.custom_variable_tabs.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
-        self.specimen_variables.all_groups.observe(lambda _: self._refresh_specimen_variables(), names='value')
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             local = [self.title_inputs[family]]
@@ -1323,7 +1332,7 @@ class TensileWorkbench:
         return self._specimen_variable_ids(self.session.files)
 
     @busy('Loading specimen locations…')
-    def _refresh_specimen_variables(self, *, force=False):
+    def _refresh_specimen_variables(self, *, force=False, redraw=False):
         if force:
             self._specimen_variables_force = True
             self._specimen_variable_labels.clear()
@@ -1337,7 +1346,7 @@ class TensileWorkbench:
             if self.specimen_variables.all_groups.value:
                 order = identities + [ident for ident in self._all_specimen_variable_ids() if ident not in identities]
             view = self.specimen_variables
-            view.refresh(identities, order=order, force=self._specimen_variables_force)
+            view.refresh(identities, order=order, force=self._specimen_variables_force, redraw=redraw)
             self._specimen_variables_force = False
             if not self.store.data.get('specimen_variables') and not view.name.value and not view._active:
                 view.name.value = 'Location'
@@ -1358,7 +1367,8 @@ class TensileWorkbench:
             if number is not None and not draft['values'].get(ident, '').strip():
                 draft['values'][ident] = str(number)
         view._load_single()
-        view._sync_table()
+        if view.view.value == 'table':
+            view._sync_table()
 
     def _sync_specimen_plot_settings(self):
         individual = self.controls['properties_by_group_level'].value == 'specimen'

@@ -1,6 +1,7 @@
 """Read Instron summary CSVs only. Never infer specimen identity from a value."""
 import csv
 import hashlib
+import io
 from pathlib import Path
 import re
 from decimal import Decimal, InvalidOperation
@@ -187,6 +188,92 @@ def _export_identity(source):
     return dataset, int(index[1]) if index else None
 
 
+def _summary_candidates(source, embedded, group_rows):
+    """Same identity rules for the lightweight catalogue and analysed records."""
+    dataset, index = _export_identity(source)
+    if embedded:
+        return (embedded if len(embedded) == 1 else [r for r in embedded if r['index'] == index],
+                'Embedded CSV summary', [])
+    candidates, review_rows = [], []
+    if dataset is not None:
+        for path, rows in group_rows:
+            if re.fullmatch(re.escape(dataset) + r'(?:_\d+){0,2}', path.stem, re.I):
+                review_rows.extend(rows)
+                candidates.extend(row for row in rows if row['index'] == index)
+    method = 'Dataset + Instron row number'
+    if not candidates:
+        candidates = [row for _, rows in group_rows for row in rows
+                      if row['label'].casefold() == source.stem.casefold()]
+        if candidates:
+            method = 'Exact specimen label'
+    return candidates, method, review_rows
+
+
+def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144):
+    """Read only a bounded preamble, never numeric arrays, full-file hashes or fits.
+
+    Look for the same complete measurement column names as the curve loader.
+    Parse quoted/multiline summary fields normally, stopping at the measurement
+    header. An unrecognised/truncated preamble cannot invent a specimen number.
+    """
+    strain_names = {_normal(name) for name in strain_names}
+    load_names = {_normal(name) for name in load_names}
+
+    def parse(text):
+        best = []
+        for delimiter in (',', ';', '\t'):
+            rows, header, units, ended = [], None, False, False
+            try:
+                for row in csv.reader(io.StringIO(text, newline=''), delimiter=delimiter):
+                    names = {_normal(value) for value in row}
+                    if names & strain_names and names & load_names:
+                        return True, rows
+                    if ended:
+                        continue
+                    if header is None:
+                        if any('stress at maximum force' in value or 'stress at yield' in value for value in names):
+                            header = row
+                        continue
+                    if not units:
+                        units = True
+                        continue
+                    if not row or not any(value.strip() for value in row):
+                        ended = True
+                        continue
+                    match = re.fullmatch(r'[xX]?(\d+)', row[0].strip())
+                    if not match or len(row) != len(header):
+                        continue
+                    label = next((row[i].strip() for i, name in enumerate(header)
+                                  if 'specimen text input' in _normal(name)), '')
+                    rows.append({'index': int(match[1]), 'label': label})
+            except csv.Error:
+                continue
+            if len(rows) > len(best):
+                best = rows
+        return False, best
+
+    payload = bytearray()
+    try:
+        with Path(path).open('rb') as stream:
+            while len(payload) < byte_limit:
+                chunk = stream.read(min(4096, byte_limit - len(payload)))
+                payload.extend(chunk)
+                try:
+                    text = payload.decode('utf-8-sig')
+                except UnicodeDecodeError:
+                    text = payload.decode('cp1252', errors='replace')
+                # Do not parse a partial last physical line until EOF.
+                if chunk:
+                    end = max(text.rfind('\n'), text.rfind('\r'))
+                    text = text[:end + 1] if end >= 0 else ''
+                result = parse(text)
+                if result[0] or not chunk:
+                    return result
+    except OSError:
+        pass
+    return False, []  # Unreadable or over-limit metadata remains unassigned.
+
+
 def _identity_review(result, record, summary_rows):
     """Read-only UTS-compatible alternatives within the named dataset, never rematch."""
     source = Path(record['source_file'])
@@ -246,6 +333,26 @@ class InstronSummaries:
         self.group_directories = group_directories or {}
         self._csv = {}
         self._groups = {}
+        self._catalogues = {}
+
+    def catalogue(self, group, sources, strain_names, load_names):
+        """Cached file/label inventory. This does not verify UTS or calculate properties."""
+        if group not in self._catalogues:
+            strain_names = {_normal(name) for name in strain_names}
+            load_names = {_normal(name) for name in load_names}
+            metadata = {path: read_catalogue_csv(path, strain_names, load_names) for path in sources}
+            group_rows = [(path, rows) for path, (_, rows) in metadata.items()
+                          if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
+            records = []
+            for source, (is_curve, embedded) in metadata.items():
+                if not is_curve:
+                    continue
+                candidates, _, _ = _summary_candidates(source, embedded, group_rows)
+                labels = sorted({row['label'] for row in candidates if row['label']})
+                records.append({'source_file': str(source), 'sample': source.stem,
+                                'specimen_label': ' / '.join(labels)})
+            self._catalogues[group] = records
+        return self._catalogues[group]
 
     def read(self, path):
         key = str(path)
@@ -257,29 +364,12 @@ class InstronSummaries:
         source = Path(record['source_file'])
         embedded = self.read(source)
         dataset, index = _export_identity(source)
-        review_rows = []
-        if embedded:
-            candidates = embedded if len(embedded) == 1 else [row for row in embedded if row['index'] == index]
-            method = 'Embedded CSV summary'
-        else:
+        if not embedded:
             if group not in self._groups:
                 directory = self.group_directories.get(group, self.root / group)
                 self._groups[group] = [(path, self.read(path)) for path in csv_files(directory)
                                        if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
-            candidates = []
-            if dataset is not None:
-                for path, rows in self._groups[group]:
-                    # Instron names group summaries dataset.csv, dataset_1.csv,
-                    # or dataset_1_1.csv. Do not attach unrelated summaries.
-                    if re.fullmatch(re.escape(dataset) + r'(?:_\d+){0,2}', path.stem, re.I):
-                        review_rows.extend(rows)
-                        candidates.extend(row for row in rows if row['index'] == index)
-            method = 'Dataset + Instron row number'
-            if not candidates:
-                candidates = [row for _, rows in self._groups[group] for row in rows
-                              if row['label'].casefold() == source.stem.casefold()]
-                if candidates:
-                    method = 'Exact specimen label'
+        candidates, method, review_rows = _summary_candidates(source, embedded, self._groups.get(group, []))
         result = {'values': {}, 'status': 'Unavailable', 'notes': 'No matching Instron summary CSV.',
                   'source': '', 'sha256': '', 'index': index, 'label': '', 'excluded': False}
         if not candidates:
