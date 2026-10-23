@@ -2,10 +2,23 @@
 
 ## Pending implementation
 
+### Table-only custom-variable editing — planned, 2026-10-23
+
+- Remove the One variable editor and the One variable / Table view selector
+  from both Sample groups and Individual specimens. Use the editable table
+  directly, with names in row 1, units in row 2 and values below.
+- Retain add-column, confirmed delete-column, save and CSV/TSV copy/paste
+  workflows. Preserve existing values, manual overrides, automatic Location
+  defaults and required-variable protections; this is a UI simplification,
+  not a change to the stored variable data.
+- Keep selected/all-group browsing, shared ordering and the lightweight specimen
+  catalogue. Update documentation and editor tests when implementing.
+- Plan only for now; no UI changes until implementation is requested.
+
 ### Tested versus total specimen count — planned, 2026-10-23
 
 - Present Specimen count as `X tested of [Y]`: a grey, read-only prefix and an
-  editable whole-number total. Apply this in both One variable and Table views.
+  editable whole-number total in the table-only variable editor.
 - Derive X from imported specimens in each group and refresh it at startup and
   Reload data. Include excluded specimens; exclusion does not mean untested.
   Clarify that the count covers tests found in the imported data, not unseen files.
@@ -13,9 +26,9 @@
   existing minimum of X and preserve larger totals across startup and reload.
 - Keep clipboard copy/paste and saved/exported variable values numeric: only Y
   is editable variable data; the prefix is display context, not another variable.
-- Verify both editor views, excluded specimens, reload updates, minimum-total
-  handling and clipboard behaviour using synthetic data. UI implementation is
-  deferred while the user raises the next item.
+- Verify the table editor, excluded specimens, reload updates, minimum-total
+  handling and clipboard behaviour using synthetic data. UI implementation
+  remains deferred until requested.
 
 ## Change notes — 2026-10-23
 
