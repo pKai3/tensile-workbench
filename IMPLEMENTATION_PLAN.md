@@ -2,6 +2,30 @@
 
 ## Change notes — 2026-10-23
 
+### Setup-test fixtures and lightweight preflight — implemented
+
+- Include the required template and favicon in synthetic installation fixtures
+  so launch/check/missing-environment tests reach their intended checks.
+- Move gauge, failure-override and property-chart settings validation into a
+  shared standard-library-only module. Keep existing calculation-module imports
+  compatible via re-exports. Route active, disabled and historical saved
+  policies through the same validators without loading the numerical/UI stack.
+- Property-chart colours use the project's existing six-digit hex rule,
+  including nested chart variants, without importing Matplotlib to validate.
+  Keep full setup/check imports intact; ordinary launch remains lightweight.
+- Strengthen the cold-process import guard and test populated saved projects,
+  disabled overrides, histories, variables and chart variants. Invalid values
+  must still fail with useful messages and leave saved files untouched.
+- Verification: all 24 setup tests and the final 63-test setup/variable/plot/
+  order/saved-override run passed. A broader 115-test synthetic run had
+  111 passes and four unrelated failures reproduced on pre-fix commit 0c5bffe:
+  two old fit tests expect the retired workbook filename/fit-only review count;
+  two fracture tests expect different detection statuses around missing force
+  or time gaps. No detector algorithm or test expectation was altered to hide
+  those failures. These four remain for a separate regression review.
+- No research data processed, user environment replaced, or personal settings
+  changed. The five setup failures previously recorded below are resolved.
+
 ### Variable editor follows sample group order — implemented
 
 - Apply the shared per-graph order to variable-entry rows, including the

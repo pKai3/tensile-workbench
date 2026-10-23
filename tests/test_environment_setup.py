@@ -1,4 +1,5 @@
 from contextlib import redirect_stdout
+from copy import deepcopy
 import hashlib
 import io
 import json
@@ -18,6 +19,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import workbench_environment as environment
 
+LIGHTWEIGHT_GUARD = r'''
+import sys
+blocked = {'numpy', 'pandas', 'matplotlib', 'scipy', 'openpyxl', 'ipywidgets',
+           'jupyterlab', 'voila', 'ipykernel', 'plotly', 'anywidget',
+           'tensile_core', 'tensile_workbench', 'tensile_fracture',
+           'tensile_gauge', 'tensile_group_plot'}
+def reject_heavy_import(event, args):
+    if event == 'import' and args[0].split('.')[0] in blocked:
+        raise RuntimeError('Preflight imported ' + args[0])
+sys.addaudithook(reject_heavy_import)
+'''
+
 
 class EnvironmentTests(unittest.TestCase):
     def setUp(self):
@@ -31,6 +44,10 @@ class EnvironmentTests(unittest.TestCase):
         for name in ('requirements.txt', 'requirements-windows.txt',
                      'tensile_workbench_defaults.json', 'tensile_workbench.ipynb'):
             shutil.copy2(ROOT / name, self.root / name)
+        for name in ('web/templates/index.html.j2', 'web/static/tensile-favicon.svg'):
+            destination = self.root / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / name, destination)
         self.folder = self.base / 'local support' / 'venv'
         self.folder.parent.mkdir()
         self.local = self.base / 'LocalAppData'
@@ -189,19 +206,80 @@ class EnvironmentTests(unittest.TestCase):
         self.assertIn(environment.CHECK, run.call_args.args[0])
 
     def test_quick_check_does_not_import_numerical_ui_or_application_stack(self):
-        guard = r'''
-import sys
-blocked = {'numpy', 'pandas', 'matplotlib', 'openpyxl', 'ipywidgets', 'jupyterlab',
-           'voila', 'ipykernel', 'plotly', 'anywidget', 'tensile_core', 'tensile_workbench'}
-def reject_heavy_import(event, args):
-    if event == 'import' and args[0].split('.')[0] in blocked:
-        raise RuntimeError('Preflight imported ' + args[0])
-sys.addaudithook(reject_heavy_import)
-'''
-        result = subprocess.run([sys.executable, '-c', guard + environment.QUICK_CHECK,
+        result = subprocess.run([sys.executable, '-c', LIGHTWEIGHT_GUARD + environment.QUICK_CHECK,
                                  str(self.root), sys.prefix], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('Dependencies and saved definitions OK', result.stdout)
+        self.assertFalse((self.root / 'data').exists())
+        self.assertFalse((self.root / 'output').exists())
+
+    def populated_project(self):
+        """Synthetic saved policies exercise validators absent from fresh defaults."""
+        project = json.loads((self.root / 'tensile_workbench_defaults.json').read_text())
+        snapshot = dict(source_sha256='a' * 64, reason='Synthetic test',
+                        saved_at='2026-10-23T00:00:00+00:00', automatic_snapshot={})
+        failure = dict(snapshot, row=2)
+        fit = dict(snapshot, mode='range', strain_bounds=[0.1, 0.2])
+        project['specimen_failure_overrides'] = {'Synthetic/a.csv': failure}
+        project['specimen_fit_overrides'] = {'Synthetic/a.csv': fit}
+        project['specimen_failure_history'] = [dict(specimen_id='Synthetic/a.csv', before=None, after=deepcopy(failure))]
+        project['specimen_fit_history'] = [dict(specimen_id='Synthetic/a.csv', before=None, after=deepcopy(fit))]
+        project['disabled_specimen_overrides'] = {
+            'specimen_failure_overrides': {'Synthetic/b.csv': deepcopy(failure)},
+            'specimen_fit_overrides': {'Synthetic/b.csv': deepcopy(fit)}}
+        project['group_variables'] = {'gas': dict(name='Gas', unit='%', values={'Synthetic': 0})}
+        graph = project['graphs'][0]
+        graph['definition']['gauge_reconstruction'] = {'Synthetic': dict(enabled=True, target_gauge_mm=25)}
+        graph['settings']['properties_by_group_variants'] = [dict(id='chart', name='Strength', settings={
+            'properties_by_group_x_variable': 'gas', 'properties_by_group_ys_color': '#123456',
+            'properties_by_group_ylim': [0, 1000]})]
+        project['deleted_graphs'] = [dict(index=0, graph=deepcopy(graph))]
+        return project
+
+    def test_quick_check_validates_saved_policies_without_heavy_imports(self):
+        path = self.root / 'tensile_workbench.project.json'
+        path.write_text(json.dumps(self.populated_project()))
+        before = path.read_bytes()
+        result = subprocess.run([sys.executable, '-c', LIGHTWEIGHT_GUARD + environment.QUICK_CHECK,
+                                 str(self.root), sys.prefix], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.root / 'data').exists())
+        self.assertFalse((self.root / 'output').exists())
+
+    def test_lightweight_validation_still_rejects_invalid_saved_policies(self):
+        path = self.root / 'tensile_workbench.project.json'
+        cases = [
+            (('specimen_failure_overrides', 'Synthetic/a.csv', 'row'), 0, 'positive original'),
+            (('disabled_specimen_overrides', 'specimen_failure_overrides', 'Synthetic/b.csv', 'source_sha256'), '', 'fingerprint'),
+            (('specimen_failure_history', 0, 'after', 'reason'), '', 'short reason'),
+            (('graphs', 0, 'definition', 'gauge_reconstruction', 'Synthetic', 'target_gauge_mm'), 0, 'positive target'),
+            (('graphs', 0, 'settings', 'properties_by_group_variants', 0, 'settings', 'properties_by_group_ylim'), [2, 1], 'increase'),
+            (('graphs', 0, 'settings', 'properties_by_group_variants', 0, 'settings', 'properties_by_group_ys_color'), '#badhex', 'hex colours'),
+            (('group_variables', 'gas', 'values', 'Synthetic'), float('inf'), 'finite numbers'),
+        ]
+        for keys, value, message in cases:
+            with self.subTest(keys=keys):
+                project = self.populated_project()
+                target = project
+                for key in keys[:-1]:
+                    target = target[key]
+                target[keys[-1]] = value
+                path.write_text(json.dumps(project))
+                before = path.read_bytes()
+                result = subprocess.run([sys.executable, '-c', LIGHTWEIGHT_GUARD + environment.QUICK_CHECK,
+                                         str(self.root), sys.prefix], capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn('Preflight imported', result.stderr)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_full_check_still_exercises_calculation_imports(self):
+        script = environment.CHECK + "\nassert 'numpy' in sys.modules and 'tensile_workbench' in sys.modules\n"
+        result = subprocess.run([sys.executable, '-c', script, str(self.root), sys.prefix],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Dependencies, imports and saved definitions OK', result.stdout)
         self.assertFalse((self.root / 'data').exists())
         self.assertFalse((self.root / 'output').exists())
 

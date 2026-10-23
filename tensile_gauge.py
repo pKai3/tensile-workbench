@@ -1,16 +1,7 @@
 """Per-group post-peak AVE gauge reconstruction; never mutate measurements."""
 from copy import deepcopy
-import math
 from tensile_fracture import fracture_endpoint, fracture_curve, endpoint_available
-
-def validate_group_policy(policy):
-    if not isinstance(policy, dict) or not isinstance(policy.get('enabled', False), bool):
-        raise ValueError('Each group gauge setting needs an enabled on/off value.')
-    target = policy.get('target_gauge_mm', 0)
-    if (isinstance(target, bool) or not isinstance(target, (int, float)) or
-            not math.isfinite(target) or target < 0 or (policy.get('enabled') and target <= 0)):
-        raise ValueError('Enter a positive target gauge length before enabling a group.')
-    return {'enabled': policy.get('enabled', False), 'target_gauge_mm': float(target)}
+from tensile_settings import validate_group_policy
 
 
 def group_policy(state, spec, group):

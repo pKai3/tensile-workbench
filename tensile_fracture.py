@@ -1,6 +1,6 @@
 """Automatic, auditable load-history endpoints, independent of Instron EL."""
 import numpy as np
-import re
+from tensile_settings import validate_failure_override
 
 FRACTURE_METHOD = 'Acquisition-order endpoint selection (v9)'
 ISO_DROP_RATIO = 5.0
@@ -146,25 +146,6 @@ def _multi_reading_drop(z, t, peak, noise, last_start, strain):
 def endpoint_available(endpoint):
     """Detected onsets and review-flagged terminal estimates are both usable."""
     return endpoint['status'] in ('Detected', 'Estimated', 'Manual')
-
-
-def validate_failure_override(override, *, saved=False):
-    """A manual endpoint is an original measurement, never an invented stress."""
-    if not isinstance(override, dict):
-        raise ValueError('Failure EL override must specify a measurement row.')
-    row = override.get('row')
-    if isinstance(row, bool) or not isinstance(row, int) or row < 1:
-        raise ValueError('Failure EL requires a positive original measurement row number.')
-    if saved:
-        if not isinstance(override.get('source_sha256'), str) or not re.fullmatch('[0-9a-f]{64}', override['source_sha256']):
-            raise ValueError('Saved failure EL override requires a source fingerprint.')
-        if not isinstance(override.get('reason'), str) or not override['reason'].strip() or len(override['reason']) > 2000:
-            raise ValueError('Enter a short reason for the EL override (up to 2000 characters).')
-        if not isinstance(override.get('saved_at'), str) or not override['saved_at']:
-            raise ValueError('Saved failure EL override requires a timestamp.')
-        if not isinstance(override.get('automatic_snapshot'), dict):
-            raise ValueError('Saved failure EL override requires its automatic-result snapshot.')
-    return override
 
 
 def failure_measurements(record):

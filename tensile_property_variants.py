@@ -1,7 +1,7 @@
 """Independent property-chart configurations within one saved graph."""
 from copy import deepcopy
 import uuid
-from tensile_group_plot import GROUP_DEFAULTS, validate_group_display
+from tensile_settings import GROUP_DEFAULTS, validate_group_display
 
 VARIANTS_KEY = 'properties_by_group_variants'
 TITLE_KEY = 'properties_by_group_title'

@@ -48,7 +48,7 @@ def validate_disabled(block, *, graph=False):
                 from tensile_fit import validate_override
                 validate_override(value, saved=True)
             elif kind == 'specimen_failure_overrides':
-                from tensile_fracture import validate_failure_override
+                from tensile_settings import validate_failure_override
                 validate_failure_override(value, saved=True)
             elif kind == 'specimen_exclusions':
                 if not isinstance(value, str):

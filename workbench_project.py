@@ -11,9 +11,7 @@ import tempfile
 import uuid
 from tensile_selection import valid_specimen_id, validate_data_mode
 from tensile_fit import validate_threshold, validate_override
-from tensile_gauge import validate_group_policy
-from tensile_fracture import validate_failure_override
-from tensile_group_plot import validate_group_display
+from tensile_settings import validate_group_policy, validate_failure_override, validate_group_display
 from tensile_property_variants import VARIANTS_KEY, validate_variants
 from tensile_order import validate_group_order
 from tensile_variables import validate_variables
@@ -102,10 +100,6 @@ def validate_project(project):
         for family in ('ys_vs_el', 'uts_vs_el'):
             if settings.get(family + '_mean_population', 'independent') not in ('paired', 'independent'):
                 raise ValueError(f'{family}: mean population must be paired or independent.')
-        for key in ('ys', 'uts', 'el'):
-            color = settings.get(f'properties_by_group_{key}_color', '#000000')
-            if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
-                raise ValueError('Property-plot colours must be six-digit hex colours.')
         group_gauges = graph['definition'].get('gauge_reconstruction', {})
         if not isinstance(group_gauges, dict):
             raise ValueError('Group gauge settings must be a mapping.')
