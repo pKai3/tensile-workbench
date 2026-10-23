@@ -2,6 +2,30 @@
 
 ## Change notes — 2026-10-23
 
+### Regression clean-up and safe Undo — implemented
+
+- Update older tests to the current consolidated workbooks, two-decimal result
+  display, five-decimal fit diagnostics, operator/CSV specimen labels, global
+  exclusions and combined fit/EL review rules. Keep independent checks for the
+  calculation behaviour; do not replace regression checks with blanket skips.
+- Fix Undo delete after the last graph is deleted: apply schema migrations to
+  both the automatic draft and its recovery snapshot. Remove only an untouched
+  replacement draft; preserve a genuinely edited new graph.
+- Fix a gap-related fracture-search regression: an earlier acquisition gap
+  must not shorten the supported collapse duration. Keep every comparison
+  inside an uninterrupted segment, with the whole-test sampling scale.
+- Verification uses synthetic data only. All 363 tests pass, including the
+  original gap fixture without changing its strain curve and both UI Undo cases.
+
+### Settings backup history and recovery — in progress
+
+- Keep 20 recent changed versions plus 30 daily checkpoints outside the
+  installation. Preserve manual, pre-migration and pre-restore snapshots.
+- Cover project definitions and local folder preferences, with checksums,
+  atomic writes, conflict checks and visible backup failures.
+- Add Backups & restore with explicit confirmation, safe recovery at startup,
+  and tests for corruption, interrupted writes and concurrent sessions.
+
 ### Specimen bars, quadratic trends and chart group selection — implemented
 
 - Use grouped YS/UTS/EL bars in the specimen-location section, one chart per

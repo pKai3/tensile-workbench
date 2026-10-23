@@ -58,7 +58,7 @@ class PathCellTests(unittest.TestCase):
                 self.assertIn('readonly', attrs)
                 self.assertIn('Full ', attrs['aria-label'])
         self.assertIn('text-overflow:ellipsis', html)
-        self.assertIn('1.235', html)
+        self.assertIn('1.23', html)
         pd.testing.assert_frame_equal(frame, before)
 
     def test_paths_other_cells_and_headers_are_html_escaped(self):
@@ -82,7 +82,7 @@ class PathCellTests(unittest.TestCase):
     def test_number_formats_and_ordinary_tables_stay_readable(self):
         html = PropertyTablesView._html(pd.DataFrame({'Group': ['A&B'], 'n': [3], 'Mean': [2.34567], 'SD': [np.nan]}))
         self.assertIn('A&amp;B', html)
-        self.assertIn('2.346', html)
+        self.assertIn('2.35', html)
         self.assertIn('>3<', html)
         self.assertNotIn('<details', html)
 

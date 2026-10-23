@@ -15,8 +15,11 @@ def group_policy(state, spec, group):
 
 def migrate_group_gauges(project):
     """Preserve legacy choices for existing groups; newly added groups stay off."""
+    from tensile_moves import graph_blocks
     project = deepcopy(project)
-    for graph in project['graphs']:
+    # Keep recycled graphs and the automatic-draft snapshot in the same schema.
+    # Otherwise migration alone makes an untouched draft look user-edited on Undo.
+    for graph in graph_blocks(project):
         settings, spec = graph['settings'], graph['definition']
         if 'gauge_reconstruction' not in spec:
             legacy = group_policy(settings, spec, '')

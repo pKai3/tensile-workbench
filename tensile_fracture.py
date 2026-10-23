@@ -2,7 +2,7 @@
 import numpy as np
 from tensile_settings import validate_failure_override
 
-FRACTURE_METHOD = 'Acquisition-order endpoint selection (v9)'
+FRACTURE_METHOD = 'Acquisition-order endpoint selection (v10)'
 ISO_DROP_RATIO = 5.0
 ISO_CONFIRM_FRACTION = .02
 ASTM_END_FRACTION = .10
@@ -46,7 +46,7 @@ def _strain_collapse_evidence(x, z, onset, end, noise):
     return {'checked': True, 'contrast': contrast, 'supported': contrast > RAPID_RATE_CONTRAST}
 
 
-def _multi_reading_drop(z, t, peak, noise, last_start, strain):
+def _multi_reading_drop(z, t, peak, noise, last_start, strain, *, window_readings=None):
     """Find rapid loss spread over multiple readings, not a 5% single jump.
 
     Input is one uninterrupted acquisition segment. Windows establish sustained
@@ -77,7 +77,10 @@ def _multi_reading_drop(z, t, peak, noise, last_start, strain):
     min3 = np.minimum(np.minimum(z[:-2], z[1:-1]), z[2:])
     recovered = np.r_[np.maximum.accumulate(min3[::-1])[::-1], -np.inf, -np.inf]
     sums = np.r_[0., np.cumsum(z)]
-    largest = min(512, n - peak - 1, max(4, int(np.ceil(.02 * n))))
+    # Gaps must restrict where windows may lie, not shrink the allowable event
+    # duration. Keep the whole-test sampling scale while every window remains
+    # strictly inside this uninterrupted segment.
+    largest = min(512, n - peak - 1, max(4, int(np.ceil(.02 * (window_readings or n)))))
     widths = [1]
     while widths[-1] < largest:
         widths.append(min(2 * widths[-1], largest))
@@ -303,7 +306,8 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
         candidate = _detect_uninterrupted_endpoint(
             x, y, ids[start:stop], z[start:stop], max(0, peak - start), peak_strain,
             clock, clock_ok, noise, dict(result), segment_notes,
-            allow_terminal=(stop == n and ids[-1] == len(load) - 1), after_gap=(start > peak))
+            allow_terminal=(stop == n and ids[-1] == len(load) - 1), after_gap=(start > peak),
+            window_readings=n)
         candidate.update(search_segment_first_row=int(ids[start]) + 1,
                          search_segment_last_row=int(ids[stop - 1]) + 1,
                          post_peak_gaps_skipped=post_peak_gaps)
@@ -326,7 +330,7 @@ def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=N
 
 
 def _detect_uninterrupted_endpoint(x, y, ids, z, peak, peak_strain, clock, clock_ok,
-                                   noise, result, notes, *, allow_terminal, after_gap):
+                                   noise, result, notes, *, allow_terminal, after_gap, window_readings):
     """Search one section, keeping original row IDs and whole-test load scaling.
 
     `peak` is the local search start, not a newly calculated section maximum.
@@ -368,7 +372,8 @@ def _detect_uninterrupted_endpoint(x, y, ids, z, peak, peak_strain, clock, clock
         # not compare it against an invented zero-rate background.
         rapid_start = max(peak, 1) if after_gap else peak
         rapid = _multi_reading_drop(z, segment_time, rapid_start, noise,
-                                    first10 if first10 is not None else n - 1, x[ids])
+                                    first10 if first10 is not None else n - 1, x[ids],
+                                    window_readings=window_readings)
     selected_status = 'Detected'
     if (len(possible) and first2 is not None) or len(partial):
         # Largest supported consecutive loss, with the later reading breaking

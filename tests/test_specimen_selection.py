@@ -41,7 +41,7 @@ class FixtureTests(unittest.TestCase):
 class SelectionTests(FixtureTests):
     def test_included_column_recomputes_statistics_but_keeps_excluded_rows(self):
         before = self.frames()
-        mean_before = before['tensile_summary']['UTS (MPa) · Calc Mean'].iloc[0]
+        mean_before = before['tensile_summary']['UTS (MPa) · Calc · Mean'].iloc[0]
         self.exclude()
         frame = self.frames()
         self.assertEqual(len(frame['tensile_samples']), 3)
@@ -50,22 +50,25 @@ class SelectionTests(FixtureTests):
         summary = frame['tensile_summary'].iloc[0]
         self.assertEqual(summary['Included n'], 2)
         self.assertEqual(summary['Available n'], 3)
-        self.assertAlmostEqual(summary['UTS (MPa) · Calc Mean'], selected['UTS (MPa)'].mean())
-        self.assertNotEqual(summary['UTS (MPa) · Calc Mean'], mean_before)
+        self.assertAlmostEqual(summary['UTS (MPa) · Calc · Mean'], selected['UTS (MPa)'].mean())
+        self.assertNotEqual(summary['UTS (MPa) · Calc · Mean'], mean_before)
         self.assertEqual(frame['uniform_elongation_summary']['n'].iloc[0], 2)
         self.assertTrue(self.app.export_button.disabled)
 
-    def test_inclusion_persists_per_graph_and_survives_reopen_and_copy(self):
+    def test_global_inclusion_persists_and_graph_override_survives_reopen_and_copy(self):
         self.exclude()
         self.app.graph.value = '1'
+        self.assertEqual(self.frames()['tensile_summary']['Included n'].iloc[0], 2)
+        self.app._specimen_changed('Alloy A/coupon_2.csv', True, 'For this comparison', scope='graph')
         self.assertEqual(self.frames()['tensile_summary']['Included n'].iloc[0], 3)
         self.app.graph.value = '0'
         self.assertEqual(self.frames()['tensile_summary']['Included n'].iloc[0], 2)
         with redirect_stdout(io.StringIO()):
             reopened = TensileWorkbench(self.root)
-        self.assertIn('Alloy A/coupon_2.csv', reopened._current()['definition']['specimen_exclusions'])
+        self.assertIn('Alloy A/coupon_2.csv', reopened.store.data['specimen_exclusions'])
+        reopened.graph.value = '1'
         reopened.new_graph(duplicate=True)
-        self.assertIn('Alloy A/coupon_2.csv', reopened._current()['definition']['specimen_exclusions'])
+        self.assertTrue(reopened._current()['definition']['specimen_inclusion_overrides']['Alloy A/coupon_2.csv']['included'])
 
     def test_undo_checkbox_restores_cached_population_and_reason_edits_persist(self):
         self.exclude(reason='first')
@@ -79,7 +82,7 @@ class SelectionTests(FixtureTests):
             self.exclude(f'coupon_{i}.csv')
         frames = self.frames()
         self.assertEqual(frames['tensile_summary']['Included n'].iloc[0], 0)
-        self.assertTrue(np.isnan(frames['tensile_summary']['UTS (MPa) · Calc Mean'].iloc[0]))
+        self.assertTrue(np.isnan(frames['tensile_summary']['UTS (MPa) · Calc · Mean'].iloc[0]))
         self.assertEqual(len(self.app.tables.specimens.rows), 3)
         state = {**self.app.state(), 'graph_index': 0, 'family': 'landmark'}
         with self.assertRaisesRegex(ValueError, 'No included usable specimens'):
@@ -122,13 +125,13 @@ class SelectionTests(FixtureTests):
         self.assertEqual(len(summary), 1)
         self.assertNotIn('Property', summary.columns)
         columns = list(summary.columns)
-        self.assertLess(columns.index('0.2% yield strength (MPa) · Instron Mean'), columns.index('UTS (MPa) · Calc Mean'))
+        self.assertLess(columns.index('0.2% YS (MPa) · Instron · Mean'), columns.index('UTS (MPa) · Calc · Mean'))
         html = summary_html(frames['tensile_summary_details'])
         self.assertEqual(html.count('scope="col">Calc'), len(METRICS))
         self.assertIn('n = 0', html)
         self.assertIn('±', html)
-        self.assertTrue(np.isnan(summary['Tensile toughness (MJ/m³) · Instron Mean'].iloc[0]))
-        self.assertIn('0.2% YS (MPa)', self.app.tables.specimens.columns)
+        self.assertTrue(np.isnan(summary['Tensile toughness (MJ/m³) · Instron · Mean'].iloc[0]))
+        self.assertIn('0.2% YS (MPa)', [g['label'] for g in self.app.tables.specimens.column_groups])
         self.assertIn('0.2% Offset Yield Strength (MPa)', frames['tensile_samples'].columns)
 
     def test_instron_statistics_and_paired_differences_use_only_included(self):
@@ -143,8 +146,8 @@ class SelectionTests(FixtureTests):
             self.exclude()
         frames = self.frames()
         row = frames['tensile_summary'].iloc[0]
-        self.assertEqual(row['UTS (MPa) · Instron Mean'], 100)
-        self.assertEqual(row['UTS (MPa) · Instron n'], 1)
+        self.assertEqual(row['UTS (MPa) · Instron · Mean'], 100)
+        self.assertEqual(row['UTS (MPa) · Instron · n'], 1)
         paired = frames['instron_comparison_summary'].query("Property == 'UTS'").iloc[0]
         self.assertEqual(paired['n paired'], 1)
         self.assertEqual(len(frames['instron_comparison'].query("Property == 'UTS'")), 3)
@@ -169,15 +172,18 @@ class SelectionTests(FixtureTests):
         destination = self.root / 'test-export'
         destination.mkdir()
         state = {**self.app.state(), 'graph_index': 0, 'family': 'landmark'}
-        spec = self.app._current()['definition']
         with redirect_stdout(io.StringIO()):
-            self.app.session._export_tables(destination, {'state': state, 'graph_spec': spec})
-        samples = pd.read_excel(destination / 'tensile_samples.xlsx')
-        audit = pd.read_excel(destination / 'landmark_samples.xlsx')
-        summary = pd.read_excel(destination / 'tensile_summary.xlsx')
-        self.assertEqual(samples.Included.tolist(), [True, False, True])
-        self.assertEqual(samples.loc[1, 'Exclusion Reason'], 'Synthetic grip slip')
-        self.assertEqual(set(audit.Sample), {'coupon_1', 'coupon_3'})
+            result = self.app.session.render(state)
+            self.app.session._export_tables(destination, [result])
+        workbook = next(destination.glob('*_results.xlsx'))
+        samples = pd.read_excel(workbook, sheet_name='Specimens')
+        summary = pd.read_excel(workbook, sheet_name='Summary')
+        self.assertEqual(samples.Include.tolist(), [True, False, True])
+        self.assertEqual(samples.loc[1, 'Exclusion reason'], 'Synthetic grip slip')
+        self.assertEqual({r['sample'] for r in result['sources']}, {'coupon_1', 'coupon_3'})
+        curves = pd.ExcelFile(next(destination.glob('*_curves.xlsx')))
+        self.assertIn('Tensile landmark', curves.sheet_names)
+        self.assertNotIn('Tensile pointwise', curves.sheet_names)
         self.assertEqual(summary['Included n'].iloc[0], 2)
 
     def test_ids_are_relative_portable_and_distinguish_duplicate_stems(self):
@@ -271,6 +277,15 @@ class DeleteTests(FixtureTests):
         self.app._undo_delete_graph()
         self.assertEqual(len(self.app.store.data['graphs']), 1)
         self.assertEqual(self.app._current()['name'], 'Comparison')
+
+    def test_ui_undo_preserves_a_genuinely_edited_automatic_draft(self):
+        for _ in range(2):
+            self.app._ask_delete_graph()
+            self.app._confirm_delete_graph()
+        self.app.name.value = 'Keep my new work'
+        self.app._undo_delete_graph()
+        self.assertEqual({g['name'] for g in self.app.store.data['graphs']},
+                         {'Comparison', 'Keep my new work'})
 
 
 if __name__ == '__main__':

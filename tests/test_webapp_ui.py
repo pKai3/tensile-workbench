@@ -86,7 +86,7 @@ class WebAppTests(unittest.TestCase):
         self.assertIsNone(app.properties_panel.selected_index)
         content = app.properties_panel.children[0]
         self.assertIn(app.tables.ui, content.children)
-        self.assertIn(app.table_export_button, content.children[1].children)
+        self.assertTrue(any(app.table_export_button in getattr(child, 'children', ()) for child in content.children))
         with patch.object(app, '_refresh_properties') as calculate:
             app.properties_panel.selected_index = 0
             app.properties_panel.selected_index = None

@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -27,10 +28,16 @@ def bilinear_record():
 
 
 def payload(record=None):
+    record = record or bilinear_record()
     return {'group': 'Synthetic', 'sample': 'coupon', 'included': True,
             'source_file': 'synthetic/coupon.csv', 'exclusion_reason': '',
-            'calculation': specimen_calculation(record or bilinear_record()),
+            'record': record, 'calculation': specimen_calculation(record),
             'reference': {'status': 'Unavailable', 'values': {}, 'source': '', 'notes': ''}}
+
+
+def assert_properties_equal(left, right):
+    # Missing diagnostics legitimately contain NaN, which is not equal to itself.
+    pd.testing.assert_series_equal(pd.Series(left), pd.Series(right))
 
 
 class CalculationTests(unittest.TestCase):
@@ -38,7 +45,7 @@ class CalculationTests(unittest.TestCase):
         record = bilinear_record()
         calculation = specimen_calculation(record)
         p = calculation['properties']
-        self.assertEqual(p, specimen_properties(record))
+        assert_properties_equal(p, specimen_properties(record))
         self.assertAlmostEqual(p['Fitted E (GPa)'], 100.)
         self.assertAlmostEqual(p['Elastic intercept (MPa)'], 7.)
         self.assertAlmostEqual(p['Elastic fit R2'], 1.)
@@ -48,7 +55,7 @@ class CalculationTests(unittest.TestCase):
         self.assertAlmostEqual(p['Yield (MPa)'], expected_stress)
         self.assertEqual(p['UTS (MPa)'], 559.)
         self.assertEqual(p['Uniform elongation (%)'], 8.)
-        self.assertEqual(p['Failure elongation (%)'], 10.)
+        self.assertEqual(p['Failure elongation (%)'], 9.)  # last measurement before the sudden drop
         mask = calculation['elastic_mask']
         self.assertTrue(np.all(calculation['stress_mpa'][mask] >= .2 * 559))
         self.assertTrue(np.all(calculation['stress_mpa'][mask] <= .5 * 559))
@@ -56,23 +63,26 @@ class CalculationTests(unittest.TestCase):
         self.assertLessEqual(calculation['strain_pct'][i], expected_strain)
         self.assertGreaterEqual(calculation['strain_pct'][j], expected_strain)
 
-    def test_figures_use_exact_diagnostics_and_reference_not_inferred_strain(self):
+    def test_figures_use_exact_diagnostics_and_label_interpolated_instron_marker(self):
         data = payload()
         data['reference']['values']['ys'] = 418.5
         calc = data['calculation']
         fig = inspection_figure(data)
         traces = {trace.name: trace for trace in fig.data}
-        np.testing.assert_array_equal(traces['Measured curve (prepared)'].x, calc['strain_pct'])
-        np.testing.assert_array_equal(traces['Elastic-fit points'].y, calc['stress_mpa'][calc['elastic_mask']])
-        self.assertEqual(traces['Instron YS (stress only)'].mode, 'lines')
-        self.assertEqual(tuple(traces['Instron YS (stress only)'].y), (418.5, 418.5))
+        np.testing.assert_array_equal(traces['Measured CSV'].x, calc['strain_pct'])
+        np.testing.assert_array_equal(traces['Fit points'].y, calc['stress_mpa'][calc['elastic_mask']])
+        self.assertEqual(traces['Instron YS level'].mode, 'lines')
+        self.assertEqual(tuple(traces['Instron YS level'].y), (418.5, 418.5))
+        self.assertEqual(traces['Instron YS'].marker.symbol, 'diamond-open')
+        self.assertIn('CSV-interpolated strain', traces['Instron YS'].hovertemplate)
         elastic = traces['Elastic fit']
-        offset = traces['0.2% offset line']
+        offset = traces['0.2% offset']
         np.testing.assert_allclose(np.asarray(offset.x) - elastic.x, .2)
         np.testing.assert_allclose(offset.y, elastic.y)
-        self.assertEqual(traces['Terminal point / failure EL'].x[0], 10)
+        self.assertEqual(traces['Calc EL'].x[0], 9)
+        self.assertEqual(traces['Max retained strain'].x[0], 10)
         self.assertLess(inspection_ranges(calc, 'yield')[0][1], inspection_ranges(calc, 'full')[0][1])
-        self.assertIn('418.500', inspection_summary(data))
+        self.assertIn('418.50', inspection_summary(data))
 
     def test_unresolved_crossing_retains_fit_and_other_properties(self):
         record = bilinear_record()
@@ -83,7 +93,7 @@ class CalculationTests(unittest.TestCase):
         self.assertTrue(np.isfinite(p['Fitted E (GPa)']))
         self.assertTrue(np.isfinite(p['UTS (MPa)']))
         names = {trace.name for trace in inspection_figure(data).data}
-        self.assertNotIn('Calculated 0.2% YS', names)
+        self.assertNotIn('Calc YS', names)
         self.assertIn('Elastic fit', names)
         self.assertIn('no valid 0.2% offset yield crossing', inspection_summary(data))
 
@@ -94,9 +104,9 @@ class CalculationTests(unittest.TestCase):
             data = payload(record)
             self.assertEqual(data['calculation']['properties']['Yield status'], 'unresolved')
             names = {trace.name for trace in inspection_figure(data).data}
-            self.assertNotIn('Calculated 0.2% YS', names)
+            self.assertNotIn('Calc YS', names)
             self.assertNotIn('Elastic fit', names)
-            self.assertNotIn('Instron YS (stress only)', names)
+            self.assertNotIn('Instron YS level', names)
 
     def test_fractions_duplicate_strain_and_nan_preparation_are_shared(self):
         record = bilinear_record()
@@ -105,7 +115,7 @@ class CalculationTests(unittest.TestCase):
         original_x = record['strain_pct'].copy()
         for fractions in ((.2, .5), (.1, .4), (.3, .6)):
             actual = specimen_calculation(record, fractions)['properties']
-            self.assertEqual(actual, specimen_properties(record, fractions))
+            assert_properties_equal(actual, specimen_properties(record, fractions))
         calculation = specimen_calculation(record)
         self.assertEqual(calculation['stress_mpa'][calculation['strain_pct'] == .2].item(), 207.)
         np.testing.assert_array_equal(record['strain_pct'], original_x)
@@ -147,7 +157,7 @@ class InspectorIntegrationTests(unittest.TestCase):
         initial = deepcopy(self.app.store.data)
         with patch.object(self.app.session, 'render', side_effect=AssertionError('publication plot generated')):
             self.inspect_event()
-            self.assertEqual(self.app.tables.tabs.selected_index, 4)
+            self.assertIs(self.app.tables.tabs.children[self.app.tables.tabs.selected_index], self.inspector.ui)
             self.assertIsNotNone(self.inspector.chart)
             self.assertIn('Read-only', self.inspector.status.value)
             self.inspector.view.value = 'full'
@@ -202,7 +212,7 @@ class InspectorIntegrationTests(unittest.TestCase):
         self.assertEqual(self.inspector._payload['calculation']['fit_fractions'], (.1, .4))
         state = {**self.app.state(), 'modulus_gpa': 25, 'despike': True, 'median': True, 'smooth': False}
         changed = self.app.session.specimen_inspection(state, spec, 'Alloy A/coupon_1.csv')
-        self.assertEqual(changed['calculation']['properties'], p)
+        assert_properties_equal(changed['calculation']['properties'], p)
 
 
 if __name__ == '__main__':

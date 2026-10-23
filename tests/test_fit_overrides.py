@@ -175,18 +175,23 @@ class FitIntegrationTests(unittest.TestCase):
 
     def test_threshold_warning_counts_review_and_no_change_to_properties(self):
         self.apply()
-        self.app._specimen_changed(IDENT, False, 'Synthetic exclusion')
+        self.app._specimen_changed('Alloy A/coupon_2.csv', False, 'Synthetic exclusion')
         p = self.frame().loc[IDENT].copy()
-        self.assertIn('1 specimen needs', self.app.fit_warning.value)
-        self.assertIn('0 included; 1 excluded', self.app.fit_warning.value)
+        self.assertTrue(p['Fit review required'])
+        # Review now includes identity/fracture checks, not only elastic R².
+        from tensile_tables import specimen_review_mask
+        flagged = self.frame().loc[specimen_review_mask(self.frame())]
+        self.assertIn(f'{len(flagged)} specimens need', self.app.fit_warning.value)
+        self.assertIn('1 excluded', self.app.fit_warning.value)
         self.app._review_fits()
-        self.assertEqual(self.inspector.choice.value, IDENT)
-        self.assertEqual(len(self.app.tables.specimens.rows), 1)
+        self.assertIn(IDENT, {row['id'] for row in self.app.tables.specimens.rows})
+        self.assertEqual(len(self.app.tables.specimens.rows), len(flagged))
         self.app.tables.threshold.value = 0.
         self.assertEqual(self.app.store.data['yield_r2_warning'], 0.)
-        self.assertIn('no warnings', self.app.fit_warning.value)
-        self.assertEqual(len(self.app.tables.specimens.rows), 0)
         q = self.frame().loc[IDENT]
+        self.assertFalse(q['Fit review required'])
+        self.assertNotIn('Elastic fit: R²', q['Checks'])
+        self.assertEqual(len(self.app.tables.specimens.rows), int(specimen_review_mask(self.frame()).sum()))
         self.assertEqual(p['0.2% Offset Yield Strength (MPa)'], q['0.2% Offset Yield Strength (MPa)'])
         self.assertFalse(q['Fit review required'])
         self.app.graph.value = '1'
@@ -251,7 +256,7 @@ class FitIntegrationTests(unittest.TestCase):
         metadata = json.loads((path / 'settings.json').read_text())['specimen_fit_policy']
         self.assertIn(IDENT, metadata['specimen_fit_overrides'])
         self.assertEqual(len(metadata['specimen_fit_history']), 1)
-        self.assertTrue((path / 'tensile_samples.xlsx').exists())
+        self.assertEqual(len(list(path.glob('*_results.xlsx'))), 1)
 
     def test_invalid_preview_cannot_apply_a_previous_valid_draft(self):
         self.inspector.mode.value = 'range'

@@ -199,7 +199,7 @@ class FolderTests(unittest.TestCase):
                 self.assertEqual(app.session.output_root(), output)
                 self.assertEqual(app.session.data_dir, data)
             self.assertTrue(destination.is_relative_to(output))
-            self.assertTrue((destination / 'tensile_samples.xlsx').is_file())
+            self.assertEqual(len(list(destination.glob('*_results.xlsx'))), 1)
             self.assertFalse(list(base.rglob('*.png')))
             self.assertEqual(raw.read_bytes(), raw_before)
             self.assertFalse((root / 'output').exists())

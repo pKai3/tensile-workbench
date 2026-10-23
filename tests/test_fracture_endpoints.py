@@ -217,7 +217,12 @@ class EndpointRegressionTests(unittest.TestCase):
         record = record_for(load)
         record['_acquisition']['force'][onset_row - 1] = np.nan
         end = automatic_fracture_endpoint(record)
-        self.assertEqual(end['status'], 'Not detected')
+        # The missing onset cannot be reconstructed across the gap. The later
+        # uninterrupted decline can still support a review-flagged terminal estimate.
+        self.assertEqual(end['status'], 'Estimated')
+        self.assertEqual(end['row_before'], len(load))
+        self.assertGreater(end['search_segment_first_row'], onset_row)
+        self.assertTrue(end['review_required'])
 
     def test_truncated_sudden_drop_keeps_pre_drop_reading(self):
         record = record_for(sudden_tail())

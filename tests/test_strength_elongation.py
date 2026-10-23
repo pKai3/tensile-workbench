@@ -95,6 +95,8 @@ class StrengthElongationTests(unittest.TestCase):
         original = self.session.engine.specimen_properties
         def partially_unresolved(record, *args):
             properties = original(record, *args)
+            # Isolate population selection from the evolving fracture detector.
+            properties['Failure elongation (%)'] = 11. * int(record['sample'].split('_')[-1])
             if record['sample'] == 'coupon_3':
                 properties.update({'Yield (MPa)': np.nan, 'Yield status': 'unresolved', 'Notes': 'synthetic missing fit'})
             return properties
@@ -102,8 +104,9 @@ class StrengthElongationTests(unittest.TestCase):
             ys = self.session.render(self.state(show_individuals=True))
             uts = self.session.render(self.state('uts_vs_el', show_individuals=True))
         self.assertEqual(len(self.individual_lines(ys)), 2)
-        self.assertAlmostEqual(self.mean_line(ys).get_xdata()[0], 17.5)  # first two terminal strains, not all three
+        self.assertAlmostEqual(self.mean_line(ys).get_xdata()[0], 16.5)  # first two eligible ELs, not all three
         self.assertEqual(len(self.individual_lines(uts)), 3)
+        self.assertAlmostEqual(self.mean_line(uts).get_xdata()[0], 22.)
         self.assertIn('synthetic missing fit', ys['log'])
         self.session._previews.clear()
         def all_unresolved(record, *args):
@@ -124,7 +127,7 @@ class StrengthElongationTests(unittest.TestCase):
         self.assertGreater(means[0].error_x.array[0], 0)
         self.assertGreater(means[0].error_y.array[0], 0)
         self.assertEqual(len({trace.legendgroup for trace in chart.data}), 1)
-        self.assertIn('Alloy A · specimen 1', chart.data[0].hovertemplate)
+        self.assertIn('Alloy A · coupon_1', chart.data[0].hovertemplate)
         self.assertNotIn('.csv', chart.data[0].hovertemplate)
         without = self.session.render(self.state(show_individuals=False, property_error_bars=False))
         self.assertEqual(len(figure_to_plotly(without['figure']).data), 1)
@@ -153,9 +156,11 @@ class StrengthElongationTests(unittest.TestCase):
                 np.testing.assert_allclose(result['figure'].axes[0].get_xlim(), [10, 25])
                 np.testing.assert_allclose(result['figure'].axes[0].get_ylim(), [500, 850])
 
-    def test_short_hover_labels_preserve_arbitrary_and_duplicate_names(self):
+    def test_hover_labels_use_operator_names_or_csv_stems_and_disambiguate_duplicates(self):
         rows = [{'sample': f'706_Solution Treatment_1_{n}'} for n in (2, 8, 10)]
-        self.assertEqual(scatter_specimen_labels(rows), ['specimen 2', 'specimen 8', 'specimen 10'])
+        self.assertEqual(scatter_specimen_labels(rows), [row['sample'] for row in rows])
+        rows[0]['specimen_label'] = 'Wall_07'
+        self.assertEqual(scatter_specimen_labels(rows)[0], 'Wall_07')
         self.assertEqual(scatter_specimen_labels([{'sample': 'dogbone-east'}, {'sample': 'round-west'}]),
                          ['dogbone-east', 'round-west'])
         rows = [{'sample': 'coupon_1', 'specimen_id': f'Alloy/{sub}/coupon_1.csv'} for sub in ('A', 'B')]
