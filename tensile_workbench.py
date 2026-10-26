@@ -533,9 +533,14 @@ class PreviewSession:
                     reference = self.instron.match(group, record)
                     policy = group_policy(state, spec, group)
                     selection = selection_state(record, spec, self.project)
+                    from tensile_locations import location_details
+                    extra_checks = [selection.get('duplicate_review', ''),
+                        *record.get('_acquisition', {}).get('import_warnings', []),
+                        location_details(record, self.project, group)['Location review']]
                     return {'group': group, 'sample': record['sample'], 'specimen_id': ident,
                             'source_file': record['source_file'], 'source_sha256': record.get('source_sha256', ''),
                             'included': selection['included'], 'selection_scope': selection['scope'],
+                            'withheld': bool(selection.get('duplicate_review')), 'additional_checks': extra_checks,
                             'data_use': DATA_MODES[selection['mode']], 'data_mode': selection['mode'],
                             'exclusion_reason': selection['reason'],
                             'record': record,

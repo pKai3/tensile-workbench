@@ -208,6 +208,7 @@ def specimen_table_data(samples, comparisons):
                    text_value(value, fit_display_places(name)))
                   for name, value in display.iloc[position].items()]
         rows.append({'id': row['Specimen ID'], 'included': bool(row['Included']), 'group': str(row['Group']),
+                     'withheld': bool(row.get('Duplicate review', '')),
                      'mode': mode, 'global_mode': row.get('Global data use mode', 'all'),
                      'excluded_values': excluded_values,
                      'sample': specimen_label(row), 'reason': row['Exclusion Reason'],

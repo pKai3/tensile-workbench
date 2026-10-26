@@ -56,6 +56,10 @@ class AuditIntegrityTests(unittest.TestCase):
         self.assertEqual(frames['tensile_samples'].Included.sum(), 2)
         self.assertEqual(frames['tensile_samples'].Checks.str.contains('Duplicate export').sum(), 2)
         self.assertEqual(frames['import_summary'].iloc[0]['Duplicate candidates'], 2)
+        from tensile_inspector import inspection_checks
+        payload = session.specimen_inspection(state, spec, copy.relative_to(self.root / 'data').as_posix())
+        self.assertIn('Duplicate export', inspection_checks(payload))
+        self.assertTrue(payload['withheld'])
         ident = copy.relative_to(self.root / 'data').as_posix()
         project = deepcopy(session.project)
         project['specimen_exclusions'][ident] = 'Keep original export'

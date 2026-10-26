@@ -427,7 +427,9 @@ def inspection_checks(payload, *, preview=False):
     """The same failure-only checks as the specimen table, visible above the plot."""
     from tensile_tables import specimen_check_failures
     gauge = (payload.get('gauge_preview') or {}).get('_gauge') if payload.get('gauge_policy', {}).get('enabled') else None
-    failures = specimen_check_failures(payload['calculation']['properties'], payload['reference'], gauge)
+    failures = specimen_check_failures(payload['calculation']['properties'], payload['reference'], gauge,
+                                      payload.get('data_mode', 'all'))
+    failures = '\n'.join(dict.fromkeys(filter(None, [*failures.splitlines(), *payload.get('additional_checks', [])])))
     if not failures:
         return ''
     title = 'Specimen checks' + (' · unsaved preview' if preview else '')
@@ -463,7 +465,8 @@ def inspection_summary(payload):
               '<div class="tw-inspect-summary">',
               '<details><summary>Specimen identity and inclusion</summary>',
               '<p><b>' + escape(payload['group'] + ' · ' + (reference.get('label') or payload['sample'])) + '</b> · ' +
-              ('Included in this analysis' if payload['included'] else 'Excluded from this analysis') + '</p>']
+              ('Withheld pending duplicate review' if payload.get('withheld') else
+               'Included in this analysis' if payload['included'] else 'Excluded from this analysis') + '</p>']
     result.append('<p>Inclusion: ' + ('explicit override for this analysis' if payload.get('selection_scope') == 'graph'
                                     else 'inherited from the global default') + '.</p>')
     if payload.get('data_use'):
@@ -481,6 +484,13 @@ def inspection_summary(payload):
         result.append('<p><b>PDF pages:</b> ' + escape(reference['source_pages']) + '</p>')
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
+    if not reference.get('identity_verified', True) and reference.get('candidate_values'):
+        result.append('<details><summary>Unverified Instron candidate · inspection only</summary>'
+                      '<p>Not used for reference statistics, gauge reconstruction or automatic Location.</p><table>')
+        for key, label in (('ys', 'YS (MPa)'), ('uts', 'UTS (MPa)'), ('el', 'EL (%)'),
+                           ('uniform', 'Uniform EL (%)'), ('e', 'Modulus (GPa)'), ('gauge', 'Gauge length (mm)')):
+            result.append('<tr><td>' + label + '</td><td>' + number(reference['candidate_values'].get(key, np.nan)) + '</td></tr>')
+        result.append('</table></details>')
     result.append('</details><details><summary>Calculated and Instron properties</summary>')
     show_automatic = bool(calculation.get('automatic_calculation'))
     result.append('<p><b>Fit method: ' + escape(p.get('Fit method', 'Automatic')) + '</b> · ' +
@@ -891,7 +901,7 @@ class SpecimenInspector:
             # Match the specimen table, not the export-row filename. Keep the
             # stable relative ID as the value and only show it for duplicate names.
             label = name + (' · ' + row['id'] if names.count(name) > 1 else '')
-            label += '' if row['included'] else ' (excluded)'
+            label += ' (duplicate review)' if row.get('withheld') else '' if row['included'] else ' (excluded)'
             options.append((label, row['id']))
         self._updating = True
         try:
