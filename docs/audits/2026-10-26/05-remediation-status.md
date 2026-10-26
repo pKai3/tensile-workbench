@@ -1,0 +1,63 @@
+# Audit remediation status — 26 October 2026
+
+This is the implementation record following documents 01–04. The received PDFs
+remain unchanged. Research data, personal settings, prior exports and the separate
+OneDrive installation were not modified.
+
+| Finding | Resolution |
+| --- | --- |
+| C1 — accidental group pooling | Nested groups remain separate despite stray parent files or empty export folders. Boundary notices explain the ambiguity. An explicit `.tensile-group` marker confirms intentionally combined runs; summary searches respect discovered boundaries. |
+| C2 — duplicate exports | Content/export-row/summary-row collisions form connected review sets. Multiple included candidates contribute no results until Data use retains one. No source deletion or arbitrary first-file choice. |
+| C3 — false sudden fracture | A single decrement must pass the five-times comparison, 5% of peak, twelve noise units and existing recovery checks. A later below-2% reading cannot waive these requirements. The multi-reading collapse path remains separate. |
+| C4 — elastic fit in plastic region | Starting fit fractions are checked for slope stability; progressively lower ranges are searched. Insufficient/unstable data yields unavailable automatic modulus/YS and review guidance, not a high-R² false assurance. Manual fits remain available. |
+| C5 — percent/fraction scaling | Explicit header/units-row conversion replaces magnitude guessing. Missing/conflicting units require correction. |
+| C6 — stress units and true channels | Recognised units convert to MPa; true-only stress/strain is rejected. Prefer a simultaneous engineering channel. Conversion metadata is exported. |
+| C7 — unverified reference contamination | Failed name/UTS verification withholds all candidate reference values from statistics, gauge reconstruction and automatic Location. Candidate values and evidence remain inspectable; no numerical rematching. |
+| C8 — Location inference | Audit records the label/token, effective value and source. Ambiguous treatment/date/repeat tokens and values above the group count produce soft notices. Explicit Location remains authoritative; build-wide numbering is allowed. |
+| C9 — Excel population mismatch | Main Specimens property columns contain eligible values only. Raw specimen values is a separate inspection sheet. Mean, sample SD and n are regression-checked against Summary for every mode. |
+| C10 — hidden import failures | Failed files remain visible by name/reason, even with zero loaded curves. Tests found, curves loaded, duplicate candidates and import issues are distinct; Excel retains the counts and issues. |
+
+Additional fixes: shared reversal-preserving preparation, `Time (s)` parsing,
+decimal-comma precision, unambiguous representative overrides, variable-draft
+three-way merge, reload draft preservation, explicit invalid-count errors, and
+hourly backup retention. Long exact-maximum plateaux receive a uniform-elongation
+review notice; no smoothing silently changes UTS or its location.
+
+## Verification
+
+- The full synthetic test suite passes: **433 tests** at the verification run.
+- C3 has an independent grid of **1,980** smooth failures spanning noise,
+  quantisation, sampling density, tail curvature and random seeds, plus **60**
+  abrupt controls. The expected original measurement is asserted, not merely a
+  successful status. Existing brittle, progressive, gap and manual-override
+  regressions also pass.
+- Elastic checks use known modulus/offset yield with varied strength ratios and
+  strain-sampled Ramberg–Osgood exponents. They require accurate supported fits or
+  an explicit unresolved result where the sampled linear region is insufficient.
+- Integration checks exercise actual session loading, reference gating, counts,
+  duplicate resolution, reconstruction, exports and state persistence in temporary
+  fixtures. Existing landmark population and manual-override controls remain covered.
+- A separate browser session using synthetic files confirms that import errors are
+  visible above the tables and duplicate checks appear above the inspector plot.
+  Excluding the unwanted copy releases the retained specimen: four loaded rows,
+  three included, and no remaining duplicate-review items. No research session or
+  saved personal analysis was used for this check.
+
+## Qualifications and remaining evidence limits
+
+- The reply's `tensile_audit_repro.zip` was not supplied. These are independent
+  fixtures; the auditor's exact scripts and recorded results have not been rerun.
+- Current licensed ASTM/ISO clause wording, especially the five-times attribution,
+  remains unverified. Definitive clause citations were removed. UI/docs describe
+  application rules; an observed low-load threshold is not standards certification.
+- Automatic endpoint and elastic selection remain heuristics. No algorithm can
+  restore an unrecorded fracture or insufficiently sampled elastic region. Review
+  and source-fingerprinted manual controls remain necessary.
+- No new signal-smoothing definition of uniform elongation is imposed. A unique
+  noisy maximum can still shift its strain; plateau warnings expose one identifiable
+  ambiguity without altering the recorded peak.
+- Local locks and digest checks protect local/visible changes, not simultaneous
+  offline edits on separate cloud-synced computers. Use one active editor and allow
+  sync to finish. Hourly backups improve recovery, not distributed coordination.
+- The withdrawn pointwise `ddof=0` finding required no change: those callers do not
+  publish that intermediate SD.

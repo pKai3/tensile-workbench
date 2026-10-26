@@ -269,7 +269,7 @@ class GroupVariablesTests(unittest.TestCase):
         view.save_all.click()
         view.table._message(None, dict(type='paste', row=2, column=1, text='9'), [])
         view.refresh(['Alloy A'], force=True)
-        self.assertEqual(view.table.columns[1]['values']['Alloy A'], '0.0')
+        self.assertEqual(view.table.columns[1]['values']['Alloy A'], '9')
         self.assertEqual(self.app.store.data['group_variables'][ident]['values']['Alloy A'], 0)
 
     def test_delete_saved_variable_confirms_usage_preserves_charts_and_invalidates_exports(self):

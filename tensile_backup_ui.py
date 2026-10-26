@@ -31,7 +31,7 @@ class BackupPanel:
         self.location = w.HTML()
         self.content = w.VBox([
             w.HTML('<p>Automatic history covers settings only—not data or exported plots. '
-                   'Keeps the 20 latest changed versions and 30 daily checkpoints. '
+                   'Keeps 20 latest changed versions, hourly checkpoints within 48 hours of saved history, and 30 daily checkpoints. '
                    'Manual, pre-migration and pre-restore copies are kept until you remove them yourself. '
                    'Back up now saves both settings files; Restore changes only the selected file. '
                    'Unsaved editor drafts are not backed up.</p>'),

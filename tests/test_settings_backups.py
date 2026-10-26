@@ -97,6 +97,27 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(protected.exists())
         self.assertEqual(damaged.read_text(), 'damaged but do not delete')
 
+    def test_hourly_checkpoints_survive_a_burst_of_edits(self):
+        vault = backups.BackupVault(self.root / backups.PATHS_NAME)
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        def raw(value):
+            return json.dumps({'schema_version': 1, 'data_directory': f'./data-{value}',
+                               'output_directory': './output'}).encode()
+        checkpoints = [vault.capture(raw(hour), now=start + timedelta(hours=hour)) for hour in range(55)]
+        for edit in range(30):
+            vault.capture(raw(f'burst-{edit}'), now=start + timedelta(hours=54, seconds=edit + 1))
+        self.assertTrue(all(path.exists() for path in checkpoints[7:54]))
+        self.assertLessEqual(len(vault.entries()), 20 + 48 + 30)
+
+    def test_external_file_replacement_is_detected_even_with_preserved_timestamp(self):
+        original_stat = self.path.stat()
+        external = self.changed('Synced from another computer')
+        self.path.write_text(json.dumps(external))
+        os.utime(self.path, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        with self.assertRaises(ProjectConflict):
+            self.store.save(self.changed('Stale local edit'))
+        self.assertEqual(json.loads(self.path.read_text()), external)
+
     def test_unchanged_capture_deduplicates_but_next_day_gets_checkpoint(self):
         vault = backups.BackupVault(self.path, self.base / 'isolated')
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)

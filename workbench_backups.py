@@ -3,7 +3,7 @@
 Only the two named settings files are managed. No research data is copied.
 """
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import base64
 import hashlib
@@ -136,7 +136,7 @@ def recovery_problem(path):
 
 
 class BackupVault:
-    """20 recent snapshots + 30 daily checkpoints; protected snapshots persist."""
+    """20 recent + 48 hours of hourly + 30 daily checkpoints; protected persist."""
     def __init__(self, path, root=None):
         self.path = Path(path).expanduser().resolve()
         key = hashlib.sha256(str(self.path.parent).encode()).hexdigest()[:20]
@@ -218,6 +218,15 @@ class BackupVault:
         automatic = [(path, document) for path, document in entries if document['reason'] not in PROTECTED]
         keep = {path for path, _ in automatic[:20]}
         keep.update(path for path, document in entries if document['reason'] in PROTECTED)
+        if automatic:
+            newest = max(datetime.fromisoformat(document['created']) for _, document in automatic)
+            hours = set()
+            for path, document in automatic:
+                stamp = datetime.fromisoformat(document['created'])
+                hour = stamp.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+                if stamp > newest - timedelta(hours=48) and hour not in hours:
+                    hours.add(hour)
+                    keep.add(path)
         days = set()
         for path, document in automatic:
             day = datetime.fromisoformat(document['created']).date()

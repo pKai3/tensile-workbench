@@ -96,6 +96,37 @@ def variable_axis(groups, ident, variables):
     return ordered, [values[group] for group in ordered], variable_label(variable, for_plot=True), ' '.join(warnings)
 
 
+def merge_variable_drafts(baseline, drafts, current):
+    """Three-way merge: only locally edited cells may replace saved values."""
+    merged = deepcopy(current)
+    for ident, draft in drafts.items():
+        before = baseline.get(ident)
+        if draft == before:
+            continue
+        if before is None:
+            if ident in current and current[ident] != draft:
+                raise ValueError('Variable conflict: a new column was saved elsewhere; review before saving.')
+            merged[ident] = deepcopy(draft)
+            continue
+        if ident not in current:
+            raise ValueError('Variable conflict: an edited column was deleted elsewhere; draft retained.')
+        def apply(key, old, new, saved, assign):
+            if old == new:
+                return
+            if saved != old and saved != new:
+                raise ValueError(f'Variable conflict in {draft["name"]} / {key}: saved value {saved!r}, '
+                                 f'draft {new!r}. Draft retained; resolve the cell or discard draft edits.')
+            assign(new)
+        for field in ('name', 'unit'):
+            apply(field, before[field], draft[field], current[ident][field],
+                  lambda value, field=field: merged[ident].__setitem__(field, value))
+        for group in before['values'].keys() | draft['values'].keys():
+            apply(group, before['values'].get(group, ''), draft['values'].get(group, ''),
+                  current[ident]['values'].get(group, ''),
+                  lambda value, group=group: merged[ident]['values'].__setitem__(group, value))
+    return merged
+
+
 class GroupVariablesView:
     """Table-only editor; an explicit save commits names, units and values together."""
     def __init__(self, w, get_variables, get_groups, on_save_all=None, get_usage=None,
@@ -116,6 +147,7 @@ class GroupVariablesView:
         self.order = []
         self._paused = False
         self._drafts = self._editable(get_variables())
+        self._baseline = deepcopy(self._drafts)
         self.all_groups = w.Checkbox(description='Show all ' + entity, indent=False,
                                      tooltip='Include unselected groups without changing the analysis selection. Values include excluded specimens.',
                                      layout=w.Layout(width='auto'))
@@ -129,20 +161,24 @@ class GroupVariablesView:
         self.add = w.Button(description='Add variable (column)', layout=w.Layout(width='auto'))
         self.save_all = w.Button(description='Save all variables', button_style='primary',
                                  layout=w.Layout(width='auto'))
+        self.discard = w.Button(description='Discard draft edits', layout=w.Layout(width='auto'),
+                                tooltip='Reload the latest saved variables. Does not change saved values.')
         self.table_ui = w.VBox([
             w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
                    'Paste CSV/TSV or an Excel block into a cell; extra columns are added automatically. '
                    'Paste variable cells only, without the row labels. Blank cells clear values. '
                    'Edits are applied with Save all variables; deletion requires separate confirmation.'),
-            w.HBox([self.add, self.save_all], layout=w.Layout(flex_flow='row wrap')),
+            w.HBox([self.add, self.save_all, self.discard], layout=w.Layout(flex_flow='row wrap')),
             self.table], layout=w.Layout(width='100%', min_width='0'))
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
             w.HTML('Numeric values attached to ' + entity + ', shared by all analyses. Create as many variables as needed. '
                    'Rows follow this analysis’s sample group order. '
-                   'Leave unknown values blank; zero is a valid value. Save before switching analyses.'
+                   'Leave unknown values blank; zero is a valid value. Unsaved edits are preserved when switching analyses or reloading.'
                    + (' Specimen rows use operator labels when available; hover a row label for its stable CSV identity. '
                       'Location defaults to the operator specimen number. Enter a whole number to override it; clear the cell to restore the default. '
+                      'Automatic locations appear after the group loads and passes name/UTS verification. '
+                      'Unselected rows can be browsed without loading curves; their candidate labels do not yet supply defaults. '
                       'CSV row numbers are never used as locations. '
                       'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else '')),
             self.all_groups, self.delete_panel, self.table_ui, self.status
@@ -152,6 +188,7 @@ class GroupVariablesView:
         self.table.observe(self._table_changed, names='columns')
         self.add.on_click(self._add_column)
         self.save_all.on_click(self._save_table)
+        self.discard.on_click(self._discard_drafts)
         self.delete_cancel.on_click(self._cancel_delete)
         self.delete_confirm.on_click(self._confirm_delete)
 
@@ -185,14 +222,18 @@ class GroupVariablesView:
         self.order = order
         variables = self._editable(self.get_variables())
         changed = changed or bool(variables.keys() - self._drafts.keys())
-        if force:
-            self._cancel_delete()
-            self._drafts = variables
-            self.status.value = ''
-            self.table.notice = ''
-        else:
-            for ident, variable in variables.items():
-                self._drafts.setdefault(ident, variable)
+        try:
+            merged = merge_variable_drafts(self._baseline, self._drafts, variables)
+            changed = changed or merged != self._drafts
+            self._drafts = merged
+            self._baseline = deepcopy(variables)
+            if force:
+                self._cancel_delete()
+                self.table.notice = ('Unsaved edits retained.' if self._drafts != self._baseline else '')
+        except ValueError as error:
+            # Keep both draft and original baseline so a later Save still
+            # detects the conflict instead of adopting stale edits silently.
+            self.table.notice = str(error)
         if force or changed or redraw or self._editable_defaults() != self.table.defaults:
             self._sync_table()
 
@@ -281,6 +322,7 @@ class GroupVariablesView:
                 self.on_save_all(variables)
             name = self._drafts[ident]['name'].strip() or 'Unnamed variable'
             del self._drafts[ident]
+            self._baseline.pop(ident, None)
             self._sync_table()
             self._cancel_delete()
             self.status.value = ''
@@ -293,16 +335,32 @@ class GroupVariablesView:
                         for group, value in values.items() if value is not None}
                 for ident, values in self.get_defaults().items()}
 
+    def _discard_drafts(self, _=None):
+        self._cancel_delete()
+        self._drafts = self._editable(self.get_variables())
+        self._baseline = deepcopy(self._drafts)
+        self._sync_table()
+        self.table.notice = 'Draft edits discarded. Showing the latest saved variables.'
+        self.status.value = ''
+
     def _save_table(self, _=None):
         self._cancel_delete()
         try:
             variables = deepcopy(self.get_variables())
-            variables.update({k: self._numeric(v) for k, v in self._drafts.items() if k})
+            merged = merge_variable_drafts(self._baseline, self._drafts, self._editable(variables))
+            for ident, draft in merged.items():
+                variables[ident] = {**variables.get(ident, {}), **self._numeric(draft)}
             validate_variables(variables, scope=self.scope)
+            counts = variables.get(SPECIMEN_COUNT, {})
+            for group, value in counts.get('values', {}).items():
+                minimum = counts.get('minimums', {}).get(group, 0)
+                if value < minimum:
+                    raise ValueError(f'{group}: {minimum} tested; total specimen count must be at least {minimum}.')
             if self.on_save_all is None:
                 raise ValueError('Saving the table is unavailable in this preview.')
             self.on_save_all(variables)
             self._drafts = self._editable(self.get_variables())
+            self._baseline = deepcopy(self._drafts)
             self._sync_table()
             self.status.value = ''
             self.table.notice = 'All variables saved for all analyses.'

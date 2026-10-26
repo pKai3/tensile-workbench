@@ -17,6 +17,61 @@
 - Continue with units, identity/duplicate review, import/export eligibility,
   automatic elastic-region selection and saved-state hardening below.
 
+### External audit — import and calculation integrity
+
+- Prevent parent stray files/empty export folders from pooling nested groups.
+  Explicit `.tensile-group` boundaries support intentional combined runs.
+  Summary searches exclude other discovered groups, including nested PDFs.
+- Quarantine connected duplicate candidates (contents, export row or assigned
+  summary row) until only one remains included. Preserve all source files and
+  use existing global/analysis data-use controls for resolution.
+- Resolve engineering stress/strain/time units explicitly; reject unknown,
+  missing, conflicting and true-only declarations. Preserve conversion metadata,
+  decimal-comma precision and original acquisition order.
+- Withhold unverified Instron values from reference statistics, gauge conversion
+  and Location; retain candidates/evidence for inspection. Expose failed imports
+  and separate inventory/load/error counts, including diagnostic-only export.
+- Align eligible specimen export columns with Summary populations. Preserve raw
+  values in a separate labelled sheet. Audit Location inference and warn softly
+  about ambiguous tokens or build-wide numbering beyond the group count.
+- Use one reversal-preserving preparation policy; acquisition-order fracture
+  detection remains unchanged. Flag significant tracking reversals. Reject
+  ambiguous representative overrides rather than taking the first match.
+- Search supported lower-stress elastic windows when the starting window is
+  curved; require stable half-window slopes and sufficient points. Unsupported
+  automatic E/YS remain unavailable with review guidance and manual controls.
+  Keep measured maximum stress; expose long exact-maximum plateaux affecting UE.
+- Regression coverage includes full-session matching, reconstruction, population
+  gating and Excel mean/SD/n consistency for every data-use mode. Synthetic data
+  only; no research exports or personal state are regenerated.
+
+### External audit — settings and recovery
+
+- Merge only edited custom-variable cells against their saved baseline; preserve
+  unrelated saved changes and refuse same-cell/deleted-column conflicts. Keep
+  unsaved drafts through analysis switches and reloads within the same session.
+  Conflicts identify saved/draft values; Discard draft edits reloads saved values
+  without writing them.
+- Reject a manually entered specimen count below the found-test minimum with a
+  clear error. Startup/reload still raises absent or obsolete totals as requested.
+- Retain hourly checkpoints within 48 hours of saved history in addition to 20
+  recent versions, 30 daily checkpoints and protected originals. Test a burst of
+  edits and external file replacement with a preserved timestamp.
+- Document that local locks/digest checks cannot coordinate offline editing on
+  different computers. Keep the existing atomic writes and conflict checks;
+  do not claim moving a lock outside the synced folder solves distributed edits.
+
+### External audit — final verification
+
+- All 433 synthetic tests pass, including 1,980 smooth-fracture combinations and
+  60 abrupt controls within the detector regressions.
+- Browser verification confirms visible import failures, inspector duplicate
+  warnings, and restoration of the retained specimen after excluding its copy.
+  The browser session used temporary synthetic data and settings only.
+- Detailed resolutions and evidence limits are recorded in
+  `docs/audits/2026-10-26/05-remediation-status.md`. The auditor's referenced
+  reproduction ZIP was not supplied; independent fixtures were used.
+
 ### Optional summaries and PDF fallback — implemented
 
 - Keep raw stress–strain CSVs usable when no summary exists. Show a clear

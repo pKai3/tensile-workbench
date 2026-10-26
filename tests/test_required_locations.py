@@ -30,10 +30,12 @@ class RequiredLocationTests(unittest.TestCase):
         self.assertEqual(view.table.columns[0]['id'], SPECIMEN_COUNT)
         self.assertEqual(cell(view, SPECIMEN_COUNT, 'Alloy A'), '3')
         self.assertEqual(view.table.defaults[SPECIMEN_COUNT]['Alloy A'], '3')
-        # Too-small saves are raised, while a larger planned total is retained.
+        # Too-small manual entries remain visible with an error; never silently change them.
         set_cell(view, SPECIMEN_COUNT, 'Alloy A', '1')
         view.save_all.click()
-        self.assertEqual(cell(view, SPECIMEN_COUNT, 'Alloy A'), '3')
+        self.assertEqual(cell(view, SPECIMEN_COUNT, 'Alloy A'), '1')
+        self.assertIn('must be at least 3', view.table.notice)
+        self.assertEqual(app.store.data['group_variables'][SPECIMEN_COUNT]['values']['Alloy A'], 3)
         set_cell(view, SPECIMEN_COUNT, 'Alloy A', '10')
         view.save_all.click()
         self.assertEqual(cell(view, SPECIMEN_COUNT, 'Alloy A'), '10')
@@ -101,6 +103,7 @@ class RequiredLocationTests(unittest.TestCase):
     def test_default_location_not_saved_as_override_and_blank_restores_it(self):
         for record, number in zip(self.session._load('Alloy A'), (1, 4, 7)):
             record['specimen_label'] = f'Wall_{number:02}'
+            record['_identity_verified'] = True
         app = self.app
         app.custom_variables_panel.selected_index = 0
         app.custom_variable_tabs.selected_index = 1
@@ -184,6 +187,7 @@ class RequiredLocationTests(unittest.TestCase):
         for group in self.session.files:
             for record, number in zip(self.session._load(group), (1, 4, 7)):
                 record['specimen_label'] = f'Wall_{number:02}'
+                record['_identity_verified'] = True
         app = self.app
         app.controls['groups'].value = ('Alloy A', 'Alloy Z', 'Heat treated')
         app._display_order = ['Heat treated', 'Alloy A', 'Alloy Z']
