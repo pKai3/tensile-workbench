@@ -15,6 +15,11 @@
 *.is_tens
 *.id_tens
 *.pdf
+# Reviewed audit correspondence is documentation, not research output.
+!/docs/audits/2026-10-26/01-audit-request.pdf
+!/docs/audits/2026-10-26/02-claude-audit-report.pdf
+!/docs/audits/2026-10-26/03-codex-audit-response.pdf
+!/docs/audits/2026-10-26/04-claude-audit-reply.pdf
 *.zip
 
 # Python/Jupyter environments and generated state.
