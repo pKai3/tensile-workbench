@@ -7,7 +7,7 @@ from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
-ELASTIC_METHOD = 'Bidirectional elastic-window search (v2)'
+ELASTIC_METHOD = 'Context-supported elastic-window search (v3)'
 
 EL_SOURCE_FIELDS = (
     ('Instron', 'Instron summary EL (%)'),
@@ -94,10 +94,10 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
     """Find a supported loading window without assuming seating ends at zero.
 
     Try the requested range, translations above it (ending by 80% UTS), and
-    progressively lower ranges. Prefer stricter supported windows, but allow
-    modest measurement scatter rather than requiring an almost noiseless fit.
-    A substantially steeper supported window supersedes a low-stiffness seating
-    or plastic-hardening segment. Never select a largest slope without checking it.
+    progressively lower ranges, plus wider regions of the loading curve. A local
+    patch must not supersede a wider linear region that also explains that patch.
+    Distinct, stiffer elastic regions can still supersede seating or plastic flow
+    when those lower-stiffness lines cannot explain the elastic readings.
     The numerical thresholds are application safeguards, not material constants.
     """
     loading_x, loading_y = x[:peak], y[:peak]
@@ -114,6 +114,10 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
     # Refine gaps between the coarse lower-load windows. A 0.7 step can jump
     # from a range crossing yield to one too short to resolve AVE noise.
     windows.extend((low * scale, high * scale) for scale in .7 ** (np.arange(14) + .5))
+    # Correlated tracking variation can make a short interval look steeper than
+    # the sustained elastic trend. Search wider contexts, not just more patches.
+    windows.extend((lower / 20, upper / 20)
+                   for upper in range(6, 17) for lower in range(upper - 3))
     candidates = []
     for lower, upper in windows:
         ids = np.flatnonzero((loading_y >= lower * uts) & (loading_y <= upper * uts))
@@ -129,16 +133,53 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
         r2 = 1 - np.sum(residual ** 2) / total if total else 0.
         difference = abs(slopes[0] - slopes[1]) / slope if slope > 0 else np.inf
         if np.isfinite(slope) and slope > 0 and r2 >= .98 and difference <= .05:
-            candidates.append(dict(lower=lower, upper=upper, slope=slope, r2=r2,
-                                   difference=difference, strict=r2 >= .995 and difference <= .025))
-    supported = [candidate for candidate in candidates if candidate['strict']] or candidates
-    chosen = supported[0] if supported else None
+            candidates.append(dict(lower=lower, upper=upper, slope=slope, intercept=intercept,
+                                   r2=r2, difference=difference,
+                                   strict=r2 >= .995 and difference <= .025,
+                                   width=upper - lower, mean_x=np.mean(loading_x[ids]),
+                                   mean_y=np.mean(loading_y[ids]), variance_x=np.var(loading_x[ids]),
+                                   mse=np.mean(residual ** 2), stress_span=np.ptp(loading_y[ids])))
+
+    def explained_by_wider_window(local):
+        for context in candidates:
+            if (context['width'] < 1.5 * local['width']
+                    or (local['strict'] and not context['strict'])
+                    or context['lower'] > local['lower'] + 1e-12
+                    or context['upper'] < local['upper'] - 1e-12):
+                continue
+            # OLS residuals are orthogonal to x and the intercept. These moments
+            # give the wider line's RMS error on the *local* readings without
+            # masking a bad local prediction with a large whole-curve R².
+            bias = context['slope'] * local['mean_x'] + context['intercept'] - local['mean_y']
+            mse = (local['mse'] + bias ** 2
+                   + (context['slope'] - local['slope']) ** 2 * local['variance_x'])
+            tolerance = max(2 * np.sqrt(local['mse']), 2 * np.sqrt(context['mse']),
+                            .05 * local['stress_span'])
+            if mse <= tolerance ** 2:
+                return True
+        return False
+
+    supported = sorted((candidate for candidate in candidates if not explained_by_wider_window(candidate)),
+                       key=lambda candidate: (-candidate['width'], -candidate['r2'], candidate['lower']))
+    preferred = [candidate for candidate in supported if candidate['strict']] or supported
+    chosen = preferred[0] if preferred else None
     if chosen:
-        # A smooth plastic segment must not outrank a supported but noisier
-        # elastic one just because the plastic fit has a higher R².
-        for candidate in candidates:
+        # Only an independently supported region may supersede the wider fit.
+        # A smooth plastic segment must still not hide a shorter elastic region.
+        for candidate in supported:
             if candidate['slope'] > 1.1 * chosen['slope']:
                 chosen = candidate
+        # Trim a small boundary contamination (e.g. the last part of seating)
+        # only when most of the supported region remains and residual scatter
+        # is halved. Do this once: repeated trimming would recreate a tiny patch.
+        refinements = [candidate for candidate in candidates
+                       if candidate['lower'] >= chosen['lower'] - 1e-12
+                       and candidate['upper'] <= chosen['upper'] + 1e-12
+                       and candidate['width'] >= .75 * chosen['width']
+                       and abs(candidate['slope'] / chosen['slope'] - 1) <= .1
+                       and candidate['mse'] < .25 * chosen['mse']]
+        if refinements:
+            chosen = max(refinements, key=lambda candidate: (candidate['width'], -candidate['mse']))
         low, high = chosen['lower'], chosen['upper']
     if details is not None:
         details.update({

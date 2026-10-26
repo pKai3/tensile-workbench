@@ -20,13 +20,53 @@ def noisy_loading_record(seed=0, *, seating=False, noise=.006, quantum=.0005):
 
 
 class ElasticWindowAuditTests(unittest.TestCase):
-    def test_measurement_noise_does_not_require_near_perfect_r_squared(self):
+    def test_measurement_noise_preserves_known_properties(self):
         for seed in range(20):
             with self.subTest(seed=seed):
                 p = specimen_calculation(noisy_loading_record(seed))['properties']
                 self.assertEqual(p['Yield status'], 'resolved')
                 self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=4.)
                 self.assertAlmostEqual(p['Yield (MPa)'], 652.4, delta=3.)
+                self.assertGreaterEqual(p['Elastic fit R2'], .98)
+                self.assertFalse(p['Fit review required'])
+
+    def test_correlated_tracking_does_not_promote_a_locally_steeper_patch(self):
+        # The true elastic slope is constant. Smooth AVE-like drift creates
+        # convincing short tangents whose slopes can be much higher than E.
+        for period in (200., 300., 400.):
+            for phase in (0., np.pi / 2, np.pi, 3 * np.pi / 2):
+                with self.subTest(period=period, phase=phase):
+                    stress = np.linspace(0., 900., 10000)
+                    strain = 100 * (stress / 110000. + np.maximum(stress - 750., 0.) / 2000.)
+                    strain += .01 * np.sin(2 * np.pi * stress / period + phase)
+                    record = {'sample': 'correlated tracking', 'source_file': 'synthetic.csv',
+                              'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                              'stress_mpa': np.r_[stress, 450., 0.]}
+                    before_x, before_y = record['strain_pct'].copy(), record['stress_mpa'].copy()
+                    calc = specimen_calculation(record)
+                    p = calc['properties']
+                    self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=3.)
+                    self.assertAlmostEqual(p['Yield (MPa)'], 754., delta=1.)
+                    self.assertGreater(p['Fit upper stress (MPa)'] - p['Fit lower stress (MPa)'], 400.)
+                    self.assertLess(p['Fit upper stress (MPa)'], 750.)
+                    self.assertEqual(p['Fit point count'], calc['elastic_mask'].sum())
+                    np.testing.assert_array_equal(record['strain_pct'], before_x)
+                    np.testing.assert_array_equal(record['stress_mpa'], before_y)
+
+    def test_short_noisy_elastic_region_still_uses_measurement_tolerance(self):
+        for seed in range(10):
+            with self.subTest(seed=seed):
+                stress = np.linspace(0., 900., 10000)
+                strain = 100 * (np.minimum(stress, 280.) / 70000.
+                                + np.maximum(stress - 280., 0.) / 110000.
+                                + np.maximum(stress - 500., 0.) / 2000.)
+                strain += np.random.default_rng(seed).normal(0., .006, len(strain))
+                record = {'sample': 'short noisy elastic', 'source_file': 'synthetic.csv',
+                          'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                          'stress_mpa': np.r_[stress, 450., 0.]}
+                p = specimen_calculation(record)['properties']
+                self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=3.)
+                self.assertAlmostEqual(p['Yield (MPa)'], 504., delta=.5)
                 self.assertGreaterEqual(p['Elastic fit R2'], .98)
                 self.assertLess(p['Elastic fit R2'], .995)
                 self.assertEqual(p['Automatic fit support'], 'Measurement-noise tolerance')
@@ -89,7 +129,7 @@ class ElasticWindowAuditTests(unittest.TestCase):
 
     def test_r_squared_warning_threshold_still_applies_to_noise_tolerant_fit(self):
         record = noisy_loading_record()
-        p = specimen_calculation(record, r2_warning=.999)['properties']
+        p = specimen_calculation(record, r2_warning=.9999)['properties']
         self.assertTrue(np.isfinite(p['Fitted E (GPa)']))
         self.assertTrue(np.isfinite(p['Yield (MPa)']))
         self.assertTrue(p['Fit review required'])

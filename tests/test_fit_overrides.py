@@ -264,7 +264,7 @@ class FitIntegrationTests(unittest.TestCase):
         self.inspector.reason.value = 'Synthetic range review'
         self.assertFalse(self.inspector.apply_button.disabled)
         self.assertEqual(self.inspector._payload['calculation']['properties']['Override status'], 'Unsaved preview')
-        self.inspector.x1.value = .01  # reversed range
+        self.inspector.x1.value = self.inspector.x0.value  # collapsed range, regardless of automatic bounds
         self.assertIsNone(self.inspector._draft)
         self.assertTrue(self.inspector.apply_button.disabled)
         self.inspector._apply()

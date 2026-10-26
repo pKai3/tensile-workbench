@@ -2,6 +2,31 @@
 
 ## Change notes — 2026-10-26
 
+### Automatic elastic-fit local-patch correction
+
+- Real-curve review exposed a second problem in v2: a short, locally straight
+  tracking fluctuation could displace a better-supported loading trend just
+  because its slope was steeper. Producing a finite fit did not establish accuracy.
+- Search wider loading intervals as well as the existing higher/lower/shorter
+  ranges. Set a local candidate aside when a wider supported line also explains
+  its readings. Keep the distinct-elastic-region check so long plastic or seating
+  regions cannot win simply through their length.
+- Prefer broad supported regions; allow a single limited boundary refinement
+  where removing edge contamination substantially reduces residual scatter.
+  Keep source readings, manual overrides and the separate R² warning threshold.
+- Add known-modulus regressions with correlated tracking drift, including several
+  periods/phases, and a short noisy elastic region between seating and plastic
+  flow. Keep the existing modulus/yield accuracy limits unchanged. The wider fit
+  can legitimately improve R², so test noise-tolerant acceptance on the short
+  noisy fixture instead of requiring every noisy full curve to have low R².
+- Update the method/cache version and inspector explanation; document the
+  contextual residual checks and selection limits in the guide.
+- Verification: all 443 tests pass. A read-only check of the same 185 raw curves
+  confirms that the two reported local-patch cases now use broader supported
+  regions. All curves return finite E/YS, which is an availability observation,
+  not validation of every selected slope. No personal state or research exports
+  were changed.
+
 ### Automatic elastic-fit rejection regression
 
 - Reproduced the audit change rejecting real curves: it searched only lower

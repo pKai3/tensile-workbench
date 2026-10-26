@@ -629,7 +629,8 @@ def inspection_summary(payload):
                   'This fitted E is independent of the WH modulus.</p>')
     if automatic_fit:
         result.append(f'<p>Search starts at {100 * low:.2f}–{100 * high:.2f}% UTS and checks higher, lower '
-                      'and shorter loading windows to avoid seating and plastic flow. '
+                      'and shorter loading windows, plus wider regions up to 80% UTS. '
+                      'A short, steeper patch is set aside when a wider supported line also explains its readings. '
                       f'{escape(p.get("Automatic fit support", ""))}; half-window slope difference '
                       f'{number(p.get("Automatic fit half-slope difference (%)", np.nan))}%.</p>')
     result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.5f}. '

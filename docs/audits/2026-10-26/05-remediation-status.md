@@ -85,3 +85,29 @@ the automatic checks and remains available for manual fitting. The numerical
 comparison bypassed personal overrides and exclusions to compare the algorithms;
 it did not save settings or regenerate research plots/tables. No raw research data
 or per-specimen results are included in the repository.
+
+## Follow-up — local slope bias despite a finite fit
+
+Subsequent visual review found that v2 could prefer a narrow, steeper patch over
+a broader, straighter loading trend. Its high local R² and similar half-window
+slopes did not validate extrapolation outside that patch. The earlier 184/185
+availability result therefore did not establish that those fits were accurate.
+
+Version 3 also searches wider loading intervals. Before a short interval can
+supersede a wider fit, it is checked against wider supported lines on its own
+readings, with a residual allowance for measurement variation. Prefer broad
+supported regions and permit one limited boundary refinement. Keep the ability
+to identify a distinct short elastic region amid seating or linear plastic flow;
+do not replace this with an unconditional widest-window rule. The guide records
+the thresholds and limitations. Instron summaries do not supply the target slope.
+
+Synthetic coverage now includes correlated tracking drift with known modulus and
+yield, across three drift periods and four phases, plus a short noisy elastic
+region. These checks detect the local-slope bias missed by the earlier independent
+noise fixtures. Existing modulus/yield accuracy limits are preserved. Read-only
+checks use the same local raw-curve cohort; no research plots/tables, personal
+overrides or analysis definitions are regenerated.
+
+Verification: **443 tests pass**. The 185-curve read-only check confirms broader
+selected regions for the two reported examples. All return finite E/YS; that
+availability result is not a physical calibration of the individual fits.

@@ -51,6 +51,7 @@ class CalculationTests(unittest.TestCase):
         self.assertIn(f'Automatic fit range: {lower:.2f}–{upper:.2f}%', html)
         self.assertIn('Search starts at 20.00–50.00%', html)
         self.assertIn('half-window slope difference', html)
+        self.assertIn('a wider supported line also explains its readings', html)
 
     def test_analytical_offset_yield_and_all_markers(self):
         record = bilinear_record()
@@ -68,8 +69,15 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(p['Uniform elongation (%)'], 8.)
         self.assertEqual(p['Failure elongation (%)'], 9.)  # last measurement before the sudden drop
         mask = calculation['elastic_mask']
-        self.assertTrue(np.all(calculation['stress_mpa'][mask] >= .2 * 559))
-        self.assertTrue(np.all(calculation['stress_mpa'][mask] <= .5 * 559))
+        # Starting fractions are a search seed, not fixed final fit bounds.
+        # The selected window must remain within the known elastic segment.
+        selected_x = calculation['strain_pct'][mask]
+        selected_y = calculation['stress_mpa'][mask]
+        self.assertGreaterEqual(selected_x.min(), 0.)
+        self.assertLessEqual(selected_x.max(), .4)
+        self.assertGreater(np.ptp(selected_x), .2)
+        self.assertAlmostEqual(p['Fit lower stress (MPa)'], selected_y.min())
+        self.assertAlmostEqual(p['Fit upper stress (MPa)'], selected_y.max())
         i, j = calculation['yield_bracket']
         self.assertLessEqual(calculation['strain_pct'][i], expected_strain)
         self.assertGreaterEqual(calculation['strain_pct'][j], expected_strain)
