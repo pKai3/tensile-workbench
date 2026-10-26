@@ -424,7 +424,7 @@ class PreviewSession:
             'specimen_fit_policy': self.fit_provenance(state),
             'specimen_selection': self.selection_provenance(state, spec),
             'engine_sha256_at_load': self.engine_sha256,
-            'note': 'Individual specimen properties only. Instron comparisons use CSV summaries; see the Audit sheet for source hashes.'}, indent=2))
+            'note': 'Individual specimen properties only. Instron comparisons prefer CSV summaries, with PDF fallback; see Audit for source files, format, PDF pages and hashes.'}, indent=2))
         return destination
 
     def variables_for(self, state):

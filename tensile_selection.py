@@ -69,8 +69,8 @@ def analysis_properties(record, properties):
     return result
 
 
-def csv_files(root):
-    """Do not enter marked folders or read CSVs containing ! anywhere in a name."""
+def data_files(root, suffix):
+    """Do not enter marked folders or read files containing ! in a name."""
     root = Path(root)
     if '!' in root.name:
         return []
@@ -78,8 +78,12 @@ def csv_files(root):
     for directory, folders, files in os.walk(root, followlinks=False):
         folders[:] = sorted(name for name in folders if '!' not in name)
         found.extend(Path(directory) / name for name in sorted(files)
-                     if '!' not in name and name.lower().endswith('.csv'))
+                     if '!' not in name and name.lower().endswith(suffix))
     return sorted(found)
+
+
+def csv_files(root):
+    return data_files(root, '.csv')
 
 
 def discover_sample_groups(root):
@@ -100,8 +104,9 @@ def discover_sample_groups(root):
         files = [p for p in entries if p.is_file()]
         folders = [p for p in entries if p.is_dir() and not p.is_symlink()]
         has_data = any(p.suffix.lower() in ('.csv', '.is_tens', '.id_tens') for p in files)
+        has_report = any(re.search(r'\.(?:is|id)_tens(?:_\d+){0,2}\.pdf$', p.name, re.I) for p in files)
         has_exports = any(re.search(r'(?:^|[._ -])exports?$', p.name, re.I) for p in folders)
-        if has_data or has_exports:
+        if has_data or has_report or has_exports:
             sources = csv_files(directory)
             if sources:
                 groups[directory.relative_to(root).as_posix()] = sources

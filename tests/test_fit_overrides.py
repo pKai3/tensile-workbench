@@ -181,8 +181,9 @@ class FitIntegrationTests(unittest.TestCase):
         # Review now includes identity/fracture checks, not only elastic R².
         from tensile_tables import specimen_review_mask
         flagged = self.frame().loc[specimen_review_mask(self.frame())]
-        self.assertIn(f'{len(flagged)} specimens need', self.app.fit_warning.value)
-        self.assertIn('1 excluded', self.app.fit_warning.value)
+        count = len(flagged)
+        self.assertIn(f'{count} specimen' + (' needs' if count == 1 else 's need'), self.app.fit_warning.value)
+        self.assertIn(f'{int((~flagged.Included).sum())} excluded', self.app.fit_warning.value)
         self.app._review_fits()
         self.assertIn(IDENT, {row['id'] for row in self.app.tables.specimens.rows})
         self.assertEqual(len(self.app.tables.specimens.rows), len(flagged))

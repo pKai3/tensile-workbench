@@ -2,6 +2,36 @@
 
 ## Change notes — 2026-10-26
 
+### Optional summaries and PDF fallback — implemented
+
+- Keep raw stress–strain CSVs usable when no summary exists. Show a clear
+  availability notice, retain filename-based display names and leave Instron
+  fields blank. Do not create failed name/UTS comparisons for missing summaries;
+  genuine fit, fracture, reconstruction and identity issues remain flagged.
+- Prefer embedded/external CSV summaries. Where no relevant CSV summary exists,
+  read numbered text tables from an Instron PDF report in the same sample group.
+  Join split panels/pages by printed specimen row ID and preserve units, operator
+  labels, exclusions, printed precision, source file/hash and page provenance.
+  Retain dataset/export-row or exact-label identity matching and independent UTS
+  verification. Never match by numerical similarity or extract curves from images.
+- A present but malformed, unmatched or conflicting CSV stays a review issue;
+  do not replace it silently with PDF data. Unreadable/scanned/unsupported PDF
+  reports explain the limitation while leaving raw calculations accessible.
+  Missing gauge metadata still cannot support requested reconstruction.
+- Use cached PDF metadata in both the lightweight specimen catalogue and full
+  analysis; invalidate on Reload data. Preserve overrides and source identities.
+  Recognise Instron report filenames as sample-group containers for nested raw
+  exports. Continue respecting hard-ignore markers for both CSV and PDF files.
+- Identify PDF fallback in the tables area and inspector; record format, PDF
+  pages and source paths in Excel Audit. Keep publication legends unchanged.
+  Share exact raw measurement headings between curve/summary readers so summaries
+  stop before numeric CSV data, including exports without a Time channel.
+- Add the PDF reader to Mac/Windows setup dependencies and update installation
+  and usage guidance. All 406 tests pass, including synthetic CSV/PDF fixtures,
+  raw-only plotting, reload/override preservation and Excel provenance. Browser
+  review confirmed the notices and blank/populated Instron columns. The temporary
+  preview was stopped. Research files and personal settings are untouched.
+
 ### Saved analyses and individual plots — implemented
 
 - Use **analysis** for a saved setup of sample groups, settings, overrides,

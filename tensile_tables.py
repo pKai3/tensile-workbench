@@ -12,7 +12,7 @@ from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 from tensile_fit import fit_display_places
 from tensile_order import sort_group_frame
 
-PATH_COLUMNS = frozenset(('Source File', 'Instron Summary CSV'))
+PATH_COLUMNS = frozenset(('Source File', 'Instron Summary File', 'Instron Summary CSV'))
 
 
 def _display_cell(value, places=2):
@@ -299,6 +299,9 @@ def property_tables(records, spec, engine, instron, project=None):
             fit_fields['Fit review required'] &= property_allowed(mode, 'ys')
             saved_fit = row.get('_fit_override') or {}
             samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
+                            'Instron Match': reference['status'],
+                            'Instron availability': reference.get('availability', 'matched'),
+                            'Instron Summary Format': reference.get('source_format', 'CSV'),
                             'Instron Row': reference['index'] if reference.get('source') else None,
                             **fit_fields, '0.2% Offset Yield Strength (MPa)': p['Yield (MPa)'],
                             'UTS (MPa)': p['UTS (MPa)'], 'Uniform Elongation (%)': p['Uniform elongation (%)'],
@@ -331,7 +334,9 @@ def property_tables(records, spec, engine, instron, project=None):
                                 'Fit Lower Stress (MPa)': p['Fit lower stress (MPa)'], 'Fit Upper Stress (MPa)': p['Fit upper stress (MPa)'],
                                 'Instron Match': reference['status'], 'Instron Row': reference['index'],
                                 'Instron Specimen Label': reference['label'], 'Instron Excluded': reference['excluded'],
-                                'Instron Notes': reference['notes'], 'Instron Summary CSV': reference['source'],
+                                'Instron Notes': reference['notes'], 'Instron Summary File': reference['source'],
+                                'Instron Summary Format': reference.get('source_format', 'CSV'),
+                                'Instron PDF Pages': reference.get('source_pages', ''),
                                 'Instron Summary SHA256': reference['sha256'],
                                 'Instron Thickness (mm)': reference['values'].get('thickness', np.nan),
                                 'Instron Width (mm)': reference['values'].get('width', np.nan),
@@ -351,7 +356,8 @@ def property_tables(records, spec, engine, instron, project=None):
                                    'Paired': paired, 'Property included': eligible, 'Instron Match': reference['status'],
                                    'Instron Specimen Label': reference['label'], 'Instron Row': reference['index'],
                                    'Notes': ' '.join(filter(None, [p['Notes'] if ref_key in ('ys', 'e') else '', reference['notes']])),
-                                   'Source File': row['source_file'], 'Instron Summary CSV': reference['source']})
+                                   'Source File': row['source_file'], 'Instron Summary File': reference['source'],
+                                   'Instron Summary Format': reference.get('source_format', 'CSV')})
         for label, unit, field, ref_key in METRICS:
             sources = ([(source, [report[key] for report in elongations]) for source, key in EL_SOURCE_FIELDS]
                        if label == 'Failure elongation' else
@@ -479,6 +485,29 @@ def summary_html(details):
     return ''.join(result) + '</tbody></table></div>'
 
 
+def summary_source_notice(samples):
+    """Availability is context, not an invented identity-check failure."""
+    if samples.empty or 'Instron availability' not in samples:
+        return ''
+    messages = []
+    for availability, source_format, title, explanation in (
+            ('csv_only', None, 'No Instron summary CSV or PDF',
+             'Raw curves and Calc values are available. Filenames identify specimens; Instron comparisons are unavailable.'),
+            ('matched', 'PDF', 'PDF summary fallback',
+             'Instron values use the report’s printed precision. Source files and pages are recorded in the inspector and Audit.')):
+        selected = samples['Instron availability'].eq(availability)
+        if source_format:
+            selected &= samples['Instron Summary Format'].eq(source_format)
+        groups = []
+        for group, rows in samples.loc[selected].groupby('Group', sort=False):
+            total = int(samples['Group'].eq(group).sum())
+            label = str(group) + (f' ({len(rows)}/{total} specimens)' if len(rows) < total else '')
+            groups.append(escape(label))
+        if groups:
+            messages.append('<p><b>' + title + ':</b> ' + '; '.join(groups) + '. ' + explanation + '</p>')
+    return ''.join(messages)
+
+
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
     def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None, aligned_group_loader=None):
@@ -526,10 +555,11 @@ class PropertyTablesView:
             self.tabs.set_title(i, name)
         self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
+        self.source_status = w.HTML()
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
-                                'Instron comparisons use CSV summaries, not PDFs.</p>'),
+                                'Instron comparisons prefer CSV summaries, with PDF reports as a fallback.</p>'),
                           w.HBox([self.filter, self.sort, self.descending, self.review_only], layout=w.Layout(flex_flow='row wrap')),
-                          self.status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
+                          self.status, self.source_status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
         for control in (self.filter, self.sort, self.descending, self.review_only):
             control.observe(lambda _: self.render(), names='value')
 
@@ -651,6 +681,7 @@ class PropertyTablesView:
     def render(self):
         if not self.frames:
             return
+        self.source_status.value = summary_source_notice(self.frames['tensile_samples'])
         samples = self._filtered(self.frames['tensile_samples'])
         summary = self._filtered(self.frames['tensile_summary_details'])
         self.comparison.set_frames(self.frames, summary['Group'].unique() if 'Group' in summary else [],

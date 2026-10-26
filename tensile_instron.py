@@ -1,4 +1,4 @@
-"""Read Instron summary CSVs only. Never infer specimen identity from a value."""
+"""Read Instron summaries, preferring CSV to PDF. Never match by a test value."""
 import csv
 import hashlib
 import io
@@ -6,7 +6,8 @@ from pathlib import Path
 import re
 from decimal import Decimal, InvalidOperation
 import numpy as np
-from tensile_selection import csv_files
+from tensile_selection import csv_files, data_files
+from tensile_columns import is_measurement_header
 
 
 def _normal(text):
@@ -128,9 +129,11 @@ def _verify_reference(result, record, name_ok, name_failures=()):
     return result
 
 
-def read_summary_csv(path):
+def read_summary_csv(path, *, metadata=None):
     """Return the first supported Results Table; stop before raw time-series data."""
     path = Path(path)
+    info = metadata if metadata is not None else {}
+    info.update(summary_present=False, readable=False, is_curve=False)
     for encoding in ('utf-8-sig', 'cp1252'):
         for delimiter in (',', ';', '\t'):
             rows, header, units = [], None, None
@@ -138,11 +141,18 @@ def read_summary_csv(path):
                 with path.open(encoding=encoding, newline='') as stream:
                     for row in csv.reader(stream, delimiter=delimiter):
                         normal = [_normal(value) for value in row]
-                        if 'time' in normal and ('tensile stress' in normal or 'stress' in normal):
+                        info['readable'] = True
+                        if is_measurement_header(row):
+                            info['is_curve'] = True
+                            if not rows:
+                                return []  # Never scan the numeric body looking for a summary.
                             break
+                        if any('results table' in value for value in normal):
+                            info['summary_present'] = True
                         if header is None:
                             if any('stress at maximum force' in value or 'stress at yield' in value for value in normal):
                                 header = row
+                                info['summary_present'] = True
                             continue
                         if units is None:
                             units = row
@@ -153,7 +163,8 @@ def read_summary_csv(path):
                         if not match or len(row) != len(header):
                             continue
                         item = {'index': int(match[2]), 'excluded': bool(match[1]), 'label': '',
-                                'values': {}, 'resolution': {}, 'source': str(path), 'notes': []}
+                                'values': {}, 'resolution': {}, 'source': str(path), 'notes': [],
+                                'format': 'CSV', 'pages': []}
                         for index, label in enumerate(header):
                             if 'specimen text input' in _normal(label):
                                 item['label'] = row[index].strip()
@@ -165,6 +176,7 @@ def read_summary_csv(path):
                                 if row[index].strip() not in ('', '-----', '----', '---') and not np.isfinite(item['values'][field]):
                                     item['notes'].append(f'{label}: missing/unsupported unit or numeric value')
                         rows.append(item)
+                info['readable'] = True
                 if rows:
                     digest = hashlib.sha256(path.read_bytes()).hexdigest()
                     for item in rows:
@@ -188,6 +200,16 @@ def _export_identity(source):
     return dataset, int(index[1]) if index else None
 
 
+def _summary_stem(path):
+    # Instron reports normally retain the test-method suffix: Batch.is_tens.pdf.
+    stem = path.stem
+    return re.sub(r'\.(?:is|id)_tens(?=(_\d+){0,2}$)', '', stem, flags=re.I) if path.suffix.lower() == '.pdf' else stem
+
+
+def _dataset_summary(path, dataset):
+    return bool(dataset and re.fullmatch(re.escape(dataset) + r'(?:_\d+){0,2}', _summary_stem(path), re.I))
+
+
 def _summary_candidates(source, embedded, group_rows):
     """Same identity rules for the lightweight catalogue and analysed records."""
     dataset, index = _export_identity(source)
@@ -197,7 +219,7 @@ def _summary_candidates(source, embedded, group_rows):
     candidates, review_rows = [], []
     if dataset is not None:
         for path, rows in group_rows:
-            if re.fullmatch(re.escape(dataset) + r'(?:_\d+){0,2}', path.stem, re.I):
+            if _dataset_summary(path, dataset):
                 review_rows.extend(rows)
                 candidates.extend(row for row in rows if row['index'] == index)
     method = 'Dataset + Instron row number'
@@ -209,7 +231,7 @@ def _summary_candidates(source, embedded, group_rows):
     return candidates, method, review_rows
 
 
-def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144):
+def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144, metadata=None):
     """Read only a bounded preamble, never numeric arrays, full-file hashes or fits.
 
     Look for the same complete measurement column names as the curve loader.
@@ -218,6 +240,8 @@ def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144):
     """
     strain_names = {_normal(name) for name in strain_names}
     load_names = {_normal(name) for name in load_names}
+    info = metadata if metadata is not None else {}
+    info.update(summary_present=False, readable=False, is_curve=False)
 
     def parse(text):
         best = []
@@ -226,13 +250,17 @@ def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144):
             try:
                 for row in csv.reader(io.StringIO(text, newline=''), delimiter=delimiter):
                     names = {_normal(value) for value in row}
+                    if any('results table' in value for value in names):
+                        info['summary_present'] = True
                     if names & strain_names and names & load_names:
+                        info['is_curve'] = True
                         return True, rows
                     if ended:
                         continue
                     if header is None:
                         if any('stress at maximum force' in value or 'stress at yield' in value for value in names):
                             header = row
+                            info['summary_present'] = True
                         continue
                     if not units:
                         units = True
@@ -257,6 +285,7 @@ def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144):
         with Path(path).open('rb') as stream:
             while len(payload) < byte_limit:
                 chunk = stream.read(min(4096, byte_limit - len(payload)))
+                info['readable'] = True
                 payload.extend(chunk)
                 try:
                     text = payload.decode('utf-8-sig')
@@ -332,22 +361,64 @@ class InstronSummaries:
         self.root = Path(data_directory)
         self.group_directories = group_directories or {}
         self._csv = {}
+        self._csv_info = {}
         self._groups = {}
         self._catalogues = {}
+        self._pdf_groups = {}
+        self._pdf = {}
+        self._pdf_info = {}
+
+    def _choose_candidates(self, group, source, embedded, group_rows, info):
+        """CSV takes precedence even if its row is missing or its values conflict."""
+        candidates, method, review = _summary_candidates(source, embedded, group_rows)
+        dataset, _ = _export_identity(source)
+        known_csv = [(path, rows) for path, rows in group_rows
+                     if rows or info.get(str(path), {}).get('summary_present')
+                     or not info.get(str(path), {}).get('readable', True)
+                     or (_dataset_summary(path, dataset) and not info.get(str(path), {}).get('is_curve', True))]
+        relevant_csv = [path for path, _ in known_csv if dataset is None or _dataset_summary(path, dataset)]
+        if info.get(str(source), {}).get('summary_present'):
+            relevant_csv.append(source)
+        if embedded or candidates or relevant_csv:
+            return candidates, method, review, relevant_csv, []
+        if group not in self._pdf_groups:
+            directory = self.group_directories.get(group, self.root / group)
+            self._pdf_groups[group] = data_files(directory, '.pdf')
+        paths = self._pdf_groups[group]
+        # Named reports first. Exact operator-label fallback can handle a renamed
+        # report, but never borrow a row number from a different dataset.
+        named = [path for path in paths if _dataset_summary(path, dataset)]
+        selected = named or paths
+        pdf_rows, errors = [], []
+        for path in selected:
+            key = str(path)
+            if key not in self._pdf:
+                from tensile_instron_pdf import read_summary_pdf
+                self._pdf_info[key] = {}
+                self._pdf[key] = read_summary_pdf(path, metadata=self._pdf_info[key])
+            pdf_rows.append((path, self._pdf[key]))
+            if self._pdf_info[key].get('error'):
+                errors.append(f'{path.name}: {self._pdf_info[key]["error"]}')
+        if pdf_rows:
+            candidates, method, review = _summary_candidates(source, [], pdf_rows)
+        # Unknown CSV identities still need review, even if no matching report exists.
+        inputs = selected or [path for path, _ in known_csv]
+        return candidates, method, review, inputs, errors
 
     def catalogue(self, group, sources, strain_names, load_names):
         """Cached file/label inventory. This does not verify UTS or calculate properties."""
         if group not in self._catalogues:
             strain_names = {_normal(name) for name in strain_names}
             load_names = {_normal(name) for name in load_names}
-            metadata = {path: read_catalogue_csv(path, strain_names, load_names) for path in sources}
+            info = {str(path): {} for path in sources}
+            metadata = {path: read_catalogue_csv(path, strain_names, load_names, metadata=info[str(path)]) for path in sources}
             group_rows = [(path, rows) for path, (_, rows) in metadata.items()
                           if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
             records = []
             for source, (is_curve, embedded) in metadata.items():
                 if not is_curve:
                     continue
-                candidates, _, _ = _summary_candidates(source, embedded, group_rows)
+                candidates, _, _, _, _ = self._choose_candidates(group, source, embedded, group_rows, info)
                 labels = sorted({row['label'] for row in candidates if row['label']})
                 records.append({'source_file': str(source), 'sample': source.stem,
                                 'specimen_label': ' / '.join(labels)})
@@ -357,7 +428,8 @@ class InstronSummaries:
     def read(self, path):
         key = str(path)
         if key not in self._csv:
-            self._csv[key] = read_summary_csv(path)
+            self._csv_info[key] = {}
+            self._csv[key] = read_summary_csv(path, metadata=self._csv_info[key])
         return self._csv[key]
 
     def match(self, group, record):
@@ -369,13 +441,23 @@ class InstronSummaries:
                 directory = self.group_directories.get(group, self.root / group)
                 self._groups[group] = [(path, self.read(path)) for path in csv_files(directory)
                                        if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
-        candidates, method, review_rows = _summary_candidates(source, embedded, self._groups.get(group, []))
-        result = {'values': {}, 'status': 'Unavailable', 'notes': 'No matching Instron summary CSV.',
-                  'source': '', 'sha256': '', 'index': index, 'label': '', 'excluded': False}
+        candidates, method, review_rows, inputs, errors = self._choose_candidates(
+            group, source, embedded, self._groups.get(group, []), self._csv_info)
+        result = {'values': {}, 'status': 'Unavailable', 'notes': '', 'source_note': '',
+                  'source': '', 'source_format': '', 'source_pages': '', 'availability': 'unavailable',
+                  'sha256': '', 'index': index, 'label': '', 'excluded': False}
         if not candidates:
-            if dataset is None or index is None:
-                result['notes'] = 'No embedded summary or unambiguous dataset/row identity. No numerical matching attempted.'
-            return _identity_review(_verify_reference(result, record, False), record, review_rows)
+            if not inputs:
+                result.update(status='CSV only', availability='csv_only',
+                    notes='No Instron summary CSV or PDF. Raw curves and Calc values remain available; '
+                          'Instron comparisons and operator specimen labels are unavailable.',
+                    check_failures=[], check_values={})
+            else:
+                reason = (' '.join(errors) if errors else
+                    'No matching specimen row in the available summary. Check the dataset/export-row names '
+                    'or the exact operator specimen label, and that the summary contains a readable results table.')
+                result.update(notes=reason, check_failures=['Instron summary: ' + reason], check_values={})
+            return _identity_review(result, record, review_rows)
         # Multiple summary revisions may agree numerically but differ in labels.
         # Preserve non-conflicting fields; never select a conflicting value.
         values, resolution, conflicts = {}, {}, []
@@ -403,6 +485,16 @@ class InstronSummaries:
                       notes='\n'.join(notes), source='; '.join(sorted({row['source'] for row in candidates})),
                       sha256='; '.join(sorted({row['sha256'] for row in candidates})),
                       index=candidates[0]['index'], label=' / '.join(labels), excluded=excluded)
+        result['availability'] = 'matched'
+        result['source_format'] = 'PDF' if all(Path(row['source']).suffix.lower() == '.pdf' for row in candidates) else 'CSV'
+        if result['source_format'] == 'PDF':
+            result['status'] += ' (PDF fallback)'
+            result['source_note'] = 'Instron values imported from a PDF summary; precision follows its printed digits.'
+            result['source_pages'] = '; '.join(sorted({Path(row['source']).name + ': ' +
+                ', '.join(map(str, row.get('pages', []))) for row in candidates}))
+            # An unreadable revision cannot silently disappear beside a valid one.
+            if errors:
+                result['notes'] += ('\n' if result['notes'] else '') + '\n'.join(errors)
         name_ok = (method == 'Dataset + Instron row number' or
                    (method == 'Exact specimen label' and len(candidates) == 1) or
                    (method == 'Embedded CSV summary' and

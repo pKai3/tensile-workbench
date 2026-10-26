@@ -473,6 +473,10 @@ def inspection_summary(payload):
                   ' · <b>Assigned Instron row:</b> ' + escape(str(reference.get('index') if reference.get('source') else 'Unavailable')) +
                   '<br><b>Summary:</b> ' + escape('; '.join(Path(path).name for path in
                     reference.get('source', '').split('; ') if path) or 'Unavailable') + '</p>')
+    if reference.get('source_note') or reference.get('availability') == 'csv_only':
+        result.append('<p>' + escape(reference.get('source_note') or reference['notes']) + '</p>')
+    if reference.get('source_pages'):
+        result.append('<p><b>PDF pages:</b> ' + escape(reference['source_pages']) + '</p>')
     if payload.get('exclusion_reason'):
         result.append('<p>Exclusion reason: ' + escape(payload['exclusion_reason']) + '</p>')
     result.append('</details><details><summary>Calculated and Instron properties</summary>')

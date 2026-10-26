@@ -209,9 +209,13 @@ Overrides belong to specimens, not analyses. Tables show **Fit method**; stale o
 
 The ignored personal project JSON stores the specimen identity, raw-file fingerprint, bounds/endpoints, reason, timestamp, original automatic results and apply/restore history. Exported checks include the active definition and original automatic snapshot; export settings include relevant history. If a CSV's contents change, its override is flagged as stale and not applied: the automatic calculation is used until reviewed. Moving the data directory preserves relative identities; renaming a specimen transfers its override only after a verified move is explicitly approved. Nothing edits the source CSVs.
 
-### Instron summary CSVs
+### Instron summaries: CSV, PDF fallback and missing summaries
 
-PDFs are not read. Place group summary CSVs in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. Summary rows are never treated as raw curve points.
+Place group summaries in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. CSV summaries take priority; where no relevant CSV summary exists, the workbench reads numbered text tables from PDF reports. A present CSV with missing/conflicting values or an unmatched row remains flagged rather than being silently replaced with PDF data. Summary rows are never treated as raw curve points.
+
+PDF reports normally retain names such as `dataset.is_tens.pdf`, `dataset.id_tens.pdf` or `dataset.pdf`. Keep the raw exports in their original export folder. The reader joins split column panels and pages by their printed specimen row number, imports only recognised headings and units, and preserves printed precision for UTS verification. It does not read values from graph images or scanned pages. Unsupported, unreadable and conflicting reports are flagged while raw curves and Calc values remain available. The inspector and Audit identify the PDF source, pages and file hash. PDF parsing is cached until **Reload data**.
+
+If no summary CSV or PDF exists, the tables show **No Instron summary CSV or PDF**. Calc properties and plots use the raw stress–strain CSVs as usual; Instron columns stay unavailable. Specimen filenames provide display names, but their export-row suffix is not assumed to be the physical specimen location. No name/UTS mismatch is invented merely because the summary is absent. Actual curve/fit/EL issues remain flagged. Gauge reconstruction still requires a valid measured gauge length from a matched summary; disable reconstruction when that metadata is unavailable. Use **Reload data** after adding a summary. A summary PDF on its own cannot supply the measured curve.
 
 Candidate matching uses an embedded specimen summary, the Instron export dataset and row number, or an exact specimen label. It then independently verifies the name/row association and original recorded data. Numeric similarity never selects or reassigns a specimen. Dataset summaries normally retain their original filename (`dataset.csv`, `dataset_1.csv` or `dataset_1_1.csv`) and raw exports remain inside `dataset.is_tens_Exports/`. Unknown identities are flagged even if data values happen to agree.
 
@@ -231,20 +235,21 @@ directly, or a multi-row summary is selected using the export specimen number.
 Without an embedded summary, if dataset/number matching finds no candidates,
 the fallback is an exact, case-insensitive match between the raw filename stem
 and the summary’s **Specimen text input**. It does not use fuzzy names, list
-order, test-property similarity or PDFs. Multiple candidate summaries are
+order or test-property similarity. PDF fallback uses these same identity rules.
+Multiple candidate summaries are
 compared field by field; conflicting fields remain blank rather than choosing
 the newest file or the closest result. Renamed or mixed datasets can break this
 name-based identity convention; numerical agreement does not prove identity.
 
 **Verification** compares the summary UTS with the maximum finite engineering stress in the untouched CSV acquisition, including rows removed from the plotting grid. No elastic fit, smoothing, average curve or gauge reconstruction is used. **EL is not used for matching or numerical identity verification.** Instron's strain-at-break and a CSV endpoint need not be the same quantity; an EL difference does not trigger a matching failure.
 
-UTS allows half the least significant printed digit from each CSV, after unit conversion, plus `1e-9 × max(1, |raw|, |summary|)` for floating-point arithmetic. Trailing zeros and scientific notation are preserved when reading precision. Missing/conflicting source values, unverified/ambiguous names, conflicting labels, UTS mismatches and Instron X flags remain in the single **Checks** column. No pass messages or separate pass/fail columns are shown. Exact UTS comparison values and tolerance are available under **Original CSV ↔ Instron verification values** in the inspector and in Audit. The former EL tolerance is no longer used.
+UTS allows half the least significant printed digit from the raw CSV and the chosen summary, after unit conversion, plus `1e-9 × max(1, |raw|, |summary|)` for floating-point arithmetic. Trailing zeros and scientific notation are preserved when reading precision. Missing/conflicting source values, unverified/ambiguous names, conflicting labels, UTS mismatches and Instron X flags remain in the single **Checks** column. No pass messages or separate pass/fail columns are shown. Exact UTS comparison values and tolerance are available under **Original CSV ↔ Instron verification values** in the inspector and in Audit. The former EL tolerance is no longer used.
 
 Flagging does not automatically exclude a specimen, replace its data, select a different summary or suppress available candidate values. Review flagged rows before relying on their Instron comparisons or dimensions; use the inclusion controls if you decide to exclude them. Calculated YS differences are not used to establish identity.
 
 Each specimen now shows its actual **CSV filename** and **Assigned Instron row** beneath the displayed operator label. Click the filename to reveal/copy its full path. For a UTS mismatch, **Checks** also lists any UTS-compatible summary rows from the same named export dataset, including their operator labels, UTS and summary filenames. Every candidate must meet the existing printed-precision tolerance; conflicting summary revisions are not suggested. Multiple candidates stay visible rather than choosing one. These are file-review hints, not proof of identity: no file is renamed, no summary is reassigned, and EL is not used. CSV filename and assigned row are also included in the specimen Excel sheet. After correcting filenames yourself, use **Reload data** and review any saved overrides/exclusions affected by changed file identities.
 
-Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summary CSVs. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
+Conflicting values across summary revisions are left unavailable and flagged. An X-marked Instron row is identified but does not automatically exclude that specimen from this workbench. **Any `!` in a CSV/PDF filename or folder name inside the data tree is a hard ignore**, including nested folders and Instron summaries. Such files are not loaded, shown in the selector, or exported, and Include cannot override that rule. Remove the marker and reload data if you want to manage that specimen through checkboxes instead.
 
 ## Gauge-length reconstruction
 
@@ -254,7 +259,7 @@ target, then tick the checkbox to apply it. Changes save automatically; press
 Enter or leave a target field to commit its value. Each group can have a different target
 or remain measured within the same analysis. These settings are saved with that
 analysis; each specimen still uses its own initial AVE dot spacing from **Strain 1
-gauge length** in the matched Instron summary CSV, never a group-average spacing.
+gauge length** in the matched Instron summary, never a group-average spacing.
 New groups default to off with an unset target (0). Existing analysis-wide choices
 are migrated to that analysis's existing groups. Tables, the calculation log and
 exports identify each group's active basis and target. Plot legends keep only

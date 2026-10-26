@@ -9,3 +9,4 @@ jupyterlab==4.6.3
 ipykernel==7.3.0
 plotly==6.9.0
 anywidget==0.11.0
+pdfplumber==0.11.9

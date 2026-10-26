@@ -51,6 +51,11 @@ class LicenceAndSpecimenHelpTests(unittest.TestCase):
             make_fixture(root)
             with redirect_stdout(io.StringIO()):
                 app = TensileWorkbench(root)
+            # A genuine fit warning; an absent optional summary is not a failure.
+            ident = 'Alloy A/coupon_1.csv'
+            app._apply_specimen_fit(ident, app._inspect_specimen(ident)['source_sha256'],
+                {'mode': 'line', 'strain_bounds': [.12, .3], 'endpoints': [[.12, 120.], [.3, 300.]]},
+                'Synthetic imperfect fit')
             view = app.tables
             self.assertIsNone(view.specimen_help.selected_index)
             self.assertEqual(view.specimen_help.children, (view.panels[1],))

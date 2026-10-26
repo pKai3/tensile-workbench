@@ -35,6 +35,7 @@ from tensile_properties import prepared_curve, specimen_properties
 from tensile_order import ordered_groups
 from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
 from tensile_selection import curve_allowed, discover_sample_groups, group_display_name
+from tensile_columns import FORCE_COLS, STRESS_COLS, STRAIN_COLS, is_measurement_header
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
@@ -91,25 +92,6 @@ WH_POLY_ORDER = 2
 WH_XLIM = (1.0, 10.0)
 
 WH_YLIM = (0, 4500)
-
-FORCE_COLS = [
-    "Load", "Force", "Load (N)", "Force (N)", "Force(N)", "Load(N)",
-    "Axial Force", "Axial Force (N)"
-]
-
-STRESS_COLS = [
-    "Stress", "Engineering Stress", "True Stress", "Stress (MPa)",
-    "Engineering Stress (MPa)", "True Stress (MPa)",
-    "Stress (Pa)", "Engineering Stress (Pa)", "True Stress (Pa)",
-    "Tensile stress"
-]
-
-STRAIN_COLS = [
-    "Strain", "Engineering Strain", "True Strain", "Strain (%)",
-    "Engineering Strain (%)", "True Strain (%)",
-    "Axial Strain", "Axial Strain (%)",
-    "Tensile strain (Strain 1)", "Strain 1"
-]
 
 UNIT_ROW_PATTERN = re.compile(r"^\s*\([^)]+\)\s*$")
 
@@ -638,9 +620,6 @@ def read_tensile_csv_table(csv_path):
     stress at Maximum Force" in an Instron summary. Keep the units row for the
     existing conversion logic. The source file is never modified.
     """
-    strain_names = {name.lower() for name in STRAIN_COLS}
-    load_names = {name.lower() for name in STRESS_COLS + FORCE_COLS}
-
     for encoding in ("utf-8-sig", "cp1252"):
         for sep in (",", ";", "\t"):
             try:
@@ -648,8 +627,7 @@ def read_tensile_csv_table(csv_path):
                     reader = csv.reader(source, delimiter=sep)
                     header_line = 0
                     for row in reader:
-                        names = {value.strip().lower() for value in row}
-                        if names & strain_names and names & load_names:
+                        if is_measurement_header(row):
                             break
                         # Count physical lines, including embedded newlines in
                         # quoted summary fields.

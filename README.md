@@ -2,7 +2,7 @@
 
 Analyse tensile-test CSV exports in a local browser app. Compare sample groups, review individual specimens, produce publication plots and export results to Excel. **No Jupyter or programming knowledge is needed for normal use.**
 
-The workbench includes stress–strain curves, work-hardening plots, strength–elongation comparisons, specimen statistics and comparisons with available Instron summary CSVs. Three small synthetic datasets let you try it before adding your own data.
+The workbench includes stress–strain curves, work-hardening plots, strength–elongation comparisons, specimen statistics and comparisons with available Instron summaries. Three small synthetic datasets let you try it before adding your own data.
 
 Use **Analysis** for plots and specimen review. Each saved analysis contains its selected sample groups, settings, plots and tables. **Saved specimen overrides** lists manual fits, failure endpoints and data-use/exclusion settings across all your specimens and saved analyses. Tick rows to disable, re-enable or remove settings; you do not need to select those groups in the current analysis.
 
@@ -62,9 +62,13 @@ Use one folder per sample group, with one raw curve CSV per specimen. Groups can
 
 In **Sample groups**, tick a folder to select all groups below it. Expand it with the arrow to select individual groups or subfolders; a mixed checkbox shows partial selection. Selecting a folder does **not** pool its groups into one average. Analysis definitions save the selected groups, so newly added groups are not silently added to existing analyses.
 
-Keep organisational folders as containers of other folders. A folder containing CSVs, an Instron `.is_tens`/`.id_tens` file, or an export subfolder (such as `instrument_exports` or `*.is_tens_Exports`) is treated as a sample group; its nested exports belong to that group. Keep summary CSVs inside their sample group, not in a parent organisational folder.
+Keep organisational folders as containers of other folders. A folder containing CSVs, an Instron `.is_tens`/`.id_tens` file or PDF report, or an export subfolder (such as `instrument_exports` or `*.is_tens_Exports`) is treated as a sample group; its nested exports belong to that group. Keep summaries inside their sample group, not in a parent organisational folder.
 
-Nested export folders are supported. Keep original CSV headings and units; the reader recognises supported stress/strain columns and skips summary headers before the time-series data. Available Instron summary CSVs can remain with their dataset for comparison. PDF reports are not imported.
+Nested export folders are supported. Keep original CSV headings and units; the reader recognises supported stress/strain columns and skips summary headers before the time-series data.
+
+**The summary CSV is optional.** Keep any available Instron summary CSV with its sample group. If it is absent, the workbench can use numbered, text-based tables from an Instron PDF report such as `dataset.is_tens.pdf` in that same group. CSV summaries take priority. PDF-derived Instron values are identified in the tables area, inspector and exported Audit; units and printed precision are preserved. Scanned reports and chart images are not imported.
+
+With neither summary, raw specimen CSVs containing stress and strain still load and provide Calc properties and plots. A notice explains that Instron comparisons and operator labels are unavailable; specimen filenames are shown instead. Gauge reconstruction needs a measured gauge length from a matched summary. A PDF alone cannot replace the raw specimen curves. After adding a summary, use **Reload data** to read it.
 
 Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Data use** dropdown instead.
 
