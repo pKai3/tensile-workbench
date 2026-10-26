@@ -311,14 +311,15 @@ def fracture_detection_help():
     """Always accessible in the inspector, outside publication plots."""
     return f'''<details style="font:13px/1.5 Arial,sans-serif;margin:8px 0;white-space:normal">
       <summary style="cursor:pointer"><b>How failure elongation is selected</b></summary>
-      <p><b>Calc EL</b> comes from the original recorded load sequence, independently of Instron’s
+      <p><b>Calc EL</b> is total engineering strain (elastic + plastic) at the selected endpoint,
+      not permanent elongation measured after rejoining the broken pieces. It comes from the original recorded load sequence, independently of Instron’s
       reported EL. Force is preferred; engineering stress is a proxy when force is absent.
       No smoothing, strain sorting or work-hardening filters are used for detection.</p>
       <ol>
         <li><b>Sudden drop:</b> look after peak load for a drop between consecutive readings greater
-          than {ISO_DROP_RATIO:g}× the preceding change in magnitude, confirmed by load subsequently
-          falling below {100 * ISO_CONFIRM_FRACTION:g}% of peak. Select the strain immediately before
-          the drop. This is based on ISO 6892-1:2019, informative Annex A.3.6.
+          than {ISO_DROP_RATIO:g}× the preceding change in magnitude, at least 5% of peak and twelve
+          noise units. A later reading below {100 * ISO_CONFIRM_FRACTION:g}% of peak adds unloading
+          evidence; it cannot turn a tiny earlier fluctuation into fracture. Select the strain immediately before the drop.
           If the export ends before confirmation, a substantial supported drop can still supply a
           detected pre-drop endpoint. Missing 2% confirmation is recorded in the details, not treated
           as an endpoint error by itself; it is not called ISO-confirmed.</li>
@@ -332,7 +333,7 @@ def fracture_detection_help():
           faster continued stretching alone must not turn progressive unloading into sudden fracture.
           This is an algorithmic detection, separate from ISO confirmation.</li>
         <li><b>No supported sudden drop:</b> select the reading immediately before load first falls
-          below {100 * ASTM_END_FRACTION:g}% of peak, following the approach in ASTM E8/E8M-25 §7.11.3.4.
+          below {100 * ASTM_END_FRACTION:g}% of peak.
           This means {100 * ASTM_END_FRACTION:g}% <i>remaining</i>, not a {100 * ASTM_END_FRACTION:g}% reduction.
           A sudden-drop candidate without the {100 * ISO_CONFIRM_FRACTION:g}% confirmation is flagged for review.</li>
         <li><b>Progressive unloading in a truncated export:</b> when neither threshold is captured,
@@ -362,9 +363,10 @@ def fracture_detection_help():
       this specimen’s criterion, selected row and evidence.</p>
       <p><b>Review warnings</b> identify unresolved terminal estimates, unusable measurements or
       conflicting evidence. A clearly detected load collapse is not flagged simply because the export
-      stopped before the standards confirmation threshold.</p>
-      <p>This combines standards-derived criteria with application safeguards; it is <b>not a claim
-      of full ASTM or ISO compliance</b>. Sampling, tracking errors and machine unloading can affect
+      stopped before the below-2% evidence threshold.</p>
+      <p>These are the workbench’s selection rules, <b>not a claim of ASTM or ISO compliance</b>.
+      Current licensed clause wording, including the attribution of the five-times rule, has not been verified.
+      Sampling, tracking errors and machine unloading can affect
       selection. Use <b>Failure detail</b> to review questionable results and adjust EL if needed.</p>
       <p>References: <a href="https://store.astm.org/e0008_e0008m-25.html" target="_blank" rel="noopener noreferrer">ASTM E8/E8M-25</a>,
       <a href="https://www.iso.org/standard/78322.html" target="_blank" rel="noopener noreferrer">ISO 6892-1:2019</a>.</p>

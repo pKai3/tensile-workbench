@@ -2,6 +2,21 @@
 
 ## Change notes — 2026-10-26
 
+### External audit — fracture selection milestone
+
+- Closed the near-zero denominator failure in the single-reading sudden-drop
+  rule. Require a 5%-of-peak decrement and twelve noise units even when a later
+  reading falls below 2%; retain the separate multi-reading collapse path.
+- Synthetic regression sweep covers 1,980 progressive-failure combinations of
+  noise, quantisation, sampling density and tail curvature, plus 60 abrupt
+  controls. All select their expected original measurements. This is an
+  independent fixture, not the auditor's unavailable reproduction archive.
+- Update the inspector explanation and method version (v11). Describe Calc EL
+  as total engineering strain at the endpoint. Remove unverified current-edition
+  clause citations; numerical rules do not certify standards compliance.
+- Continue with units, identity/duplicate review, import/export eligibility,
+  automatic elastic-region selection and saved-state hardening below.
+
 ### Optional summaries and PDF fallback — implemented
 
 - Keep raw stress–strain CSVs usable when no summary exists. Show a clear

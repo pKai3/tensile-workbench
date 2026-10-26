@@ -2,7 +2,7 @@
 import numpy as np
 from tensile_settings import validate_failure_override
 
-FRACTURE_METHOD = 'Acquisition-order endpoint selection (v10)'
+FRACTURE_METHOD = 'Acquisition-order endpoint selection (v11)'
 ISO_DROP_RATIO = 5.0
 ISO_CONFIRM_FRACTION = .02
 ASTM_END_FRACTION = .10
@@ -224,12 +224,13 @@ def prepared_points(record):
 def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=None):
     """Select a measured endpoint, distinguishing evidence from confirmation.
 
-    ISO 6892-1:2019 informative A.3.6 supplies the >5x / <2% criterion;
-    ASTM E8/E8M-25 7.11.3.4 supplies the no-sudden-drop 10% criterion.
+    Application policy: a substantial >5x consecutive drop, with a recorded
+    below-2% reading as additional evidence, or the below-10% crossing when no
+    sudden event is supported. Exact current standards wording is unverified.
     Exports may end before either threshold. Abrupt loss, including collapse
     spread over several readings, can then supply a detected pre-drop
     endpoint; progressive terminal unloading can supply a terminal estimate.
-    Algorithmic detection is separate from ISO confirmation. Missing 2%
+    Recorded unloading evidence is not standards certification. Missing 2%
     confirmation alone is not an endpoint-review failure.
     The combined policy and safeguards are not a standards-compliance claim.
     No smoothing, resampling, strain sorting, interpolation or Instron EL input.
@@ -348,7 +349,14 @@ def _detect_uninterrupted_endpoint(x, y, ids, z, peak, peak_strain, clock, clock
     # must not replace the main event. Confirmation may occur later, at <2%.
     starts = np.arange(max(peak, 1), first10 if first10 is not None else n - 1)
     previous = np.abs(drops[starts - 1])
-    eligible = (drops[starts] > ISO_DROP_RATIO * previous) & (drops[starts] > floor)
+    # The adjacent-reading ratio alone is not evidence of a fracture: a small
+    # quantisation step after a flat reading has an unbounded ratio. Require a
+    # substantial single-reading event regardless of whether the record later
+    # reaches 2%. Smaller increments must pass the separate sustained-event
+    # detector, which tests local time and strain contrast over a finite window.
+    # This 5% safeguard is an application threshold, not an ISO requirement.
+    eligible = ((drops[starts] > ISO_DROP_RATIO * np.maximum(previous, noise))
+                & (drops[starts] >= max(PARTIAL_DROP_MIN_FRACTION, 12 * noise)))
     possible = starts[eligible]
     confirmation = first2 if first2 is not None else n - 1
     future_max = np.maximum.accumulate(z[:confirmation + 1][::-1])[::-1]
@@ -382,7 +390,7 @@ def _detect_uninterrupted_endpoint(x, y, ids, z, peak, peak_strain, clock, clock
         candidates = possible if confirmed else partial
         onset = max(map(int, candidates), key=lambda i: (drops[i], i))
         prior = float(abs(drops[onset - 1]))
-        result.update(criterion=('ISO-style sudden drop (>5×; confirmed below 2%)' if confirmed else
+        result.update(criterion=('Sudden drop (>5×; recorded below 2%)' if confirmed else
                                  'Substantial sudden drop; below-2% confirmation not recorded'),
                       endpoint_kind='Before confirmed sudden drop' if confirmed else 'Before supported sudden drop',
                       iso_confirmation_observed=confirmed,

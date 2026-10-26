@@ -244,7 +244,7 @@ class EndpointRegressionTests(unittest.TestCase):
         self.assertEqual(end['confirmation_row'], 10)
         self.assertFalse(end['review_required'])
         self.assertTrue(end['iso_confirmation_observed'])
-        self.assertIn('ISO-style', end['criterion'])
+        self.assertIn('Sudden drop', end['criterion'])
 
     def test_gradual_export_ending_at_thirty_percent_is_reviewable(self):
         record = record_for(gradual_tail())
