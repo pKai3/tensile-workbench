@@ -31,6 +31,7 @@ class SpecimenVariablesTests(unittest.TestCase):
         for group in self.session.files:
             for record, number in zip(self.session._load(group), (1, 4, 7)):
                 record['specimen_label'] = f'Wall_{number:02d}'
+                record['_identity_verified'] = True  # Trusted synthetic identity fixture.
 
     def state(self, **kwargs):
         return fixture.GroupPropertiesTests.state(self, groups=['Alloy A'], family=SPECIMEN_FAMILY,

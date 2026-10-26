@@ -36,6 +36,7 @@ from tensile_order import ordered_groups
 from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
 from tensile_selection import curve_allowed, discover_sample_groups, group_display_name
 from tensile_columns import FORCE_COLS, STRESS_COLS, STRAIN_COLS, is_measurement_header
+from tensile_units import CurveImportError, conversion, measurement_column
 
 NAME_LOOKUP = {}  # Display labels come from the saved project.
 
@@ -99,6 +100,9 @@ def get_display_name(folder_name: str, overrides=None) -> str:
     return group_display_name(folder_name, NAME_LOOKUP, overrides)
 
 def find_first_col(df, candidates):
+    for kind, known in (('stress', STRESS_COLS), ('strain', STRAIN_COLS), ('force', FORCE_COLS)):
+        if candidates == known:
+            return measurement_column(df, kind)
     for c in candidates:
         if c in df.columns:
             return c
@@ -126,7 +130,12 @@ def coerce_numeric(df, skip_first_row=False):
     if skip_first_row and df.shape[0] > 0:
         df = df.iloc[1:].reset_index(drop=True)
     for c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+        # Quoted or semicolon-delimited decimal commas are a decimal convention,
+        # not thousands separators. Never strip arbitrary punctuation.
+        values = df[c].astype(str).str.strip()
+        decimal = values.str.fullmatch(r'[+-]?\d+,\d+(?:[eE][+-]?\d+)?')
+        values = values.where(~decimal, values.str.replace(',', '.', regex=False))
+        df[c] = pd.to_numeric(values, errors="coerce")
     return df
 
 def as_float_series(s):
@@ -141,18 +150,7 @@ def compute_stress_mpa(df, units_map):
     stress_col = find_first_col(df, STRESS_COLS)
     if stress_col:
         stress = as_float_series(df[stress_col])
-        unit = (units_map.get(stress_col) or "").lower()
-
-        if unit == "mpa":
-            return stress.rename("Stress (MPa)")
-        if unit == "pa":
-            return (stress / 1e6).rename("Stress (MPa)")
-
-        med = np.nanmedian(stress.values) if np.isfinite(stress.values).any() else np.nan
-        if np.isfinite(med) and med > 1e4:
-            return (stress / 1e6).rename("Stress (MPa)")
-
-        return stress.rename("Stress (MPa)")
+        return (stress * conversion(stress_col, units_map, 'stress')).rename('Stress (MPa)')
 
     force_col = find_first_col(df, FORCE_COLS)
     if force_col:
@@ -165,28 +163,17 @@ def compute_strain_percent(df, units_map):
 
     Handles:
       - Explicit percent columns (kept as-is)
-      - Fraction-style strain columns (converted ×100 using heuristic)
+      - Explicit fractional strain units (converted ×100)
+      - Explicit microstrain units (converted ×0.0001)
+
+    Missing/unknown/conflicting units and true-only channels are rejected.
 
     Does NOT compute strain from extension/displacement.
     """
     strain_col = find_first_col(df, STRAIN_COLS)
     if strain_col is not None:
         s = as_float_series(df[strain_col])
-        unit = (units_map.get(strain_col) or "").strip().lower()
-
-        if unit in ["%", "percent", "percent (%)"]:
-            return s.rename("Strain (%)")
-
-        try:
-            p50 = float(np.nanpercentile(s, 50))
-            p90 = float(np.nanpercentile(s, 90))
-        except Exception:
-            p50, p90 = np.nan, np.nan
-
-        if (np.isfinite(p50) and p50 <= 2.0) and (np.isfinite(p90) and p90 <= 5.0):
-            return (s * 100.0).rename("Strain (%)")
-
-        return s.rename("Strain (%)")
+        return (s * conversion(strain_col, units_map, 'strain')).rename('Strain (%)')
 
     return None
 
@@ -651,7 +638,7 @@ def read_tensile_csv_table(csv_path):
     return None
 
 
-def load_and_prepare_curve(csv_path, return_metadata=False):
+def load_and_prepare_curve(csv_path, return_metadata=False, *, strict=False):
     """Load the complete recorded curve; display-only trimming happens later."""
     df_raw = read_tensile_csv_table(csv_path)
 
@@ -661,8 +648,13 @@ def load_and_prepare_curve(csv_path, return_metadata=False):
     has_units, units_map = detect_units_row(df_raw)
     df = coerce_numeric(df_raw.copy(), skip_first_row=has_units)
 
-    stress = compute_stress_mpa(df, units_map if has_units else {})
-    strain_pct = compute_strain_percent(df, units_map if has_units else {})
+    try:
+        stress = compute_stress_mpa(df, units_map if has_units else {})
+        strain_pct = compute_strain_percent(df, units_map if has_units else {})
+    except CurveImportError:
+        if strict:
+            raise
+        return None
 
     if stress is None or strain_pct is None:
         return None
@@ -984,6 +976,7 @@ def choose_representative_curve(group_name, records, override=None):
         for record in valid_records:
             source_path = Path(record["source_file"])
             candidates = {
+                str(record.get('specimen_id', '')).casefold(),
                 str(record["sample"]).casefold(),
                 source_path.name.casefold(),
                 source_path.stem.casefold(),
@@ -995,11 +988,8 @@ def choose_representative_curve(group_name, records, override=None):
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
-            print(
-                f"[WARN] Representative override '{override}' for '{group_name}' "
-                "matched more than one specimen; using the first match."
-            )
-            return matches[0]
+            raise ValueError(f"Representative override '{override}' for '{group_name}' matches multiple specimens. "
+                             'Choose an exact specimen path in the plot settings.')
         print(
             f"[WARN] Representative override '{override}' for '{group_name}' "
             "was not found; using automatic selection."

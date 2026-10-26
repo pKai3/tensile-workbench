@@ -161,9 +161,10 @@ class SummaryFallbackTests(unittest.TestCase):
             path.write_bytes(b'bad')
         self.assertEqual(self.match()['availability'], 'csv_only')
 
-    def test_report_keeps_nested_raw_exports_in_their_sample_group(self):
+    def test_confirmed_group_boundary_keeps_nested_raw_exports_with_report(self):
         self.source.parent.rename(self.group / 'raw measurements')
         write_pdf(self.pdf, [[LABELS, RESULTS]])
+        (self.group / '.tensile-group').touch()
         self.assertEqual(list(discover_sample_groups(self.root)), ['Owner/Wall'])
 
     def test_pdf_unit_conversion_and_missing_unit_remain_explicit(self):

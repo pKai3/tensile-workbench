@@ -157,7 +157,7 @@ def specimen_display_frame(samples, comparisons):
     return pd.DataFrame(rows, columns=columns, index=samples.index)
 
 
-def specimen_export_frame(samples, comparisons):
+def specimen_export_frame(samples, comparisons, *, eligible=True):
     """Keep screen order and full numeric precision; append the stable audit key."""
     identity = pd.DataFrame([
         {'Include': bool(row['Included']), 'Group': row['Group'], 'Specimen': specimen_label(row),
@@ -168,6 +168,12 @@ def specimen_export_frame(samples, comparisons):
         for _, row in samples.iterrows()
     ], columns=['Include', 'Group', 'Specimen', 'CSV file', 'Instron row', 'Applies to', 'Data use', 'Exclusion reason', 'Excluded properties'], index=samples.index)
     result = pd.concat([identity, specimen_display_frame(samples, comparisons)], axis=1)
+    if eligible and not samples.empty:
+        for label, unit, field, _ in METRICS:
+            allowed = samples['Included'] & samples['Data use mode'].map(lambda mode: property_allowed(mode, field))
+            for _, short in property_table_sources(label):
+                column = property_column(label, unit, short)
+                result[column] = result[column].where(allowed)
     result['Specimen ID'] = samples.get('Specimen ID', pd.Series(index=samples.index, dtype=object))
     return result
 
@@ -239,7 +245,11 @@ def specimen_review_mask(samples):
 def specimen_check_failures(properties, reference, gauge=None, mode='all'):
     """One failure-only message column; retain numeric audit fields separately."""
     failures = list(reference.get('check_failures', []))
+    if property_allowed(mode, 'uniform') and properties.get('Uniform elongation warning'):
+        failures.append(properties['Uniform elongation warning'])
     if property_allowed(mode, 'ys') and properties.get('Fit review required'):
+        if properties.get('Automatic fit warning'):
+            failures.append(properties['Automatic fit warning'])
         if properties.get('Yield status') != 'resolved':
             failures.append('Yield fit: ' + (properties.get('Notes') or 'unresolved fit.'))
         r2 = properties.get('Elastic fit R2', np.nan)
@@ -295,10 +305,16 @@ def property_tables(records, spec, engine, instron, project=None):
                         'Exclusion Reason': selection['reason'], 'Inclusion Scope': selection['scope'],
                         'Global Included': selection['global_included'], 'Global Exclusion Reason': selection['global_reason']}
             checks = specimen_check_failures(p, reference, row.get('_gauge'), mode)
+            from tensile_locations import location_details
+            location = location_details(row, project or {}, group)
+            checks = '\n'.join(filter(None, [checks, selection.get('duplicate_review'),
+                location['Location review'],
+                *row.get('_measured_record', row).get('_acquisition', {}).get('import_warnings', [])]))
             fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
             fit_fields['Fit review required'] &= property_allowed(mode, 'ys')
             saved_fit = row.get('_fit_override') or {}
             samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
+                            'Duplicate review': selection.get('duplicate_review', ''),
                             'Instron Match': reference['status'],
                             'Instron availability': reference.get('availability', 'matched'),
                             'Instron Summary Format': reference.get('source_format', 'CSV'),
@@ -319,6 +335,10 @@ def property_tables(records, spec, engine, instron, project=None):
                                'Width (mm)': reference['values'].get('width', np.nan),
                                'Thickness (mm)': reference['values'].get('thickness', np.nan)})
             diagnostics.append({**identity, 'Checks': checks, **reference.get('check_values', {}),
+                                **location,
+                                'Acquisition units': json.dumps(row.get('_measured_record', row).get('_acquisition', {}).get('unit_declarations', {})),
+                                'Strain reversal count': row.get('_measured_record', row).get('_acquisition', {}).get('strain_reversal_count', 0),
+                                'Uniform elongation peak span (%)': p.get('Uniform elongation peak span (%)', np.nan),
                                 'UTS-compatible rows (review only)': reference.get('identity_review_note', ''),
                                 **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
                                 'R2 warning threshold': p['R2 warning threshold'], 'Fit Point Count': p['Fit point count'],
@@ -329,12 +349,16 @@ def property_tables(records, spec, engine, instron, project=None):
                                 'Override Reason': saved_fit.get('reason', ''), 'Override Saved At': saved_fit.get('saved_at', ''),
                                 'Override Definition': json.dumps(saved_fit, sort_keys=True) if saved_fit else '',
                                 'Yield Method': p['Yield method'], 'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'],
+                                'Automatic fit strategy': p.get('Automatic fit strategy', ''),
+                                'Automatic fit warning': p.get('Automatic fit warning', ''),
                                 'Fitted E (GPa)': p['Fitted E (GPa)'], 'Elastic Fit R2': p['Elastic fit R2'],
                                 'Elastic Intercept (MPa)': p['Elastic intercept (MPa)'],
                                 'Fit Lower Stress (MPa)': p['Fit lower stress (MPa)'], 'Fit Upper Stress (MPa)': p['Fit upper stress (MPa)'],
                                 'Instron Match': reference['status'], 'Instron Row': reference['index'],
                                 'Instron Specimen Label': reference['label'], 'Instron Excluded': reference['excluded'],
                                 'Instron Notes': reference['notes'], 'Instron Summary File': reference['source'],
+                                'Instron identity verified': reference.get('identity_verified', False),
+                                'Instron candidate values (unverified inspection only)': json.dumps(reference.get('candidate_values', {})),
                                 'Instron Summary Format': reference.get('source_format', 'CSV'),
                                 'Instron PDF Pages': reference.get('source_pages', ''),
                                 'Instron Summary SHA256': reference['sha256'],
@@ -483,6 +507,22 @@ def summary_html(details):
                 result.append(f'<td{css}>{value}</td>')
         result.append('</tr>')
     return ''.join(result) + '</tbody></table></div>'
+
+
+def import_status_notice(frames):
+    """Import failures stay visible even if no numerical specimen row exists."""
+    summary = frames.get('import_summary', pd.DataFrame())
+    issues = frames.get('import_diagnostics', pd.DataFrame())
+    counts = ['<b>' + escape(str(row['Group'])) + '</b>: '
+              f"{row['Tests found']} tests found; {row['Curves loaded']} curves loaded; "
+              f"{row.get('Duplicate candidates', 0)} duplicate candidates; "
+              f"{row['Imports needing attention']} imports needing attention."
+              for _, row in summary.iterrows()]
+    messages = [escape(' · '.join(str(row.get(k, '')) for k in ('Group', 'File', 'Reason') if row.get(k)))
+                for _, row in issues.iterrows()]
+    return ('<div style="margin:8px 0">' + '<br>'.join(counts) + '</div>' if counts else '') + (
+        '<div style="background:#fff4dc;border-left:3px solid #c76b00;padding:10px"><b>Import review</b><br>' +
+        '<br>'.join(messages) + '</div>' if messages else '')
 
 
 def summary_source_notice(samples):
@@ -681,7 +721,7 @@ class PropertyTablesView:
     def render(self):
         if not self.frames:
             return
-        self.source_status.value = summary_source_notice(self.frames['tensile_samples'])
+        self.source_status.value = summary_source_notice(self.frames['tensile_samples']) + import_status_notice(self.frames)
         samples = self._filtered(self.frames['tensile_samples'])
         summary = self._filtered(self.frames['tensile_summary_details'])
         self.comparison.set_frames(self.frames, summary['Group'].unique() if 'Group' in summary else [],
@@ -711,7 +751,9 @@ class PropertyTablesView:
         self.panels[1].value = ('<p><b>Data use</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This analysis only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
                                'Other analyses’ explicit overrides are preserved. '
-                               'Excluded values stay visible, crossed out, and remain in the specimen export with their policy. '
+                               'Excluded values stay visible, crossed out. The Specimens export blanks ineligible values; '
+                               'Raw specimen values preserves them for inspection with their policy. '
+                               'Duplicate candidates are withheld until only one copy remains included. '
                                'After UTS: keep YS, UTS, E and uniform EL / pre-peak WH. After yield: keep YS, UTS and E only. '
                                'Unreliable throughout: keep UTS only, assuming the stress record is sound. '
                                '“After yield” requires trustworthy strain through the 0.2% offset intersection. '

@@ -182,6 +182,8 @@ class PreviewSession:
         directories = {group: self.data_dir / group for group in research}
         directories.update({SAMPLE_GROUP_PREFIX + group: self.sample_data_dir / group for group in samples})
         self.files, self.source_roots = files, roots
+        self.discovery_issues = list(getattr(research, 'warnings', [])) + list(getattr(samples, 'warnings', []))
+        self.import_issues = {}
         self._records.clear()
         self._models.clear()
         self._previews.clear()
@@ -189,8 +191,8 @@ class PreviewSession:
         self.instron = InstronSummaries(self.data_dir, directories)
         # Inventory only: no numerical curves, fits or fracture detection. Count
         # all imported specimens, including globally/partially excluded ones.
-        self.imported_counts = {group: len(self.instron.catalogue(group, paths,
-            self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS))
+        self.imported_counts = {group: len({row['_export_test_key'] for row in self.instron.catalogue(group, paths,
+            self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)})
             for group, paths in self.files.items()}
         self.project = reconcile_specimen_counts(self.project, self.imported_counts)
         import itertools
@@ -278,10 +280,20 @@ class PreviewSession:
             if group not in self.files:
                 raise ValueError(f"Unknown group: {group}")
             records = []
+            issues = []
+            from tensile_units import CurveImportError
+            catalogue = {Path(item['source_file']): item for item in self.instron.catalogue(group, self.files[group],
+                self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)}
             for source in self.files[group]:
-                result = self.engine.load_and_prepare_curve(source, return_metadata=True)
+                reason = 'No usable engineering stress/strain measurements; check the column headings, units and numbers.'
+                try:
+                    result = self.engine.load_and_prepare_curve(source, return_metadata=True, strict=True)
+                except (CurveImportError, OSError, UnicodeError) as error:
+                    result, reason = None, str(error)
                 if result is None:
-                    print(f"[SKIP] No usable stress–strain data: {source.name}")
+                    if source in catalogue or not self.instron.read(source):
+                        issues.append({'Group': group, 'File': source.name, 'Source File': str(source),
+                                       'Status': 'Import failed', 'Reason': reason})
                     continue
                 strain, stress, acquisition, indices = result
                 records.append({
@@ -292,15 +304,41 @@ class PreviewSession:
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
                     "_acquisition": acquisition, "_measurement_indices": indices,
                     "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                    "_export_test_key": catalogue.get(source, {}).get('_export_test_key', (str(source),)),
                 })
             for record in records:
                 # Operator/location label is not the Instron export-row suffix.
                 # Preserve sample/source IDs for matching, settings and audit.
-                record['specimen_label'] = self.instron.match(group, record)['label']
+                reference = self.instron.match(group, record)
+                record['specimen_label'] = reference['label'] if reference.get('identity_verified') else ''
+                record['_identity_verified'] = reference.get('identity_verified', False)
                 self._bind_fit_context(record)
                 properties = self.engine.specimen_properties(record)
                 record['failure_elongation_pct'] = properties['Failure elongation (%)']
+            # Neither identical content nor two curves claiming one summary row
+            # may silently count twice. The existing exclusion controls resolve
+            # the conflict by leaving at most one candidate included.
+            identities = {}
+            for record in records:
+                reference = self.instron.match(group, record)
+                keys = [('content', record['source_sha256']), ('export', record['_export_test_key'])]
+                if reference.get('source') and reference.get('index') is not None:
+                    keys.append(('row', reference['source'], reference['index']))
+                for identity in keys:
+                    identities.setdefault(identity, []).append(record)
+            # Connected components: A==B by contents and B==C by assigned row
+            # means A and C cannot evade quarantine by excluding only B.
+            components = {specimen_id(r): {specimen_id(r)} for r in records}
+            for candidates in identities.values():
+                merged = set().union(*(components[specimen_id(r)] for r in candidates))
+                for ident in merged:
+                    components[ident] = merged
+            for record in records:
+                component = components[specimen_id(record)]
+                if len(component) > 1:
+                    record['_duplicate_ids'] = sorted(component)
             self._records[group] = records
+            self.import_issues[group] = issues
         return self._records[group]
 
     def included_records(self, groups, spec):
@@ -367,6 +405,18 @@ class PreviewSession:
         if key not in self._property_frames:
             records = self.analysis_records(state, spec, include_excluded=True)
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron, self.project)
+            import pandas as pd
+            self._property_frames[key]['import_diagnostics'] = pd.DataFrame(
+                [issue for group in state['groups'] for issue in self.import_issues.get(group, [])]
+                + [{'Group': '', 'File': '', 'Status': 'Group boundary review', 'Reason': message}
+                   for message in self.discovery_issues],
+                columns=['Group', 'File', 'Status', 'Reason', 'Source File'])
+            self._property_frames[key]['import_summary'] = pd.DataFrame([
+                {'Group': group, 'Tests found': self.imported_counts.get(group, 0),
+                 'Curves loaded': len(self._records.get(group, [])),
+                 'Duplicate candidates': sum(bool(r.get('_duplicate_ids')) for r in self._records.get(group, [])),
+                 'Imports needing attention': len(self.import_issues.get(group, []))}
+                for group in state['groups'] if group in self.files])
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
         # Reorder cached results without recalculating properties or mutating
@@ -407,7 +457,7 @@ class PreviewSession:
     def export_properties(self, state, spec):
         """Explicit table-only export; does not calculate average curves."""
         frames = self.property_tables(state, spec)
-        if frames['tensile_samples'].empty:
+        if frames['tensile_samples'].empty and frames['import_diagnostics'].empty:
             raise ValueError('No specimen data to export.')
         base = self.output_root()
         destination = base / self.engine.safe_filename(spec['name']) / (datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_tables')
@@ -431,6 +481,11 @@ class PreviewSession:
         scope = 'specimen' if state.get('family') == SPECIMEN_FAMILY else state.get('properties_by_group_level', 'group')
         variables = deepcopy(self.project.get(scope + '_variables', {}))
         if scope == 'specimen':
+            # Calculated/exported locations require verified identities. The
+            # lightweight editor catalogue intentionally does not load curves.
+            for group in self.visible_groups(state['groups']):
+                if group in self.files:
+                    self._load(group)
             defaults = {row['id']: row['number'] for row in self.specimen_variable_catalogue(state['groups'])
                         if row['number'] is not None}
             variable = variables[LOCATION]
@@ -2137,23 +2192,33 @@ class TensileWorkbench:
         ids = [ident for _, ident in self.tables.inspector.choice.options if ident]
         if ids:
             self.tables.inspector.select(ids[0])
+        else:
+            self.tables.tabs.selected_index = 0
 
     def _update_fit_warning(self, frames=None):
         samples = frames['tensile_samples'] if frames else None
+        issues = len(frames.get('import_diagnostics', [])) if frames else 0
+        import_note = (f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
+                       f'<b>{issues} import review {"item" if issues == 1 else "items"}</b> · '
+                       'See filenames and reasons in Specimen properties.</div>') if issues else ''
         if samples is None or samples.empty:
-            self.fit_warning.value = ''
-            self.review_fits.disabled = True
+            self.fit_warning.value = import_note
+            self.review_fits.disabled = not issues
             return
         flagged = samples[specimen_review_mask(samples)]
-        self.review_fits.disabled = flagged.empty
+        self.review_fits.disabled = flagged.empty and not issues
         included = int(flagged['Included'].sum())
-        excluded = len(flagged) - included
+        withheld = int(flagged['Duplicate review'].ne('').sum()) if 'Duplicate review' in flagged else 0
+        excluded = len(flagged) - included - withheld
+        duplicate_note = f'{withheld} withheld pending duplicate review. ' if withheld else ''
+        review_note = 'Other checks do not automatically exclude specimens.' if withheld else 'No automatic exclusion.'
         threshold = self.store.data.get('yield_r2_warning', .98)
         self.fit_warning.value = (
             f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
             f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} review</b> · {included} included; {excluded} excluded. '
-            f'Fit, fracture/EL, reconstruction or Instron checks. R² threshold {threshold:.5f}. No automatic exclusion.</div>'
+            + duplicate_note + f'Fit, fracture/EL, reconstruction or Instron checks. R² threshold {threshold:.5f}. {review_note}</div>'
             if len(flagged) else f'Specimen checks: no review items. R² threshold {threshold:.5f}.')
+        self.fit_warning.value += import_note
 
     def _inspect_specimen(self, ident):
         with redirect_stdout(io.StringIO()):
@@ -2176,7 +2241,7 @@ class TensileWorkbench:
             self.tables.set_frames(frames, color_map=self.session.color_map(state, spec),
                                    group_order=state.get('group_order', []))
             self._update_fit_warning(frames)
-            self.table_export_button.disabled = frames['tensile_samples'].empty
+            self.table_export_button.disabled = frames['tensile_samples'].empty and frames['import_diagnostics'].empty
         except Exception as error:
             self.tables.clear('<b>Property tables unavailable:</b> ' + escape(str(error)))
         finally:

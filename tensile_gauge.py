@@ -37,24 +37,46 @@ def group_basis_label(state, spec, group):
 
 def acquisition_metadata(engine, frame, units, strain, stress):
     import numpy as np
+    from tensile_units import conversion, measurement_column, CurveImportError
     x, y = np.asarray(strain, float), np.asarray(stress, float)
     force_col = engine.find_first_col(frame, engine.FORCE_COLS)
-    time_col = engine.find_first_col(frame, ['Time', 'Test time', 'Time (s)'])
+    time_col = measurement_column(frame, 'time')
     force = np.asarray(frame[force_col], float) if force_col else y
     time = np.asarray(frame[time_col], float) if time_col else np.full(len(x), np.nan)
-    time_unit = str(units.get(time_col, '')).lower().strip()
-    time = time * {'s': 1, 'sec': 1, 'min': 60, 'ms': .001}.get(time_unit, np.nan)
+    time_warning = ''
+    try:
+        if time_col:
+            time = time * conversion(time_col, units, 'time')
+    except CurveImportError as error:
+        time[:] = np.nan
+        time_warning = str(error) + ' Time-gap checks unavailable; measurement order used.'
     valid_force = np.isfinite(force)
+    strain_col = engine.find_first_col(frame, engine.STRAIN_COLS) or ''
+    from tensile_units import header_unit, measurement_column
+    stress_col = measurement_column(frame, 'stress') or ''
+    changes = np.diff(x)
+    backwards = changes[np.isfinite(changes) & (changes < 0)]
+    largest_reversal = float(-np.min(backwards)) if len(backwards) else 0.
+    warnings = [time_warning] if time_warning else []
+    finite_x = x[np.isfinite(x)]
+    if len(finite_x) and largest_reversal > max(.01, .001 * np.ptp(finite_x)):
+        warnings.append('Strain reverses in acquisition order. All finite readings are retained; '
+                        'inspect tracking before using strain-derived properties.')
     peak = int(np.argmax(np.where(valid_force, force, -np.inf))) if valid_force.any() else None
     return {'strain': x.copy(), 'stress': y.copy(), 'force': force.copy(),
             'time': time.copy(), 'peak': peak,
             'peak_basis': 'Maximum force' if force_col else 'Maximum engineering stress (force proxy)',
             'force_channel': force_col or '', 'time_channel': time_col or '',
-            'strain_channel': engine.find_first_col(frame, engine.STRAIN_COLS) or ''}
+            'strain_channel': strain_col, 'stress_channel': stress_col,
+            'strain_reversal_count': len(backwards), 'largest_strain_reversal_pct': largest_reversal,
+            'unit_declarations': {kind: {'column': col, 'header_unit': header_unit(col),
+                'units_row': units.get(col, ''), 'scale': conversion(col, units, kind)}
+                for kind, col in (('strain', strain_col), ('stress', stress_col)) if col},
+            'import_warnings': warnings}
 
 
 def prepared_indices(metadata):
-    """Mirror legacy loading cleanup while retaining original acquisition rows."""
+    """Trim invalid leading readings, retaining strain reversals and source rows."""
     import numpy as np
     x, y = metadata['strain'], metadata['stress']
     ids = np.flatnonzero(np.isfinite(x) & np.isfinite(y))
@@ -62,7 +84,6 @@ def prepared_indices(metadata):
     if not len(starts):
         return np.array([], dtype=int)
     ids = ids[starts[0]:]
-    ids = ids[np.r_[True, np.diff(x[ids]) >= 0]]
     return ids[np.argsort(x[ids], kind='stable')]
 
 

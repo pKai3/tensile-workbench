@@ -124,11 +124,24 @@ Research exclusions use file paths relative to the data folder, not absolute mac
 
 ### Calculations
 
+Imports use explicit engineering units from the column heading or units row;
+conflicting declarations and true-only channels require correction. No percent
+conversion is inferred from specimen ductility. `Time (s)` and other recognised
+time units retain acquisition timestamps. Original unit declarations and
+conversion factors are recorded in Audit. Decimal-comma numbers are supported
+in semicolon/tab-delimited files; thousands separators are not inferred.
+
+Finite strain-reversal readings are retained in both prepared views. Initial
+invalid readings are trimmed consistently; fracture selection still uses the
+original acquisition sequence. A reversal larger than the greater of 0.01
+percentage point or 0.1% of recorded strain span triggers review. These are
+application warning thresholds; no smoothing or clipping repairs tracking data.
+
 Per-specimen properties are calculated independently of landmark alignment. A specimen may have valid YS/UTS/elongation/toughness even when its post-UTS segment is insufficient for a landmark curve. Each property keeps its own availability/valid count.
 
-The existing YS calculation is preserved: fit an elastic line to the pre-UTS points between 20% and 50% of specimen UTS (or the analysis's saved fit-fraction override), shift by 0.2% strain, and interpolate the first eligible crossing before UTS. Fit quality and fitted modulus are reported for review. This fitted modulus is not the fixed/group-specific modulus used in work-hardening calculations. Landmark plots consume the same specimen-property calculation.
+Automatic elastic fitting starts with the pre-UTS 20–50% UTS window (or saved fit fractions), then tries progressively lower stress windows, scaled by 0.7 up to fourteen times. A window requires at least twelve points, R² ≥ 0.995 and slopes in its two halves within 2.5% of the whole-window slope. This avoids treating a curved plastic region as elastic merely because its R² is high. The first supported window supplies the modulus; shifting its line by 0.2% strain gives the first eligible crossing before UTS. If no window is supported, automatic E and YS are unavailable and flagged; the starting window remains available for inspection/manual adjustment. This is an application heuristic, not independent calibration of modulus. Fit bounds, point count and method are exported. This fitted modulus is not the fixed/group-specific modulus used in work-hardening calculations. Landmark plots consume the same specimen-property calculation.
 
-Uniform elongation is engineering strain at the first maximum engineering stress. Analysis EL uses a selected original CSV measurement: before a supported sudden load drop, otherwise immediately before load falls below 10% of peak, or a valid manual endpoint. When an export stops before the confirmation thresholds, a supported sudden-drop or terminal-unloading estimate remains usable and review-flagged. Toughness and gauge reconstruction use the same selected measurement. No calculation is replaced by an Instron summary value.
+Uniform elongation is total engineering strain at the first maximum engineering stress in acquisition order. The maximum is not smoothed or replaced by a plateau midpoint. Equal maxima spanning more than 0.1 percentage point produce a review notice and an audited span; noise can still move a unique maximum. This preserves the measured UTS and makes the limitation visible without inventing a new measurement definition. Analysis EL uses a selected original CSV measurement: before a supported sudden load drop, otherwise immediately before load falls below 10% of peak, or a valid manual endpoint. When an export stops before the confirmation thresholds, a supported sudden-drop or terminal-unloading estimate remains usable and review-flagged. Toughness and gauge reconstruction use the same selected measurement. No calculation is replaced by an Instron summary value.
 
 EL provenance is explicit:
 
@@ -159,9 +172,9 @@ Detection uses original force readings, with engineering stress as an explicit p
 - Among qualifying confirmed candidates, select the **largest consecutive loss**, preferring the later candidate on an exact tie. There is no backward onset refinement or strain setback. A preceding change of zero still requires the 5%-of-peak and noise minimums; its ratio is undefined and noted in Audit.
 - The multi-reading heuristic compares load/time rates (or rates per original row when time is unavailable). A leading edge must exceed six times the median absolute rate of the preceding eight increments, plus a noise allowance. Consecutive qualifying increments count as one edge. Geometrically growing windows (bounded by 512 readings and approximately 2% of the continuous record, with a four-reading minimum when available) establish sustained event loss and contrast with preceding unloading. Three recovered readings reject a transient excursion. The largest supported persistent event wins. The leading edge is **not** required to reach a percentage of the later maximum rate: an accelerating collapse can start much more slowly. Within an accelerating lead-in, a further rate jump exceeding six times the immediately preceding rate magnitude (plus noise allowance and the rolling-background check) identifies a sharper transition. Select the first increment of the final consecutive jump cluster before the maximum unloading rate; otherwise retain the initial edge. There is no arbitrary backwards strain setback. The window, event-level loss, rate basis and selected-edge/background rates are recorded in Audit. These are heuristic safeguards, not ISO thresholds or a guarantee of sampling independence.
 - Recovery above 10% of peak after the crossing is flagged. A selected strain below peak-load strain or unusable strain/stress makes the endpoint unavailable.
-- For the multi-reading heuristic, compare force loss per additional strain across the candidate event with the preceding eight-increment baseline. The event uses original strain at the onset and the largest subsequent strain through the event window; the baseline uses net advancing strain and the magnitude of net load change, floored by six noise units. Require an event-to-background ratio greater than six. A force fall with negligible or negative additional strain passes this shape check. A finite advancing baseline is required for corroboration; absent one, retain the load-based candidate with a review warning. This safeguard rejects rapid load/time changes caused by continued ductile extension without altering the literal ISO adjacent-reading rule. It uses no fitted elastic modulus, strain smoothing, or user-assigned brittle/ductile category. The shape-check result and contrast are retained in Audit and inspector details.
+- For the multi-reading heuristic, compare force loss per additional strain across the candidate event with the preceding eight-increment baseline. The event uses original strain at the onset and the largest subsequent strain through the event window; the baseline uses net advancing strain and the magnitude of net load change, floored by six noise units. Require an event-to-background ratio greater than six. A force fall with negligible or negative additional strain passes this shape check. A finite advancing baseline is required for corroboration; absent one, retain the load-based candidate with a review warning. This safeguard rejects rapid load/time changes caused by continued ductile extension alongside the separate adjacent-reading rule. It uses no fitted elastic modulus, strain smoothing, or user-assigned brittle/ductile category. The shape-check result and contrast are retained in Audit and inspector details.
 
-This hybrid combines standards-derived criteria with application safeguards; it is **not a declaration of full ASTM or ISO compliance**. Sampling, quantisation, tracking errors and machine unloading can affect the result. Audit preserves criterion, ISO-style confirmation flag, review reason, original row/time, 10% and 2% rows, decrement evidence, noise floor and thresholds. Clear detected collapses are not review-flagged solely for lacking a recorded 2% confirmation. **Estimated** terminal endpoints remain available for EL, toughness, tensile curves and reconstruction, while their review flags persist; they are not automatically excluded. Selection is independent of Instron EL and precedes gauge reconstruction. The legacy `fracture_slope_fraction` setting is retained but unused.
+These documented numerical rules are workbench policy, **not a declaration of ASTM or ISO compliance**. The current licensed ASTM clause wording and ISO attribution of the five-times rule have not been verified. The legacy Audit field named ISO-style confirmation means only that a below-2% reading was observed; it is not certification. Sampling, quantisation, tracking errors and machine unloading can affect the result. Audit preserves criterion, ISO-style confirmation flag, review reason, original row/time, 10% and 2% rows, decrement evidence, noise floor and thresholds. Clear detected collapses are not review-flagged solely for lacking a recorded 2% confirmation. **Estimated** terminal endpoints remain available for EL, toughness, tensile curves and reconstruction, while their review flags persist; they are not automatically excluded. Selection is independent of Instron EL and precedes gauge reconstruction. The legacy `fracture_slope_fraction` setting is retained but unused.
 
 References: [ASTM E8/E8M-25](https://store.astm.org/e0008_e0008m-25.html) and [ISO 6892-1:2019](https://www.iso.org/standard/78322.html).
 
@@ -210,6 +223,39 @@ Overrides belong to specimens, not analyses. Tables show **Fit method**; stale o
 The ignored personal project JSON stores the specimen identity, raw-file fingerprint, bounds/endpoints, reason, timestamp, original automatic results and apply/restore history. Exported checks include the active definition and original automatic snapshot; export settings include relevant history. If a CSV's contents change, its override is flagged as stale and not applied: the automatic calculation is used until reviewed. Moving the data directory preserves relative identities; renaming a specimen transfers its override only after a verified move is explicitly approved. Nothing edits the source CSVs.
 
 ### Instron summaries: CSV, PDF fallback and missing summaries
+
+**Unverified assignments are inspection-only.** Both the name/export-row match
+and original-CSV UTS agreement must pass before summary values can supply
+reference statistics, gauge reconstruction or automatic Location. Candidate
+values and comparison evidence remain in Audit. Correct the source identity and
+reload; UTS-compatible suggestions never reassign a specimen automatically.
+Raw CSV calculations remain available when a reference is unverified.
+
+Identical file contents, repeated export row names (including `_N_1` copies), or
+multiple curves claiming the same summary row are marked as duplicate candidates.
+While more than one candidate is included, none contributes to statistics or
+plots. Keep the intended copy with the existing **Data use** controls by excluding
+the others. No files are removed. Duplicate review follows global inclusion and
+any explicit analysis exceptions; leaving one candidate resolves it.
+
+The tables distinguish **tests found**, **curves loaded**, duplicate candidates
+and **imports needing attention**. Tests found counts recognised raw records,
+deduplicating explicit export-row identities; it is not a count of successful
+fits or a certification of how many physical tests occurred. A failed import
+remains listed with its filename and reason, even if every file in a group fails.
+Exported **Import counts** and **Import issues** preserve this information.
+
+The main **Specimens** export blanks every property excluded by the effective
+data-use policy, including fully excluded specimens. Its numeric column means,
+sample SDs and counts therefore agree with **Summary**. **Raw specimen values**
+retains unmasked values for inspection, with the same stable IDs and policy
+columns; ordinary averages of that sheet do not represent the eligible population.
+
+Automatic Location records its operator label and trailing numeric token in
+Audit. Suspected treatment/date/repeat tokens and locations above the declared
+specimen count generate soft notices. Build-wide numbering is allowed; no
+location is rejected for exceeding the count. An explicit Location overrides the
+inference. Unloaded/unverified labels do not supply automatic plotting locations.
 
 Place group summaries in the corresponding `<chosen data folder>/<group>/` folder. Embedded summary tables in specimen CSVs are supported too. CSV summaries take priority; where no relevant CSV summary exists, the workbench reads numbered text tables from PDF reports. A present CSV with missing/conflicting values or an unmatched row remains flagged rather than being silently replaced with PDF data. Summary rows are never treated as raw curve points.
 

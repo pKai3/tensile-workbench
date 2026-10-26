@@ -95,13 +95,18 @@ class SpecimenCatalogueTests(unittest.TestCase):
                 view.all_groups.value = True
                 self.assertEqual(render.call_count, 1)
             self.assertEqual(cell(view, LOCATION, 'Alloy A/coupon_1.csv'), '12')
-            self.assertEqual(app._specimen_numbers['Unselected/Batch.is_tens_Exports/Batch_1.csv'], 4)
+            # A label-only scan can display the candidate, but cannot certify
+            # its Location before the original CSV UTS has been checked.
+            self.assertIsNone(app._specimen_numbers['Unselected/Batch.is_tens_Exports/Batch_1.csv'])
+            self.assertIn('705_AB_#04', app._specimen_variable_labels['Unselected/Batch.is_tens_Exports/Batch_1.csv'])
             view.all_groups.value = False
             self.assertEqual(cell(view, LOCATION, 'Alloy A/coupon_1.csv'), '12')
         self.assertEqual(set(app.session._records), before)
         (other.parent / 'Batch.csv').write_text(numbered_summary.replace('705_AB_#04', '705_AB_#08'))
         app.session.reload_data()
-        self.assertEqual(app.session.specimen_variable_catalogue(['Unselected'])[0]['number'], 8)
+        refreshed = app.session.specimen_variable_catalogue(['Unselected'])[0]
+        self.assertIn('705_AB_#08', refreshed['label'])
+        self.assertIsNone(refreshed['number'])
 
     def test_large_table_browses_all_specimens_without_losing_hidden_drafts(self):
         ids = [f'Group/specimen_{i:04}.csv' for i in range(1000)]

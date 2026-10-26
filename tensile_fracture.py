@@ -538,18 +538,23 @@ def fracture_curve(record):
         acquisition = record.get('_acquisition', {})
         if 'strain' in acquisition and np.isfinite(endpoint.get('row_before', np.nan)):
             stop = int(endpoint['row_before'])
-            prefix = {'strain_pct': np.asarray(acquisition['strain'])[:stop],
-                      'stress_mpa': np.asarray(acquisition['stress'])[:stop],
-                      '_measurement_indices': np.arange(stop)}
+            from tensile_gauge import prepared_indices
+            metadata = {'strain': np.asarray(acquisition['strain'])[:stop],
+                        'stress': np.asarray(acquisition['stress'])[:stop]}
+            retained = prepared_indices(metadata)
+            prefix = {'strain_pct': metadata['strain'][retained],
+                      'stress_mpa': metadata['stress'][retained],
+                      '_measurement_indices': retained}
         else:
             stop = endpoint.get('supplied_index', len(record['strain_pct']) - 1) + 1
             prefix = {'strain_pct': np.asarray(record.get('raw_strain_pct', record['strain_pct']))[:stop],
                       'stress_mpa': np.asarray(record.get('raw_stress_mpa', record['stress_mpa']))[:stop],
                       '_measurement_indices': np.full(stop, -1)}
         x, y, ids = prepared_points(prefix)
-        starts = np.flatnonzero((x >= 0) & (y >= 0))
-        if len(starts):
-            x, y, ids = x[starts[0]:], y[starts[0]:], ids[starts[0]:]
+        if 'strain' not in acquisition:
+            starts = np.flatnonzero((x >= 0) & (y >= 0))
+            if len(starts):
+                x, y, ids = x[starts[0]:], y[starts[0]:], ids[starts[0]:]
     end = endpoint['strain_pct']
     if not len(x) or not x[0] < end <= x[-1]:
         raise ValueError('Detected fracture endpoint is outside the analysis curve')

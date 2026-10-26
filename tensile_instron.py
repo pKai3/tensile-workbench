@@ -33,22 +33,23 @@ def _field(header):
 
 def _number(value, unit, kind):
     try:
-        number = float(str(value).strip())
+        number = float(str(value).strip().replace(',', '.'))
     except ValueError:
         return np.nan
     if not np.isfinite(number):
         return np.nan
-    unit = unit.strip().strip('()[]').strip().lower()
-    scales = {'stress': {'mpa': 1, 'pa': 1e-6, 'gpa': 1000},
-              'modulus': {'gpa': 1, 'mpa': .001, 'pa': 1e-9},
-              'strain': {'%': 1, 'percent': 1}, 'length': {'mm': 1, 'm': 1000}}
+    from tensile_units import UNITS, unit_key
+    unit = unit_key(unit.strip().strip('[]'))
+    scales = {'stress': UNITS['stress'],
+              'modulus': {key: factor / 1000 for key, factor in UNITS['stress'].items()},
+              'strain': UNITS['strain'], 'length': {'mm': 1, 'm': 1000}}
     return number * scales.get(kind, {}).get(unit, np.nan)
 
 
 def reported_resolution(value):
     """Least significant printed digit, including trailing zeros/scientific notation."""
     try:
-        number = Decimal(str(value).strip())
+        number = Decimal(str(value).strip().replace(',', '.'))
         if number.is_finite():
             result = float(Decimal(10) ** number.as_tuple().exponent)
             if np.isfinite(result) and result > 0:
@@ -73,7 +74,7 @@ def raw_check_precision(frame, has_units, stress_column, strain_column, metadata
         for index in peak_ids:
             token = raw.iloc[int(index)][column]
             try:
-                original = float(token)
+                original = float(str(token).replace(',', '.'))
                 # Conversion scale inferred from this exact original/converted
                 # pair, so the check uses the loader's existing unit handling.
                 scale = abs(values[index] / original) if original != 0 else np.nan
@@ -126,6 +127,12 @@ def _verify_reference(result, record, name_ok, name_failures=()):
             failures.append(note)
     result['check_failures'] = list(dict.fromkeys(failures))
     result['check_values'] = audit
+    result['identity_verified'] = bool(name_ok and not name_failures and passed)
+    result['candidate_values'] = dict(result['values'])
+    if not result['identity_verified']:
+        result['values'] = {key: np.nan for key in result['values']}
+        result['check_failures'].append('Instron assignment unverified: candidate values are inspection-only; '
+            'reference statistics, gauge reconstruction and automatic Location are unavailable.')
     return result
 
 
@@ -252,7 +259,7 @@ def read_catalogue_csv(path, strain_names, load_names, *, byte_limit=262144, met
                     names = {_normal(value) for value in row}
                     if any('results table' in value for value in names):
                         info['summary_present'] = True
-                    if names & strain_names and names & load_names:
+                    if is_measurement_header(row):
                         info['is_curve'] = True
                         return True, rows
                     if ended:
@@ -368,6 +375,13 @@ class InstronSummaries:
         self._pdf = {}
         self._pdf_info = {}
 
+    def _group_files(self, group, suffix):
+        directory = Path(self.group_directories.get(group, self.root / group))
+        children = [Path(path) for name, path in self.group_directories.items()
+                    if name != group and Path(path).is_relative_to(directory)]
+        return [path for path in data_files(directory, suffix)
+                if not any(path.is_relative_to(child) for child in children)]
+
     def _choose_candidates(self, group, source, embedded, group_rows, info):
         """CSV takes precedence even if its row is missing or its values conflict."""
         candidates, method, review = _summary_candidates(source, embedded, group_rows)
@@ -382,8 +396,7 @@ class InstronSummaries:
         if embedded or candidates or relevant_csv:
             return candidates, method, review, relevant_csv, []
         if group not in self._pdf_groups:
-            directory = self.group_directories.get(group, self.root / group)
-            self._pdf_groups[group] = data_files(directory, '.pdf')
+            self._pdf_groups[group] = self._group_files(group, '.pdf')
         paths = self._pdf_groups[group]
         # Named reports first. Exact operator-label fallback can handle a renamed
         # report, but never borrow a row number from a different dataset.
@@ -420,8 +433,11 @@ class InstronSummaries:
                     continue
                 candidates, _, _, _, _ = self._choose_candidates(group, source, embedded, group_rows, info)
                 labels = sorted({row['label'] for row in candidates if row['label']})
+                dataset, index = _export_identity(source)
                 records.append({'source_file': str(source), 'sample': source.stem,
-                                'specimen_label': ' / '.join(labels)})
+                                'specimen_label': ' / '.join(labels),
+                                '_export_test_key': (str(source.parent), dataset, index) if index is not None else (str(source),),
+                                '_identity_verified': False})
             self._catalogues[group] = records
         return self._catalogues[group]
 
@@ -438,14 +454,13 @@ class InstronSummaries:
         dataset, index = _export_identity(source)
         if not embedded:
             if group not in self._groups:
-                directory = self.group_directories.get(group, self.root / group)
-                self._groups[group] = [(path, self.read(path)) for path in csv_files(directory)
+                self._groups[group] = [(path, self.read(path)) for path in self._group_files(group, '.csv')
                                        if not re.search(r'\.(?:is|id)_tens_Exports$', path.parent.name, re.I)]
         candidates, method, review_rows, inputs, errors = self._choose_candidates(
             group, source, embedded, self._groups.get(group, []), self._csv_info)
         result = {'values': {}, 'status': 'Unavailable', 'notes': '', 'source_note': '',
                   'source': '', 'source_format': '', 'source_pages': '', 'availability': 'unavailable',
-                  'sha256': '', 'index': index, 'label': '', 'excluded': False}
+                  'sha256': '', 'index': index, 'label': '', 'excluded': False, 'identity_verified': False}
         if not candidates:
             if not inputs:
                 result.update(status='CSV only', availability='csv_only',

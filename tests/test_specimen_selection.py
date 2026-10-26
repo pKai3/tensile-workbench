@@ -191,6 +191,7 @@ class SelectionTests(FixtureTests):
         duplicate = source.parent / 'nested/coupon_1.csv'
         duplicate.parent.mkdir()
         shutil.copy2(source, duplicate)
+        (source.parent / '.tensile-group').touch()
         self.app.session.reload_data()
         self.exclude('nested/coupon_1.csv')
         rows = self.frames()['tensile_samples']

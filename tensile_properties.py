@@ -7,6 +7,7 @@ from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
+ELASTIC_METHOD = 'Stable elastic-window search (v1)'
 
 EL_SOURCE_FIELDS = (
     ('Instron', 'Instron summary EL (%)'),
@@ -80,13 +81,42 @@ def _specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
     r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
     key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True),
            json.dumps(record.get('_failure_override'), sort_keys=True),
-           record.get('source_sha256'), FRACTURE_METHOD)
+           record.get('source_sha256'), FRACTURE_METHOD, ELASTIC_METHOD)
     cache = record.setdefault('_property_cache', {})
     if key in cache:
         return dict(cache[key])
     p = specimen_calculation(record, (low, high), r2_warning)['properties']
     cache[key] = dict(p)
     return p
+
+
+def automatic_elastic_mask(x, y, peak, uts, low, high):
+    """Prefer the requested window only when its slope is stable throughout.
+
+    Search progressively lower stress ranges, not a maximum-slope single
+    interval. Require a resolved span and agreement of independent halves.
+    If none is supported, retain the starting window for inspection but do not
+    publish its unsupported modulus or offset yield.
+    Thresholds are application validation safeguards, not material constants.
+    """
+    fallback = (np.arange(len(x)) < peak) & (y >= low * uts) & (y <= high * uts)
+    for scale in .7 ** np.arange(15):
+        mask = (np.arange(len(x)) < peak) & (y >= low * scale * uts) & (y <= high * scale * uts)
+        ids = np.flatnonzero(mask)
+        if len(ids) < 12 or np.ptp(x[ids]) <= 0:
+            continue
+        halves = np.array_split(ids, 2)
+        if any(np.ptp(x[part]) <= 0 for part in halves):
+            continue
+        slope, intercept = np.polyfit(x[ids], y[ids], 1)
+        slopes = [np.polyfit(x[part], y[part], 1)[0] for part in halves]
+        residual = y[ids] - (slope * x[ids] + intercept)
+        total = np.sum((y[ids] - np.mean(y[ids])) ** 2)
+        r2 = 1 - np.sum(residual ** 2) / total if total else 0.
+        if slope > 0 and r2 >= .995 and abs(slopes[0] - slopes[1]) / slope <= .025:
+            return mask, ''
+    return fallback, ('Automatic elastic region is not stable across its two halves. '
+                      'Review the fit range before using YS or elastic modulus.')
 
 
 def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning=.98, *, override=USE_RECORD):
@@ -112,6 +142,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
          'Fit method': ('Manual range' if active['mode'] == 'range' else 'Manual line') if active else 'Automatic',
          'Override status': 'Stale source — not applied' if stale else ('Applied' if active else 'None'),
          'R2 warning threshold': r2_warning, 'Fit point count': 0,
+         'Automatic fit warning': '', 'Automatic fit strategy': ELASTIC_METHOD,
          'Fit lower strain (%)': np.nan, 'Fit upper strain (%)': np.nan}
     for field in ('Yield (MPa)', 'Yield strain (%)', 'UTS (MPa)', 'Uniform elongation (%)',
                   'Failure elongation (%)', 'Toughness (MJ/m^3)', 'Fitted E (GPa)',
@@ -146,6 +177,13 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
         raw_strain = np.asarray(acquisition.get('strain', []), dtype=float)
         p['Uniform elongation (%)'] = (float(raw_strain[raw_peak])
             if raw_peak < len(raw_strain) and np.isfinite(raw_strain[raw_peak]) and raw_strain[raw_peak] >= 0 else np.nan)
+        ties = valid_stress[raw_stress[valid_stress] == raw_stress[raw_peak]]
+        strains = raw_strain[ties] if len(raw_strain) == len(raw_stress) else np.array([])
+        strains = strains[np.isfinite(strains)]
+        p['Uniform elongation peak span (%)'] = float(np.ptp(strains)) if len(strains) else np.nan
+        if len(strains) > 1 and np.ptp(strains) > .1:
+            p['Uniform elongation warning'] = (f'Uniform EL: maximum-stress plateau spans {strains.min():.2f}–'
+                f'{strains.max():.2f}%; the first recorded maximum is used. Review the peak region.')
     try:
         if len(x) < 20:
             raise ValueError('fewer than 20 valid strain points')
@@ -159,14 +197,15 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
             elastic = (np.arange(len(x)) < peak) & (x >= left) & (x <= right)
             p['Yield method'] = '0.2% offset, ' + p['Fit method'].lower()
         else:
-            elastic = (np.arange(len(x)) < peak) & (y >= low * uts) & (y <= high * uts)
+            elastic, p['Automatic fit warning'] = automatic_elastic_mask(x, y, peak, uts, low, high)
         calculation['elastic_mask'] = elastic
         p.update({'Fit lower stress (MPa)': low * uts, 'Fit upper stress (MPa)': high * uts})
         p['Fit point count'] = int(elastic.sum())
         if elastic.any():
             p.update({'Fit lower strain (%)': float(x[elastic][0]), 'Fit upper strain (%)': float(x[elastic][-1])})
-            if active:
-                p.update({'Fit lower stress (MPa)': float(y[elastic].min()), 'Fit upper stress (MPa)': float(y[elastic].max())})
+            p.update({'Fit lower stress (MPa)': float(y[elastic].min()), 'Fit upper stress (MPa)': float(y[elastic].max())})
+        if p['Automatic fit warning']:
+            raise ValueError(p['Automatic fit warning'])
         if elastic.sum() < 5 or np.ptp(x[elastic]) <= 0:
             raise ValueError('insufficient elastic data for offset yield')
         if active and active['mode'] == 'line':
@@ -199,7 +238,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
         p['Notes'] = str(error)
     if stale:
         p['Notes'] = ('Saved override does not match the current source; automatic fit used. ' + p['Notes']).strip()
-    p['Fit review required'] = bool(stale or p['Yield status'] != 'resolved' or
+    p['Fit review required'] = bool(stale or p['Automatic fit warning'] or p['Yield status'] != 'resolved' or
                                    not np.isfinite(p['Elastic fit R2']) or p['Elastic fit R2'] < r2_warning)
     automatic = specimen_calculation(record, (low, high), r2_warning, override=None) if active else None
     baseline = automatic['properties'] if automatic else p

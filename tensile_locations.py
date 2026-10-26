@@ -14,9 +14,30 @@ REQUIRED_VARIABLES = {
 
 def specimen_number(record):
     """Read a separated operator number (e.g. Wall_04 or Wall_#4), not a CSV row."""
+    if record.get('_identity_verified') is False:
+        return None
     label = str(record.get('specimen_label') or '').strip()
     match = re.fullmatch(r'(?:.*?[_\s#-])?(\d+)', label)
     return int(match[1]) if match and '/' not in label else None
+
+
+def location_details(record, project, group):
+    """Explain a default without rejecting legitimate build-wide numbering."""
+    from tensile_selection import specimen_id
+    explicit = project.get('specimen_variables', {}).get(LOCATION, {}).get('values', {})
+    label = str(record.get('specimen_label') or '')
+    number = explicit.get(specimen_id(record), specimen_number(record))
+    manual = specimen_id(record) in explicit
+    token = re.search(r'\d+$', label) if not manual and number is not None else None
+    notes = []
+    if token and re.search(r'(?:°|\b(?:temp|temperature|repeat|retest|cycle|batch|run|hour|minute)s?\b|\d{4}[-/]\d)', label, re.I):
+        notes.append('Location default may be a treatment/date/repeat number; check the operator label or enter Location explicitly.')
+    total = project.get('group_variables', {}).get(SPECIMEN_COUNT, {}).get('values', {}).get(group)
+    if number is not None and total is not None and number > total:
+        notes.append('Location exceeds the group specimen count; retained (build-wide numbering is allowed).')
+    return {'Location used': number, 'Location source': 'Override' if manual else 'Operator label' if number is not None else 'Unavailable',
+            'Location automatic token': token[0] if token else '', 'Location operator label': label,
+            'Location review': ' '.join(notes)}
 
 
 def whole_number(value):

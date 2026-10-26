@@ -37,7 +37,9 @@ class FolderDiscoveryTests(unittest.TestCase):
             f'{deep}/Sample X': [first], f'{deep}/Sample Y': [second],
             'Colleague/Sample X': [other]})
 
-    def test_instrument_file_or_summary_keeps_nested_runs_in_same_group(self):
+    def test_explicit_group_boundary_keeps_nested_runs_in_same_group(self):
+        self.file('Owner/Project/Alloy/.tensile-group')
+        self.file('Owner/Other/.tensile-group')
         self.file('Owner/Project/Alloy/test.is_tens')
         a = self.file('Owner/Project/Alloy/run1/coupon.csv')
         b = self.file('Owner/Project/Alloy/run2/coupon.csv')
@@ -45,6 +47,15 @@ class FolderDiscoveryTests(unittest.TestCase):
         c = self.file('Owner/Other/run3/coupon.csv')
         self.assertEqual(discover_sample_groups(self.root), {
             'Owner/Project/Alloy': [a, b], 'Owner/Other': sorted([summary, c])})
+
+    def test_parent_csv_and_empty_exports_do_not_pool_materials(self):
+        a = self.file('Owner/Alloy A/coupon.csv')
+        b = self.file('Owner/Alloy B/coupon.csv')
+        self.file('Owner/specimen list.csv')
+        (self.root / 'Owner/Old exports').mkdir()
+        found = discover_sample_groups(self.root)
+        self.assertEqual(found, {'Owner/Alloy A': [a], 'Owner/Alloy B': [b]})
+        self.assertIn('kept separate', found.warnings[0])
 
     def test_hard_ignore_applies_to_every_folder_level_and_filename(self):
         good = self.file('Owner/Project/Alloy/good.csv')
