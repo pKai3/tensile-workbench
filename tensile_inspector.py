@@ -647,6 +647,8 @@ def inspection_summary(payload):
                       'Points below 10% UTS are excluded from automatic fitting to avoid initial seating; '
                       'the measured curve and manual fit choices are unchanged. '
                       'A short, steeper patch is set aside when a wider supported line also explains its readings. '
+                      'Partially overlapping windows are compared on their common readings when they share '
+                      'at least half of the shorter interval. '
                       f'{escape(p.get("Automatic fit support", ""))}; half-window slope difference '
                       f'{number(p.get("Automatic fit half-slope difference (%)", np.nan))}%.</p>')
     result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.5f}. '

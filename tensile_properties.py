@@ -7,7 +7,7 @@ from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
-ELASTIC_METHOD = 'Context-supported elastic-window search (v4)'
+ELASTIC_METHOD = 'Context-supported elastic-window search (v5)'
 AUTOMATIC_FIT_MIN_UTS_FRACTION = .10
 
 EL_SOURCE_FIELDS = (
@@ -166,18 +166,32 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
     def explained_by_wider_window(local):
         for context in candidates:
             if (context['width'] < 1.5 * local['width']
-                    or (local['strict'] and not context['strict'])
-                    or context['lower'] > local['lower'] + 1e-12
-                    or context['upper'] < local['upper'] - 1e-12):
+                    or (local['strict'] and not context['strict'])):
                 continue
-            # OLS residuals are orthogonal to x and the intercept. These moments
-            # give the wider line's RMS error on the *local* readings without
-            # masking a bad local prediction with a large whole-curve R².
-            bias = context['slope'] * local['mean_x'] + context['intercept'] - local['mean_y']
-            mse = (local['mse'] + bias ** 2
-                   + (context['slope'] - local['slope']) ** 2 * local['variance_x'])
-            tolerance = max(2 * np.sqrt(local['mse']), 2 * np.sqrt(context['mse']),
-                            .05 * local['stress_span'])
+            lower = max(local['lower'], context['lower'])
+            upper = min(local['upper'], context['upper'])
+            if upper - lower < .5 * local['width'] - 1e-12:
+                continue
+            if (context['lower'] <= local['lower'] + 1e-12
+                    and context['upper'] >= local['upper'] - 1e-12):
+                # OLS residuals are orthogonal to x and the intercept. For full
+                # containment these moments give the wider line's local error.
+                bias = context['slope'] * local['mean_x'] + context['intercept'] - local['mean_y']
+                mse = (local['mse'] + bias ** 2
+                       + (context['slope'] - local['slope']) ** 2 * local['variance_x'])
+                local_mse, span = local['mse'], local['stress_span']
+            else:
+                # A short patch may straddle the edge of a much broader fit.
+                # Compare BOTH lines on the same overlapping readings rather
+                # than extrapolating the wider line into a discarded boundary.
+                shared = (loading_y >= lower * uts) & (loading_y <= upper * uts)
+                if np.count_nonzero(shared) < 12:
+                    continue
+                xx, yy = loading_x[shared], loading_y[shared]
+                mse = np.mean((yy - (context['slope'] * xx + context['intercept'])) ** 2)
+                local_mse = np.mean((yy - (local['slope'] * xx + local['intercept'])) ** 2)
+                span = np.ptp(yy)
+            tolerance = max(2 * np.sqrt(local_mse), 2 * np.sqrt(context['mse']), .05 * span)
             if mse <= tolerance ** 2:
                 return True
         return False

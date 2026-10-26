@@ -135,3 +135,19 @@ elastic regions above the new cutoff; below-cutoff tests now require explicit
 rejection and check that manual fitting recovers the known properties. Real-data
 checks cover 168 unambiguously located curves plus the specifically identified
 example paths. The checks do not establish calibration or universal fit accuracy.
+
+## Follow-up — overlapping elastic intervals
+
+A further reported curve exposed a boundary case in the contextual check: a
+short early interval could override a wider supported region when neither
+window fully contained the other. Version 5 also compares partially overlapping
+windows on their shared readings. The wider interval must be at least 1.5 times
+as wide, overlap at least half the local range, and share twelve readings. The
+existing residual limits and stricter support-tier requirement remain in place.
+
+New known-property fixtures cover an early tracking transient and genuine short
+elastic regions followed by broad plastic flow. All 454 tests pass, including
+all 14 focused elastic tests. A read-only comparison of 168 curves finds nine
+modulus changes above 0.01%, with 159 unchanged and no E/YS results newly
+unavailable. This quantifies the change's scope without treating finite results
+as proof of physical accuracy.

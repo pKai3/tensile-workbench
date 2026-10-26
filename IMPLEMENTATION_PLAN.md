@@ -2,6 +2,25 @@
 
 ## Change notes — 2026-10-26
 
+### Overlapping elastic-fit interval correction
+
+- A short early steep patch could override a sustained loading region because
+  the contextual comparison required full containment. Compare partially
+  overlapping windows as well, using the same common readings for both lines.
+- Require the wider supported interval to span at least 1.5 times the local
+  range, overlap at least half of it, and share at least twelve readings. Keep
+  the existing residual limits and stricter support-tier requirement.
+- Preserve the seating cutoff, distinct short elastic regions, manual fits and
+  raw readings. Advance the method/cache version to v5 and update the inspector
+  explanation and guide.
+- Add regressions for early tracking transients and distinct short elastic
+  regions followed by broad plastic flow. All 454 tests pass, including all 14
+  focused elastic tests.
+  A read-only comparison of 168 previously checked curves changes nine moduli
+  by more than 0.01%; 159 remain unchanged and no E/YS result becomes unavailable.
+  Three earlier reported fit cases checked here remain unchanged. This checks
+  availability and regression scope, not physical accuracy of every fit.
+
 ### Seating cutoff and review-view refinements
 
 - Automatic elastic fits exclude readings below 10% UTS. Preserve measured

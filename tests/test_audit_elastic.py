@@ -72,6 +72,46 @@ class ElasticWindowAuditTests(unittest.TestCase):
                 self.assertEqual(p['Automatic fit support'], 'Measurement-noise tolerance')
                 self.assertFalse(p['Fit review required'])
 
+    def test_initial_tracking_transient_cannot_displace_overlapping_sustained_elastic_fit(self):
+        # Known 110 GPa response. An early strain-tracking bias accumulates up
+        # to 300 MPa, then stays constant, producing a short steeper patch at
+        # the edge of a much longer elastic interval. The intervals overlap;
+        # neither has to contain the other for their shared readings to agree.
+        stress = np.linspace(0., 1000., 8000)
+        for bias_rate in (.00015, .0002, .00025):
+            for seed in range(5):
+                with self.subTest(bias_rate=bias_rate, seed=seed):
+                    strain = 100 * (stress / 110000. + np.maximum(stress - 900., 0.) / 2000.)
+                    strain -= bias_rate * np.minimum(stress, 300.)
+                    strain += np.random.default_rng(seed).normal(0., .002, len(stress))
+                    record = {'sample': 'initial tracking transient', 'source_file': 'synthetic.csv',
+                              'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                              'stress_mpa': np.r_[stress, 500., 0.]}
+                    before_x, before_y = record['strain_pct'].copy(), record['stress_mpa'].copy()
+                    p = specimen_calculation(record)['properties']
+                    self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=1.)
+                    self.assertAlmostEqual(p['Yield (MPa)'], 904., delta=.5)
+                    self.assertGreater(p['Fit upper stress (MPa)'] - p['Fit lower stress (MPa)'], 500.)
+                    self.assertFalse(p['Fit review required'])
+                    np.testing.assert_array_equal(before_x, record['strain_pct'])
+                    np.testing.assert_array_equal(before_y, record['stress_mpa'])
+
+    def test_distinct_early_elastic_line_is_not_replaced_by_a_broad_plastic_line(self):
+        stress = np.linspace(0., 1000., 10000)
+        for elastic_end in (200., 300., 400.):
+            for plastic_compliance in (2000., 15000., 40000.):
+                with self.subTest(elastic_end=elastic_end, plastic_compliance=plastic_compliance):
+                    strain = 100 * (stress / 110000.
+                                    + np.maximum(stress - elastic_end, 0.) / plastic_compliance)
+                    record = {'sample': 'distinct early elastic region', 'source_file': 'synthetic.csv',
+                              'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                              'stress_mpa': np.r_[stress, 500., 0.]}
+                    p = specimen_calculation(record)['properties']
+                    self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=.5)
+                    self.assertAlmostEqual(p['Yield (MPa)'], elastic_end + .002 * plastic_compliance, delta=.5)
+                    self.assertLess(p['Fit upper stress (MPa)'], elastic_end + .2)
+                    self.assertFalse(p['Fit review required'])
+
     def test_search_moves_above_seating_region_without_smoothing_measurements(self):
         for seed in range(20):
             with self.subTest(seed=seed):
