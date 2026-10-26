@@ -2,6 +2,20 @@
 
 ## Change notes — 2026-10-26
 
+### Group yield-fit overview
+
+- Add a lazy **Group yield fits** tab with naturally ordered specimen cards,
+  shared or individual axes, responsive one/two/three-column layouts and a
+  direct **Inspect / adjust** action for each specimen.
+- Reuse the calculation inspector's exact fit points, lines and yield marker;
+  show R² to five decimal places on every plot, including unavailable/review
+  states. Identify saved manual fits, exclusion modes and duplicate withholding.
+- Crop display arrays to the yield region without changing acquisition order,
+  preserving reversals and gaps. Changing columns or scales does not recalculate.
+- Verification: 448 tests pass, including five new rendering, lifecycle and
+  inspector-integration checks. Browser review on synthetic data verified
+  initial shared axes, aligned cards, column/axis controls and inspector navigation.
+
 ### Automatic elastic-fit local-patch correction
 
 - Real-curve review exposed a second problem in v2: a short, locally straight

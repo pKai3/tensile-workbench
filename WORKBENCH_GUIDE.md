@@ -75,6 +75,12 @@ Expand **Specimen properties · tables and calculation inspector** above the plo
 
 Filtering and sorting affect only the displayed tables, not analysis selection or exported populations. Ordinary results display two decimals. Summary means, ± symbols and SDs align separately down each property/source column for easier comparison. Elastic-fit R², its warning threshold and fit/yield strain details display five decimals in tables, inspector readouts and Excel; yield-detail strain tooltips also use five decimals. Calculations, comparisons and Excel cell values retain full precision. Counts and row identifiers remain integers. Editable settings retain their entered precision. Missing/unresolved results remain blank, never zero. Summary SD is unavailable for n=1.
 
+### Group yield fits
+
+The **Group yield fits** tab shows one yield-detail plot per specimen in the chosen sample group, ordered by specimen name. Every plot shows the measured curve, selected fit points, elastic line, 0.2% offset line and Calc YS, with **R² to five decimal places** above it. The heading identifies automatic or saved manual fits and shows E and YS. Missing fits show “R² unavailable”; high R² alone does not establish that the selected interval represents the elastic region.
+
+Choose one, two or three columns, and use **Use the same axes** to compare specimens on common scales. Narrow windows reduce the number of columns automatically. Fully excluded specimens are visible by default with their exclusion labels; display controls do not change inclusion or calculations. **Inspect / adjust** opens that specimen in the existing calculation inspector. The grid loads only when its tab is opened, uses the current analysis settings and saved overrides, and does not refit specimens when changing scales or columns.
+
 ### Summary comparison and inspector layout
 
 Calc–Instron comparison plots use the **formal sample-group name** (the final group-folder name), not the publication label override. Folder-qualified identities still distinguish otherwise identically named groups internally. Publication plots keep their own chosen labels.

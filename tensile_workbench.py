@@ -354,6 +354,7 @@ class PreviewSession:
     def group_review_records(self, group, spec):
         fractions = spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS)
         return [{**self.selected_record(row, spec),
+                 '_review_fit_fractions': tuple(fractions),
                  '_review_properties': self.engine.specimen_properties(row, fractions,
                      self.engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)} for row in self._load(group)]
 
@@ -1215,7 +1216,7 @@ class TensileWorkbench:
         self.saved_overrides = SavedOverridesView(w, self.store, self.session,
             before_apply=self.save_current, after_apply=self._saved_overrides_applied)
         for component in (self.move_review, self.saved_overrides, self.tables.inspector,
-                          self.tables.group_review, self.tables.comparison, self.viewer):
+                          self.tables.group_review, self.tables.yield_review, self.tables.comparison, self.viewer):
             component.activity = self.activity
         self.pages = w.Tab(children=[self.analysis_ui, self.saved_overrides.ui],
                            layout=w.Layout(width='100%', min_width='0'))

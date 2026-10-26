@@ -557,6 +557,7 @@ class PropertyTablesView:
         from tensile_inspector import SpecimenInspector
         from tensile_comparison import ComparisonView
         from tensile_group_review import GroupCurveReview
+        from tensile_yield_review import GroupYieldReview
         w = widgets
         self.frames = {}
         self.color_map = {}
@@ -591,12 +592,16 @@ class PropertyTablesView:
         self.comparison = ComparisonView(w)
         self.group_review = GroupCurveReview(w, loader=group_loader, aligned_loader=aligned_group_loader,
                                            on_selection=on_selection, on_inspect=self.open_inspector)
+        self.yield_review = GroupYieldReview(w, loader=group_loader, on_inspect=self.open_inspector)
         summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
-        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui, self.group_review.ui],
+        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui, self.group_review.ui,
+                                   self.yield_review.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
-        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector', 'Group curve review']):
+        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector', 'Group curve review',
+                                  'Group yield fits']):
             self.tabs.set_title(i, name)
         self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 3), names='selected_index')
+        self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 4), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
         self.source_status = w.HTML()
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
@@ -630,6 +635,7 @@ class PropertyTablesView:
         self.group_order = list(group_order or [])
         _, _, rows = specimen_table_data(frames['tensile_samples'], frames['instron_comparison'])
         self.group_review.set_rows(rows)
+        self.yield_review.set_rows(rows)
         self.render()
 
     def open_inspector(self, ident):
@@ -649,6 +655,7 @@ class PropertyTablesView:
         self.inspector.clear()
         self.comparison.clear()
         self.group_review.clear()
+        self.yield_review.clear()
 
     def _filtered(self, frame):
         if frame.empty:
