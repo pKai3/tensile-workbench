@@ -649,8 +649,18 @@ def inspection_summary(payload):
                       'A short, steeper patch is set aside when a wider supported line also explains its readings. '
                       'Partially overlapping windows are compared on their common readings when they share '
                       'at least half of the shorter interval. '
+                      'A separate range-sensitivity check flags modulus differences above 10% between '
+                      'supported overlapping intervals below the calculated yield stress. '
                       f'{escape(p.get("Automatic fit support", ""))}; half-window slope difference '
                       f'{number(p.get("Automatic fit half-slope difference (%)", np.nan))}%.</p>')
+        if p.get('Automatic fit sensitivity warning'):
+            result.append('<p>Range sensitivity: another supported interval at '
+                          f'{number(p["Automatic fit sensitivity alternative lower (% UTS)"])}–'
+                          f'{number(p["Automatic fit sensitivity alternative upper (% UTS)"])}% UTS gives '
+                          f'E = {number(p["Automatic fit sensitivity alternative E (GPa)"])} GPa '
+                          f'(R² = {number(p["Automatic fit sensitivity alternative R2"], 5)}). '
+                          'The difference exceeds 10% of the selected modulus. Review the interval; '
+                          'this warning does not change E or YS and is not a confidence interval.</p>')
     result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.5f}. '
                   'Checks use full precision, before display rounding. '
                   'A high R² alone does not establish that a region is elastic.</p>')

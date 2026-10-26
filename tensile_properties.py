@@ -8,7 +8,19 @@ from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
 ELASTIC_METHOD = 'Context-supported elastic-window search (v5)'
+ELASTIC_REVIEW_METHOD = 'Supported overlapping-window sensitivity (v1)'
 AUTOMATIC_FIT_MIN_UTS_FRACTION = .10
+ELASTIC_SENSITIVITY_LIMIT = .10
+ELASTIC_SENSITIVITY_DEFAULTS = {
+    'Automatic fit sensitivity method': ELASTIC_REVIEW_METHOD,
+    'Automatic fit sensitivity threshold (%)': 100 * ELASTIC_SENSITIVITY_LIMIT,
+    'Automatic fit sensitivity (%)': np.nan,
+    'Automatic fit sensitivity alternative E (GPa)': np.nan,
+    'Automatic fit sensitivity alternative lower (% UTS)': np.nan,
+    'Automatic fit sensitivity alternative upper (% UTS)': np.nan,
+    'Automatic fit sensitivity alternative R2': np.nan,
+    'Automatic fit sensitivity warning': '',
+}
 
 EL_SOURCE_FIELDS = (
     ('Instron', 'Instron summary EL (%)'),
@@ -82,7 +94,7 @@ def _specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
     r2_warning = validate_threshold(record.get('_fit_r2_threshold', r2_warning))
     key = (low, high, r2_warning, json.dumps(record.get('_fit_override'), sort_keys=True),
            json.dumps(record.get('_failure_override'), sort_keys=True),
-           record.get('source_sha256'), FRACTURE_METHOD, ELASTIC_METHOD)
+           record.get('source_sha256'), FRACTURE_METHOD, ELASTIC_METHOD, ELASTIC_REVIEW_METHOD)
     cache = record.setdefault('_property_cache', {})
     if key in cache:
         return dict(cache[key])
@@ -91,7 +103,51 @@ def _specimen_properties(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
     return p
 
 
-def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
+def _elastic_fit_sensitivity(chosen, supported, loading_y, uts, yield_stress):
+    """Review ambiguity without changing fit selection or withholding results.
+
+    Compare the chosen fit with sustained alternatives that survive the same
+    contextual selection checks. Require substantial overlap and breadth, and
+    keep comparison intervals below the selected fit's resolved offset yield.
+    This is a range-sensitivity diagnostic, not a confidence interval for E.
+    """
+    result = dict(ELASTIC_SENSITIVITY_DEFAULTS)
+    if chosen is None or not np.isfinite(yield_stress):
+        return result
+    comparisons = []
+    for candidate in supported:
+        if (candidate is chosen or not candidate['strict']
+                or candidate['width'] < max(.30, .75 * chosen['width']) - 1e-12
+                or candidate['upper'] * uts >= yield_stress):
+            continue
+        lower = max(candidate['lower'], chosen['lower'])
+        upper = min(candidate['upper'], chosen['upper'])
+        if upper - lower < .25 * chosen['width'] - 1e-12:
+            continue
+        if np.count_nonzero((loading_y >= lower * uts) & (loading_y <= upper * uts)) < 12:
+            continue
+        comparisons.append(candidate)
+    if not comparisons:
+        return result
+    alternative = max(comparisons, key=lambda c: abs(c['slope'] / chosen['slope'] - 1))
+    difference = abs(alternative['slope'] / chosen['slope'] - 1)
+    # Search slopes use MPa per percentage point; divide by ten for GPa.
+    selected_e, alternative_e = chosen['slope'] / 10, alternative['slope'] / 10
+    result.update({
+        'Automatic fit sensitivity (%)': 100 * difference,
+        'Automatic fit sensitivity alternative E (GPa)': alternative_e,
+        'Automatic fit sensitivity alternative lower (% UTS)': 100 * alternative['lower'],
+        'Automatic fit sensitivity alternative upper (% UTS)': 100 * alternative['upper'],
+        'Automatic fit sensitivity alternative R2': alternative['r2'],
+    })
+    if difference > ELASTIC_SENSITIVITY_LIMIT:
+        result['Automatic fit sensitivity warning'] = (
+            f'Elastic fit sensitive to selected range: E {selected_e:.2f} vs {alternative_e:.2f} GPa '
+            f'({100 * difference:.2f}% difference). Review fit.')
+    return result
+
+
+def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None, review_context=None):
     """Find a supported loading window without assuming seating ends at zero.
 
     Try the requested range, translations above it (ending by 80% UTS), and
@@ -224,6 +280,10 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
                        'The later line may represent plastic deformation; use a manual elastic fit.')
         else:
             low, high = chosen['lower'], chosen['upper']
+    if review_context is not None:
+        # Retain candidate metadata only for this calculation. The review is
+        # evaluated after offset yield is known, never used to select the fit.
+        review_context.update(chosen=chosen, supported=supported)
     if details is not None:
         details.update({
             'Automatic fit support': ('Stricter window' if chosen['strict'] else 'Measurement-noise tolerance')
@@ -262,6 +322,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
          'R2 warning threshold': r2_warning, 'Fit point count': 0,
          'Automatic fit warning': '', 'Automatic fit strategy': ELASTIC_METHOD,
          'Automatic fit support': 'Not evaluated', 'Automatic fit half-slope difference (%)': np.nan,
+         **ELASTIC_SENSITIVITY_DEFAULTS,
          'Fit lower strain (%)': np.nan, 'Fit upper strain (%)': np.nan}
     for field in ('Yield (MPa)', 'Yield strain (%)', 'UTS (MPa)', 'Uniform elongation (%)',
                   'Failure elongation (%)', 'Toughness (MJ/m^3)', 'Fitted E (GPa)',
@@ -274,6 +335,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
                    'uts_index': None, 'yield_bracket': None,
                    'fit_fractions': (low, high), 'override': active, 'saved_override': saved,
                    'r2_threshold': r2_warning}
+    review_context = {}
     endpoint = fracture_endpoint(record)
     calculation['fracture'] = endpoint
     p.update(fracture_audit(record))
@@ -316,7 +378,8 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
             elastic = (np.arange(len(x)) < peak) & (x >= left) & (x <= right)
             p['Yield method'] = '0.2% offset, ' + p['Fit method'].lower()
         else:
-            elastic, p['Automatic fit warning'] = automatic_elastic_mask(x, y, peak, uts, low, high, details=p)
+            elastic, p['Automatic fit warning'] = automatic_elastic_mask(
+                x, y, peak, uts, low, high, details=p, review_context=review_context)
         calculation['elastic_mask'] = elastic
         p.update({'Fit lower stress (MPa)': low * uts, 'Fit upper stress (MPa)': high * uts})
         p['Fit point count'] = int(elastic.sum())
@@ -355,15 +418,19 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
                   'Notes': 'Review elastic fit: low R2' if r2 < r2_warning else ''})
     except ValueError as error:
         p['Notes'] = str(error)
+    if not active:
+        p.update(_elastic_fit_sensitivity(review_context.get('chosen'), review_context.get('supported', []),
+                                         y[:calculation['uts_index']], p['UTS (MPa)'], p['Yield (MPa)']))
     if stale:
         p['Notes'] = ('Saved override does not match the current source; automatic fit used. ' + p['Notes']).strip()
     p['Fit review required'] = bool(stale or p['Automatic fit warning'] or p['Yield status'] != 'resolved' or
+                                   (not active and p['Automatic fit sensitivity warning']) or
                                    not np.isfinite(p['Elastic fit R2']) or p['Elastic fit R2'] < r2_warning)
     automatic = specimen_calculation(record, (low, high), r2_warning, override=None) if active else None
     baseline = automatic['properties'] if automatic else p
     for field in ('Yield (MPa)', 'Yield strain (%)', 'Fitted E (GPa)', 'Elastic fit R2', 'Elastic intercept (MPa)'):
         p['Automatic ' + field] = baseline[field]
-    for field in ('Automatic fit support', 'Automatic fit half-slope difference (%)'):
+    for field in ('Automatic fit support', 'Automatic fit half-slope difference (%)', *ELASTIC_SENSITIVITY_DEFAULTS):
         p[field] = baseline[field]
     calculation['automatic_calculation'] = automatic
     return calculation

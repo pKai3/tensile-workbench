@@ -251,6 +251,8 @@ def specimen_check_failures(properties, reference, gauge=None, mode='all'):
     if property_allowed(mode, 'ys') and properties.get('Fit review required'):
         if properties.get('Automatic fit warning'):
             failures.append(properties['Automatic fit warning'])
+        if properties.get('Fit method') == 'Automatic' and properties.get('Automatic fit sensitivity warning'):
+            failures.append(properties['Automatic fit sensitivity warning'])
         if properties.get('Yield status') != 'resolved':
             failures.append('Yield fit: ' + (properties.get('Notes') or 'unresolved fit.'))
         r2 = properties.get('Elastic fit R2', np.nan)
@@ -355,6 +357,7 @@ def property_tables(records, spec, engine, instron, project=None):
                                 'Automatic fit support': p.get('Automatic fit support', ''),
                                 'Automatic fit half-slope difference (%)': p.get('Automatic fit half-slope difference (%)', np.nan),
                                 'Automatic fit warning': p.get('Automatic fit warning', ''),
+                                **{key: value for key, value in p.items() if key.startswith('Automatic fit sensitivity')},
                                 'Fitted E (GPa)': p['Fitted E (GPa)'], 'Elastic Fit R2': p['Elastic fit R2'],
                                 'Elastic Intercept (MPa)': p['Elastic intercept (MPa)'],
                                 'Fit Lower Stress (MPa)': p['Fit lower stress (MPa)'], 'Fit Upper Stress (MPa)': p['Fit upper stress (MPa)'],

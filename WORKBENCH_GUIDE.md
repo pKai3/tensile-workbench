@@ -159,6 +159,25 @@ Every candidate needs at least twelve points, a positive resolved slope and R² 
 
 These numerical thresholds are application heuristics, not a standards-defined modulus procedure. The user-set R² threshold still controls the separate review warning. No data is smoothed or altered, and Instron values are not used to choose the fit.
 
+**Fit sensitive to selected range** is a separate review check; it does not
+change the selected fit, E, YS or inclusion. After resolving offset YS, compare
+the selected modulus with other intervals surviving the contextual selection
+checks. An alternative must be in the stricter support tier, span at least 30%
+UTS and 75% of the selected interval's stress range, overlap at least 25% of that
+range with twelve common readings, and end below the calculated yield stress.
+This avoids treating tiny tracking patches or a separate post-yield region as
+competing elastic fits. Flag the largest difference when
+`|E_alternative / E_selected − 1| > 0.10`, using unrounded values.
+
+The warning appears in specimen **Checks**, the review filter, **Group yield
+fits**, and above the inspector plot. Inspector details and Excel **Audit**
+retain the alternative interval, E, R² and percentage difference. A valid manual
+fit clears this automatic sensitivity warning from active checks while keeping
+the automatic comparison in Audit; its ordinary fit-quality checks still apply.
+The comparison is a sensitivity check, not a confidence interval or proof that
+either slope is physically correct. When no alternative qualifies, comparison
+fields remain blank.
+
 The chosen line supplies the modulus; shifting it by 0.2% strain gives the first eligible crossing before UTS. If no window is supported, automatic E and YS remain unavailable and flagged; the starting range above the cutoff is retained for inspection/manual adjustment. The inspector reports the actual chosen bounds separately from the starting fractions. Bounds, point count, selection tier and half-window slope difference are exported in Audit. This remains a heuristic, not independent calibration or proof that a region is elastic. This fitted modulus is not the fixed/group-specific modulus used in work-hardening calculations. Landmark plots consume the same specimen-property calculation.
 
 Uniform elongation is total engineering strain at the first maximum engineering stress in acquisition order. The maximum is not smoothed or replaced by a plateau midpoint. Equal maxima spanning more than 0.1 percentage point produce a review notice and an audited span; noise can still move a unique maximum. This preserves the measured UTS and makes the limitation visible without inventing a new measurement definition. Analysis EL uses a selected original CSV measurement: before a supported sudden load drop, otherwise immediately before load falls below 10% of peak, or a valid manual endpoint. When an export stops before the confirmation thresholds, a supported sudden-drop or terminal-unloading estimate remains usable and review-flagged. Toughness and gauge reconstruction use the same selected measurement. No calculation is replaced by an Instron summary value.

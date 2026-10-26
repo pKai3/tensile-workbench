@@ -2,6 +2,26 @@
 
 ## Change notes — 2026-10-26
 
+### Elastic-fit range-sensitivity review
+
+- Add a warning-only diagnostic when credible overlapping fit intervals give
+  moduli differing by more than 10% of the selected E. Retain the v5 selector,
+  all calculated values, inclusion and raw readings.
+- Compare sustained alternatives from the stricter supported tier, requiring
+  at least 30% UTS width, 75% of the selected width, 25% overlap and twelve
+  common readings. Require the comparison interval to end below calculated YS
+  so a separate plastic region does not trigger an elastic-fit ambiguity alert.
+- Show the warning in specimen Checks, review counts/filter, the inspector and
+  group yield-fit cards. Retain full-precision alternative E, bounds, R² and
+  difference in Excel Audit. Manual fits suppress the active automatic warning
+  while retaining its audit details. Add a separate review/cache version.
+- Verification: all 459 tests pass, including the 14 elastic-selection tests
+  and five new warning, manual-override, property-eligibility, UI and Excel
+  integration tests.
+  A read-only 169-curve comparison flags six, including both reported examples;
+  all E/YS values remain unchanged. No personal settings or research exports
+  were rewritten.
+
 ### Overlapping elastic-fit interval correction
 
 - A short early steep patch could override a sustained loading region because

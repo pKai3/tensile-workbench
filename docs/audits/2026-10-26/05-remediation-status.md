@@ -151,3 +151,23 @@ all 14 focused elastic tests. A read-only comparison of 168 curves finds nine
 modulus changes above 0.01%, with 159 unchanged and no E/YS results newly
 unavailable. This quantifies the change's scope without treating finite results
 as proof of physical accuracy.
+
+## Follow-up — fit-range sensitivity review
+
+Keep the v5 selector and add a diagnostic when a sustained, supported overlapping
+interval gives a modulus differing by more than 10%. Comparison windows must
+remain below the selected fit's calculated offset YS, preventing a separate
+plastic region from creating a false ambiguity warning. The guide records the
+breadth, overlap, point-count and support-tier requirements. This is a review
+flag, not a confidence interval or an automatic correction/exclusion.
+
+Surface the warning in the shared Checks column, inspector, review filter and
+group yield-fit cards. Retain alternative E, interval bounds, R² and difference
+in Excel Audit. A valid manual fit suppresses the automatic sensitivity warning
+while preserving its baseline diagnostics and other fit-quality checks.
+
+All 459 tests pass, including five new integration tests and the 14 existing
+elastic-selection tests. A read-only 169-curve comparison flags six, including
+both reported examples, with no E/YS values changed. The numerical comparison
+does not establish which slope is
+physically correct; review remains with the user.

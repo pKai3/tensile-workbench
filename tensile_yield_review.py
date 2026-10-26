@@ -201,8 +201,11 @@ class GroupYieldReview:
                 info += ('<br>' + escape(p['Fit method']) + ' · E ' + number(p['Fitted E (GPa)']) +
                          ' GPa · YS ' + number(p['Yield (MPa)']) + ' MPa')
                 if p['Fit review required']:
-                    info += ('<br><span style="color:#a65b00" title="' + escape(p['Notes'], quote=True) +
-                             '">Fit needs review · inspect for details</span>')
+                    sensitivity = (p.get('Automatic fit sensitivity warning', '')
+                                   if p['Fit method'] == 'Automatic' else '')
+                    review_label = 'Fit sensitive to selected range' if sensitivity else 'Fit needs review · inspect for details'
+                    info += ('<br><span style="color:#a65b00" title="' + escape(sensitivity or p['Notes'], quote=True) +
+                             '">' + review_label + '</span>')
                 figure = yield_fit_figure(record, calculation, crop_range=crop)
                 x_range, y_range = common if self.shared_axes.value else ranges
                 # Serialize the intended initial scales before mounting. Early
