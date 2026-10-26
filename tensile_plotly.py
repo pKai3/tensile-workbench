@@ -94,7 +94,7 @@ def figure_to_plotly(figure, *, width=640):
     """Translate the known 2D line/landmark plots, retaining every data point.
 
     Conversion is intentionally one-way: view zoom, legend clicks and resizing
-    never modify the canonical figure, graph settings or exported data.
+    never modify the canonical figure, analysis settings or exported data.
     """
     if len(figure.axes) == 1:
         return _axis_to_plotly(figure.axes[0], width=width)

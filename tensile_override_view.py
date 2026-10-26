@@ -39,7 +39,7 @@ class OverrideTable(anywidget.AnyWidget):
     _esm = """
     export default {render({model,el}) {
       const box=document.createElement('div'); box.className='tw-overrides'; box.tabIndex=0;
-      box.setAttribute('role','region'); box.setAttribute('aria-label','Saved specimen overrides across all graphs');
+      box.setAttribute('role','region'); box.setAttribute('aria-label','Saved specimen overrides across all analyses');
       el.append(box);
       let header, inputs=[];
       function select(ids) {model.set('selected',ids);model.save_changes();}
@@ -82,7 +82,7 @@ class OverrideTable(anywidget.AnyWidget):
           summary.textContent='Source identity';path.className='path';path.textContent=row.specimen_id;
           details.append(summary,path);specimen.append(details);
           tr.insertCell().textContent=row.type;
-          const scope=tr.insertCell();scope.className='identity';scope.textContent=row.scope===null ? 'Global' : 'Graph: '+row.scope_name;
+          const scope=tr.insertCell();scope.className='identity';scope.textContent=row.scope===null ? 'Global' : 'Analysis: '+row.scope_name;
           const setting=tr.insertCell();setting.className='setting';setting.textContent=row.setting;
           const reason=tr.insertCell();reason.className='reason';reason.textContent=row.reason || '—';
           const badge=document.createElement('span');badge.className='badge'+(row.enabled ? '' : ' off');
@@ -127,11 +127,11 @@ class SavedOverridesView:
         self.confirmation = w.VBox([self.confirm_message, row([self.confirm_remove, self.cancel])],
                                    layout=w.Layout(display='none'))
         self.ui = w.VBox([
-            w.HTML('<h3>Saved specimen overrides</h3><p>Current settings across <b>all specimens and saved graphs</b>, '
-                   'not just the current graph. Tick rows to manage them; the header checkbox selects all visible rows. '
+            w.HTML('<h3>Saved specimen overrides</h3><p>Current settings across <b>all specimens and saved analyses</b>, '
+                   'not just the current analysis. Tick rows to manage them; the header checkbox selects all visible rows. '
                    'Changing filters clears the selection.</p><p><b>Disable</b> retains the setting without applying it; '
                    '<b>Enable</b> restores it. <b>Remove</b> deletes the setting after confirmation. '
-                   'Without a graph override, the global setting applies; without a global override, automatic/default '
+                   'Without an analysis override, the global setting applies; without a global override, automatic/default '
                    'behaviour applies. Enabled/disabled refers to the <b>override</b>, not specimen inclusion. '
                    'Source files and exports are never changed.</p>'),
             row([self.search, self.kind, self.scope, self.state, self.refresh_button]),
@@ -139,7 +139,7 @@ class SavedOverridesView:
             self.message, self.confirmation, self.table,
             w.HTML('<small>Unavailable specimens retain their saved settings. Hidden bundled samples are not loaded here. '
                    'Specimen labels are used when already loaded; otherwise the CSV filename identifies the specimen. '
-                   'Source identity expands to its full relative path. Group-wide settings and deleted-graph recovery '
+                   'Source identity expands to its full relative path. Group-wide settings and deleted-analysis recovery '
                    'snapshots are not listed. This is not a history log.</small>')
         ], layout=w.Layout(width='100%', min_width='0', padding='10px'))
         for control in (self.search, self.kind, self.scope, self.state):
@@ -172,7 +172,7 @@ class SavedOverridesView:
         try:
             previous = self.scope.value
             self.scope.options = [('All scopes', '*'), ('Global only', '')] + [
-                ('Graph: ' + graph['name'], graph['id']) for graph in self.store.data['graphs']]
+                ('Analysis: ' + graph['name'], graph['id']) for graph in self.store.data['graphs']]
             self.scope.value = previous if previous in {value for _,value in self.scope.options} else '*'
         finally:
             self._refreshing = False
@@ -214,7 +214,7 @@ class SavedOverridesView:
         if not self._pending:
             return
         names = ''.join('<li>' + escape(f"{row['group']} / {row['specimen']} · {row['type']} · "
-                    + ('Global' if row['scope'] is None else 'Graph: ' + row['scope_name'])) + '</li>'
+                    + ('Global' if row['scope'] is None else 'Analysis: ' + row['scope_name'])) + '</li>'
                     for row in self._pending)
         self.confirm_message.value = (f'<b>Remove {len(self._pending)} saved override(s)?</b> '
             'Removed settings cannot be re-enabled. Automatic/default or inherited settings will apply. '
@@ -231,7 +231,7 @@ class SavedOverridesView:
             control.disabled = True
         try:
             if not self.before_apply():
-                raise ValueError('Resolve the graph-save warning before changing overrides.')
+                raise ValueError('Resolve the analysis-save warning before changing overrides.')
             project = change_overrides(self.store.data, selected, action)
             if project != self.store.data:
                 self.store.save(project)

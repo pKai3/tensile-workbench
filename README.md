@@ -4,7 +4,7 @@ Analyse tensile-test CSV exports in a local browser app. Compare sample groups, 
 
 The workbench includes stress–strain curves, work-hardening plots, strength–elongation comparisons, specimen statistics and comparisons with available Instron summary CSVs. Three small synthetic datasets let you try it before adding your own data.
 
-Use **Analysis** for graphs and specimen review. **Saved specimen overrides** lists manual fits, failure endpoints and data-use/exclusion settings across all your specimens and saved graphs. Tick rows to disable, re-enable or remove settings; you do not need to select those groups in the current graph.
+Use **Analysis** for plots and specimen review. Each saved analysis contains its selected sample groups, settings, plots and tables. **Saved specimen overrides** lists manual fits, failure endpoints and data-use/exclusion settings across all your specimens and saved analyses. Tick rows to disable, re-enable or remove settings; you do not need to select those groups in the current analysis.
 
 ## 1. Install and launch
 
@@ -60,7 +60,7 @@ Use one folder per sample group, with one raw curve CSV per specimen. Groups can
                 └── Sample Y/
                     └── specimen_A.csv
 
-In **Sample groups**, tick a folder to select all groups below it. Expand it with the arrow to select individual groups or subfolders; a mixed checkbox shows partial selection. Selecting a folder does **not** pool its groups into one average. Graph definitions save the selected groups, so newly added groups are not silently added to existing graphs.
+In **Sample groups**, tick a folder to select all groups below it. Expand it with the arrow to select individual groups or subfolders; a mixed checkbox shows partial selection. Selecting a folder does **not** pool its groups into one average. Analysis definitions save the selected groups, so newly added groups are not silently added to existing analyses.
 
 Keep organisational folders as containers of other folders. A folder containing CSVs, an Instron `.is_tens`/`.id_tens` file, or an export subfolder (such as `instrument_exports` or `*.is_tens_Exports`) is treated as a sample group; its nested exports belong to that group. Keep summary CSVs inside their sample group, not in a parent organisational folder.
 
@@ -72,16 +72,16 @@ After adding or changing files, click **Reload data**. Cloud-hosted files must b
 
 Group identities include their relative folder path, so different colleagues can use the same sample names without their data being merged. Existing flat layouts still work.
 
-**Moving groups:** open this version once before reorganising existing data, so it can remember file fingerprints for groups with saved selections/settings. After moving folders, use **Reload data** or **Check for moved groups**. Each verified move is flagged beside the selector with its old/new paths and a separate **OK, migrate settings** button. Approving it carries saved graph selections, specimen overrides/exclusions and group settings to the new location; nothing transfers without your OK. The workbench does not move source files itself. Ambiguous duplicates or conflicting settings are blocked. See [move protection](WORKBENCH_GUIDE.md#moving-data-and-retaining-settings) for limitations.
+**Moving groups:** open this version once before reorganising existing data, so it can remember file fingerprints for groups with saved selections/settings. After moving folders, use **Reload data** or **Check for moved groups**. Each verified move is flagged beside the selector with its old/new paths and a separate **OK, migrate settings** button. Approving it carries saved analysis selections, specimen overrides/exclusions and group settings to the new location; nothing transfers without your OK. The workbench does not move source files itself. Ambiguous duplicates or conflicting settings are blocked. See [move protection](WORKBENCH_GUIDE.md#moving-data-and-retaining-settings) for limitations.
 
 ## 3. Everyday workflow
 
-1. **Choose a graph definition.** Select an existing graph, duplicate one, or choose **＋ Create new graph…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
+1. **Choose an analysis.** Select an existing analysis, duplicate one, or choose **＋ Create new analysis…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
 2. **Review the data.** Expand **Specimen properties · tables and calculation inspector**. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint.
-3. **Resolve questionable results.** Use **Group curve review** to overlay one group's raw specimen curves. Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Use **Data use** to exclude an entire specimen or only properties affected by AVE failure. Exclusions are global unless you explicitly select a graph-only exception. Original data files are not altered.
+3. **Resolve questionable results.** Use **Group curve review** to overlay one group's raw specimen curves. Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Use **Data use** to exclude an entire specimen or only properties affected by AVE failure. Exclusions are global unless you explicitly select an analysis-only exception. Original data files are not altered.
 4. **Choose plots.** Select **Static plots** or **Interactive Plotly**, tick the required plot types, and open their **Settings** for axes and plot-specific options. Choose whether to show individuals or both versions.
 5. **Click Update plots.** Live preview is off by default because recalculation can be slow. Set layout and size in the plot-view area. Static plots can be enlarged; Plotly supports zoom, pan and hover.
-6. **Export.** Use **Export plot set** for generated views, optionally with Excel tables. Use **Export tables only** when you do not need plots. Outputs go into graph-specific subfolders of your chosen output folder.
+6. **Export.** Use **Export plot set** for generated views, optionally with Excel tables. Use **Export tables only** when you do not need plots. Outputs go into analysis-specific subfolders of your chosen output folder.
 
 ### Which view should I choose?
 
@@ -91,41 +91,41 @@ Group identities include their relative folder path, so different colleagues can
 | Representative tensile curves | Showing one measured specimen per group, with an optional selection override |
 | Work-hardening views | Comparing the pre-necking hardening response |
 | YS or UTS vs elongation | Comparing strength and ductility, with optional individual points |
-| YS/UTS/EL by sample group & custom variable | Comparing group means by name or against a numeric variable, with multiple chart variants |
-| YS/UTS/EL by specimen | One chart per group, comparing individual properties against Location or another specimen variable |
+| YS/UTS/EL by sample group & custom variable | Comparing group means by name or against a numeric variable, with multiple plot variants |
+| YS/UTS/EL by specimen | One plot per group, comparing individual properties against Location or another specimen variable |
 
-In either YS/UTS/EL section, **Settings → Add chart variant** creates another independently configured chart within the saved graph. Select **Edit chart** to configure its title, X-axis, property switches, colours and axis limits. Group charts also offer connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**) and SD bars. Specimen charts use grouped bars with trendlines and create one figure per chosen group. All variants render and export together. An EL-only chart uses a single axis; with strength enabled, EL uses the right axis. Adding a variant copies its settings; removing it leaves the others untouched.
+In either YS/UTS/EL section, **Settings → Add plot variant** creates another independently configured plot within the saved analysis. Select **Edit plot** to configure its title, X-axis, property switches, colours and axis limits. Group plots also offer connecting lines (**Straight / solid**, **Dash**, **Dot**, **None**) and SD bars. Specimen plots use grouped bars with trendlines and create one figure per chosen group. All variants render and export together. An EL-only plot uses a single axis; with strength enabled, EL uses the right axis. Adding a variant copies its settings; removing it leaves the others untouched.
 
 To plot against a numeric variable, such as shielding-gas CO₂ concentration:
 
 1. Select sample groups, then expand **Custom variables → Sample groups** below the sample selector/order controls.
 2. Edit variables directly in the table: names in row 1, units in row 2, then sample-group data. **Add variable (column)** creates another column. Leave unknown values blank; `0` is a real value. **Show all sample groups** lets you edit groups outside the current selection. The permanent **Specimen count** variable is described below.
-3. Click **Save all variables** to apply the complete table. Variables are shared across saved graphs.
-4. In the property chart's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more chart variants to compare other variables or property combinations.
+3. Click **Save all variables** to apply the complete table. Variables are shared across saved analyses.
+4. In the property plot's **Settings**, choose the variable under **X-axis**, switch the desired properties on/off, then **Update plots**. Add more plot variants to compare other variables or property combinations.
 
-Numeric X values use their actual spacing in ascending order. Groups with missing values are flagged and omitted from that chart only; groups sharing an X value remain separate, not pooled. Lines connect means, not fitted trends. Statistics, eligibility and ±1 sample SD bars follow the existing property calculations. With **Sample names** as the X-axis, the shared **Sample group order** applies; **X-axis labels · this plot only** provides short labels without renaming groups elsewhere.
+Numeric X values use their actual spacing in ascending order. Groups with missing values are flagged and omitted from that plot only; groups sharing an X value remain separate, not pooled. Lines connect means, not fitted trends. Statistics, eligibility and ±1 sample SD bars follow the existing property calculations. With **Sample names** as the X-axis, the shared **Sample group order** applies; **X-axis labels · this plot only** provides short labels without renaming groups elsewhere.
 
-Paste a rectangular block from Excel, CSV or TSV into its starting cell. Paste variable cells only, without sample-group labels; rows follow the visible group order. Extra variable columns are added automatically, but pastes cannot extend beyond the visible groups. Blank cells clear values, while `0` remains a value. Invalid blocks are rejected without partial changes. **Copy variable cells (TSV)** copies names, units and visible values back to a spreadsheet. The grey tested-count prefix is display-only: copy/paste and exports contain just the numeric total. Save before changing graphs; switching between selected and all groups preserves drafts.
+Paste a rectangular block from Excel, CSV or TSV into its starting cell. Paste variable cells only, without sample-group labels; rows follow the visible group order. Extra variable columns are added automatically, but pastes cannot extend beyond the visible groups. Blank cells clear values, while `0` remains a value. Invalid blocks are rejected without partial changes. **Copy variable cells (TSV)** copies names, units and visible values back to a spreadsheet. The grey tested-count prefix is display-only: copy/paste and exports contain just the numeric total. Save before changing analyses; switching between selected and all groups preserves drafts.
 
-To delete a custom variable, click **×** beside its name in the table. Review the confirmation and affected chart list, then **Confirm delete**. This removes the variable and all its values globally, without saving or discarding edits to other variables. Charts that used it need a new X-axis selection; they are not silently changed to sample names. Removing an unsaved column only discards its draft. **Specimen count** and **Location** are permanent: their names/units cannot be edited and they cannot be deleted.
+To delete a custom variable, click **×** beside its name in the table. Review the confirmation and affected plot list, then **Confirm delete**. This removes the variable and all its values globally, without saving or discarding edits to other variables. Plots that used it need a new X-axis selection; they are not silently changed to sample names. Removing an unsaved column only discards its draft. **Specimen count** and **Location** are permanent: their names/units cannot be edited and they cannot be deleted.
 
-For variable-based charts, leave **Title** empty to use the grey automatic title, e.g. **YS/UTS/EL vs. Shielding CO₂ (%)**. It follows the selected variable, units and enabled properties; a typed title overrides it. Numeric subscript/superscript shorthand is formatted in these chart titles and variable-axis labels: `CO_2` → CO₂, `mm^2` → mm², `m^{-3}` → m⁻³. Saved variable text is unchanged; Unicode characters can also be entered directly.
+For variable-based plots, leave **Title** empty to use the grey automatic title, e.g. **YS/UTS/EL vs. Shielding CO₂ (%)**. It follows the selected variable, units and enabled properties; a typed title overrides it. Numeric subscript/superscript shorthand is formatted in these plot titles and variable-axis labels: `CO_2` → CO₂, `mm^2` → mm², `m^{-3}` → m⁻³. Saved variable text is unchanged; Unicode characters can also be entered directly.
 
-Variables and chart variants are stored in the ignored personal project file, not deployed to colleagues. Values follow an approved sample-folder move. Exports include the chart settings and variable values; table exports add a numeric **Group variables** sheet when variables exist.
+Variables and plot variants are stored in the ignored personal project file, not deployed to colleagues. Values follow an approved sample-folder move. Exports include the plot settings and variable values; table exports add a numeric **Group variables** sheet when variables exist.
 
 To check properties against **specimen extraction location**, enable the separate **YS/UTS/EL by specimen** section:
 
-- Each chosen group gets its own grouped bar chart with a simple YS/UTS/EL legend: strength on the left axis and EL on the right. It does not create duplicate with/without-individuals versions. In **Settings**, use **All sample groups** to select/clear the workspace groups, or tick groups individually. This choice is saved per chart variant and only controls which location charts appear; it does not change the workspace selection, property tables or specimen exclusions.
+- Each chosen group gets its own grouped bar plot with a simple YS/UTS/EL legend: strength on the left axis and EL on the right. It does not create duplicate with/without-individuals versions. In **Settings**, use **All sample groups** to select/clear the workspace groups, or tick groups individually. This choice is saved per plot variant and only controls which location plots appear; it does not change the workspace selection, property tables or specimen exclusions.
 - **Location** is the default X-axis and a permanent specimen variable. It uses the operator's specimen number, not the CSV export row: `Wall_04`, `Wall-04`, `Wall 4`, `Wall#4` and `705_AB_#4` all plot at 4; a number by itself is also accepted. In **Custom variables → Individual specimens**, enter a whole-number override or clear a cell to restore its default. Missing or ambiguous numbers remain blank until you supply a location. Numbers display without decimals. You can also create separate custom variables such as extraction height (mm).
-- **Specimen count**, under **Custom variables → Sample groups** near the top, shows **X tested of [Y]**. The grey X is read-only and counts specimens found in imported data, including excluded specimens. Edit only Y: the whole-number total tested + untested. Startup and **Reload data** update X and raise a missing or too-small Y to at least X; larger totals are preserved. An unavailable group's tested count shows **—**, not zero. For example, enter 10 when seven of ten coupons have been tested: Location charts retain positions 1–10. Only tested, eligible values receive bars; missing positions are not renumbered, replaced with zero or included in statistics. Custom physical-unit axes use their own values and limits, not the specimen-count range.
+- **Specimen count**, under **Custom variables → Sample groups** near the top, shows **X tested of [Y]**. The grey X is read-only and counts specimens found in imported data, including excluded specimens. Edit only Y: the whole-number total tested + untested. Startup and **Reload data** update X and raise a missing or too-small Y to at least X; larger totals are preserved. An unavailable group's tested count shows **—**, not zero. For example, enter 10 when seven of ten coupons have been tested: Location plots retain positions 1–10. Only tested, eligible values receive bars; missing positions are not renumbered, replaced with zero or included in statistics. Custom physical-unit axes use their own values and limits, not the specimen-count range.
 - **Quadratic · order 2** trendlines are the default; choose **Linear** or **None** if preferred. A quadratic needs at least three distinct measured locations. Fits use actual locations, not the small offsets used to place bars beside each other. Dashed segments cover the measured range; dotted segments extend to the full count range (or manual X-axis limits). These are descriptive fits, not validated predictions. Each property fits its own eligible observations; insufficient distinct locations leave that trend undrawn.
 - YS/UTS/EL switches, manual overrides and partial exclusions still apply. There are no group means or SD bars. Equal locations remain separate observations; no lines connect different groups.
 
-Specimen variables use stable identities, so display-label changes do not reassign them. Approved moves migrate overrides and counts; forgetting a group clears its values. Excel results include effective Location values in **Specimen variables** and totals in **Group variables**, with no fake specimen rows. Existing trial specimen charts migrate to their separate section; saved Location values are retained. Legacy fractional/unit-based locations stay available as a custom variable instead of being rounded away.
+Specimen variables use stable identities, so display-label changes do not reassign them. Approved moves migrate overrides and counts; forgetting a group clears its values. Excel results include effective Location values in **Specimen variables** and totals in **Group variables**, with no fake specimen rows. Existing trial specimen plots migrate to their separate section; saved Location values are retained. Legacy fractional/unit-based locations stay available as a custom variable instead of being rounded away.
 
 The variable editor reads a cached name/header catalogue, not every full curve. **Show all individual specimens** includes unselected groups without recalculating their tests. The scrollable table supports all rows, editing and CSV/TSV paste. Reload data refreshes the catalogue and automatic locations.
 
-Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison charts.
+Under **Summary**, the collapsible **Calc–Instron comparison** shows paired percentage differences and separate SD comparisons where both sources are available. UTS discrepancies are reported as specimen checks instead of comparison plots.
 
 ### Control property and curve contributions
 
@@ -147,9 +147,9 @@ Landmark curves use trusted curves for **shape**, then pass through each propert
 In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. Exclusions have distinct line styles and short labels beside each specimen above the plot.
 
 - **Measured** shows untrimmed measured data even if fracture detection or reconstruction fails. Toggle **YS**, **UTS** and **EL** markers independently; these are measured Calc values, including manual overrides. Excluded properties have hollow markers; unavailable values are omitted. A time-axis option helps when recorded strain itself is unreliable.
-- **Landmark-aligned** shows the transformed shape contributions in colour and their landmark average in black, using the current graph's settings. Group-mean YS/UTS/EL markers start enabled. The display reports shape and property counts; property-only specimens stay listed without an invented curve. These are diagnostic synthetic curves, not additional measurements.
+- **Landmark-aligned** shows the transformed shape contributions in colour and their landmark average in black, using the current analysis's settings. Group-mean YS/UTS/EL markers start enabled. The display reports shape and property counts; property-only specimens stay listed without an invented curve. These are diagnostic synthetic curves, not additional measurements.
 
-Use **Exclude from shape** when the curve shape is unsuitable but its property values are sound. It removes the specimen from tensile/work-hardening curve contributions and representative selection, while retaining its valid properties in group means, comparisons and strength–EL scatter plots. It is global by default, with the same graph-only override as other data-use modes. Use an AVE-failure mode instead when strain-derived properties are unreliable; **Broke outside dots** assumes reliable strain through UTS.
+Use **Exclude from shape** when the curve shape is unsuitable but its property values are sound. It removes the specimen from tensile/work-hardening curve contributions and representative selection, while retaining its valid properties in group means, comparisons and strength–EL scatter plots. It is global by default, with the same analysis-only override as other data-use modes. Use an AVE-failure mode instead when strain-derived properties are unreliable; **Broke outside dots** assumes reliable strain through UTS.
 
 ## 4. Understand the results
 
@@ -167,7 +167,7 @@ Your settings are local to the application folder:
 
 | File | Contents |
 |---|---|
-| tensile_workbench.project.json | Personal graphs, selections, labels and specimen overrides |
+| tensile_workbench.project.json | Personal analyses, selections, labels and specimen overrides |
 | .tensile-paths.json | Data/output locations and sample-data visibility |
 | tensile_workbench_defaults.json | Shared starter definitions—not personal settings |
 
@@ -175,11 +175,11 @@ The first two files are ignored by Git. They are saved automatically, with backu
 
 ### Automatic backups and recovery
 
-Open **Backups & restore**, just below Folders. It lists dated snapshots, with graph counts and revision numbers for project settings. **Back up now** makes a protected copy of both saved settings files. Unsaved editor drafts, research CSVs and exported results are not part of these backups.
+Open **Backups & restore**, just below Folders. It lists dated snapshots, with analysis counts and revision numbers for project settings. **Back up now** makes a protected copy of both saved settings files. Unsaved editor drafts, research CSVs and exported results are not part of these backups.
 
 - Automatic history retains the latest **20 changed versions** and **30 daily checkpoints**, per settings file. Manual copies and safety copies made before a settings upgrade or restore are retained without automatic expiry.
 - Choose **Project** or **Folders**, select a snapshot, then **Restore selected… → Confirm restore**. Only that settings file is restored. The current file is preserved first, even if damaged, and the workbench reopens. Cancel changes nothing.
-- A missing or damaged project opens recovery controls instead of silently replacing your graphs with starter definitions. The older `.project.previous.json` copy is also offered when usable. Restored folder paths that are unavailable require you to confirm new locations.
+- A missing or damaged project opens recovery controls instead of silently replacing your analyses with starter definitions. The older `.project.previous.json` copy is also offered when usable. Restored folder paths that are unavailable require you to confirm new locations.
 - If backup storage is unavailable, ordinary settings saves continue with a visible warning. Upgrades and restores stop if their required safety copy cannot be made. Another open session must reload before editing restored project settings.
 
 Default backup locations:

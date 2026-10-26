@@ -1,4 +1,4 @@
-"""Named, discrete chart palettes; no global style changes."""
+"""Named, discrete plot palettes; no global style changes."""
 from html import escape
 
 DEFAULT_PALETTE = 'classic'
@@ -54,7 +54,7 @@ PALETTE_OPTIONS = [(label, key) for key, (label, _) in PALETTES.items()]
 
 def validate_palette(value):
     if not isinstance(value, str) or value not in PALETTES:
-        raise ValueError('Choose one of the available chart colour palettes.')
+        raise ValueError('Choose one of the available plot colour palettes.')
 
 
 def palette_colors(value=DEFAULT_PALETTE, classic_colors=None):
@@ -65,7 +65,7 @@ def palette_colors(value=DEFAULT_PALETTE, classic_colors=None):
 
 
 def group_color_map(default_colors, palette=DEFAULT_PALETTE, overrides=None):
-    """Keep the existing all-groups order; explicit graph overrides always win."""
+    """Keep the existing all-groups order; explicit analysis overrides always win."""
     from matplotlib.colors import to_hex
     validate_palette(palette)
     if palette == DEFAULT_PALETTE:
@@ -88,5 +88,5 @@ def palette_preview(palette, classic_colors=None):
     return ('<div style="display:flex;flex-wrap:wrap;gap:5px;margin:5px 0">' + swatches + '</div>'
             '<div style="white-space:normal;line-height:1.4">'
             f'{len(colors)} colours, repeating for additional groups. '
-            'Saved per graph; individual group overrides take priority. '
-            'The YS/UTS/EL-by-sample chart keeps its separate property colours.</div>')
+            'Saved per analysis; individual group overrides take priority. '
+            'The YS/UTS/EL-by-sample plot keeps its separate property colours.</div>')

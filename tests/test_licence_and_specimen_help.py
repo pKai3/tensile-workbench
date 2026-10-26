@@ -56,7 +56,7 @@ class LicenceAndSpecimenHelpTests(unittest.TestCase):
             self.assertEqual(view.specimen_help.children, (view.panels[1],))
             self.assertEqual(view.tabs.children[1].children, (view.specimen_help, view.specimens))
             self.assertIn('EL source used for plots by group', view.panels[1].value)
-            self.assertIn('Choose <b>This graph only</b>', view.panels[1].value)
+            self.assertIn('Choose <b>This analysis only</b>', view.panels[1].value)
             self.assertTrue(view.specimens.rows)
             self.assertEqual(view.specimens.columns[0], 'Checks')
             self.assertTrue(any(row['check_warning'] and row['values'][0] for row in view.specimens.rows))

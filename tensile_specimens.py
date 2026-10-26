@@ -118,7 +118,7 @@ class SpecimenTable(anywidget.AnyWidget):
           specimenCell.append(assigned);
           tr.title=row.id;
           const scope = document.createElement('select');
-          [['global','Global default'],['graph','This graph only']].forEach(([value,label]) => {
+          [['global','Global default'],['graph','This analysis only']].forEach(([value,label]) => {
             const option=document.createElement('option'); option.value=value; option.textContent=label; scope.append(option);
           });
           scope.value=row.scope || 'global';

@@ -115,7 +115,7 @@ class GroupCurveReview:
                          'Hollow markers identify excluded properties; hover for the mode. Unavailable markers are omitted. '
                          '“Broke outside dots” assumes strain was reliable through UTS. '
                          'The Measured view does not require fracture detection or reconstruction.</p>'
-                         '<p>Landmark-aligned shows synthetic shape contributions using the current graph’s settings. '
+                         '<p>Landmark-aligned shows synthetic shape contributions using the current analysis’s settings. '
                          'Each section is mapped to the group’s landmark strains and receives the same stress adjustment '
                          'as the mean shape. The coloured curves average to the black line; individual curves do not '
                          'have to pass through the group-mean stresses. Stage boundaries are not bridged if that adjustment '

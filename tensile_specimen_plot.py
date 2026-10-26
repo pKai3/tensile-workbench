@@ -29,7 +29,7 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
     fit_fractions = fit_fractions or e.LANDMARK_YIELD_FIT_FRACTIONS
     groups = ordered_groups(sorted(state['groups']), state.get('group_order', []))
     if state.get('family') == SPECIMEN_FAMILY and len(groups) != 1:
-        raise ValueError('Specimen charts require one sample group per figure.')
+        raise ValueError('Specimen plots require one sample group per figure.')
     rows = {g: sorted(records.get(g, []), key=specimen_sort_key) for g in groups}
     labels = {specimen_id(r): f'{e.get_display_name(g, name_overrides)} · {label}' for g, specimens in rows.items()
               for r, label in zip(specimens, e.scatter_specimen_labels(specimens))}
@@ -50,7 +50,7 @@ def render_specimen_properties(engine, records, state, *, out_path, variables=No
         values = {ident: float(i) for i, ident in enumerate(labels)}
     missing = [label for ident, label in labels.items() if ident not in values]
     if missing:
-        warnings.append('Missing ' + variable_label(variable) + '; omitted from this chart: ' + ', '.join(missing) + '.')
+        warnings.append('Missing ' + variable_label(variable) + '; omitted from this plot: ' + ', '.join(missing) + '.')
     plotted_rows = {g: sorted((r for r in specimens if specimen_id(r) in values),
                              key=lambda r: values[specimen_id(r)]) for g, specimens in rows.items()}
     planned = planned_positions(state.get('properties_by_group_planned_positions', ''))

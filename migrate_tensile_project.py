@@ -1,4 +1,4 @@
-"""Prepare stable-name graph definitions without overwriting an existing project."""
+"""Prepare stable-name analysis definitions without overwriting an existing project."""
 from copy import deepcopy
 from datetime import datetime
 import hashlib
@@ -23,7 +23,7 @@ def migrate(root):
                                            'tensile_workbench_defaults.json')]
     source = next((path for path in candidates if path.is_file()), None)
     if source is None:
-        raise FileNotFoundError('The saved graph project and workbench defaults are missing. Restore them from Git or a backup.')
+        raise FileNotFoundError('The saved analysis project and workbench defaults are missing. Restore them from Git or a backup.')
     raw = source.read_bytes()
     project = deepcopy(json.loads(raw))
     validate_project(project)

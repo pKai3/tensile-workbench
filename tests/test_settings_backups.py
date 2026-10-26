@@ -296,7 +296,7 @@ class BackupTests(unittest.TestCase):
         panel.refresh()
         panel.snapshots.value = str(snapshot)
         panel.restore_button.click()
-        self.assertIn('graphs', panel.confirm_message.value)
+        self.assertIn('analyses', panel.confirm_message.value)
         self.assertEqual(self.path.read_bytes(), before)
         panel.cancel_button.click()
         panel.confirm_button.click()

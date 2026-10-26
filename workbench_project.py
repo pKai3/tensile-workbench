@@ -77,17 +77,17 @@ def validate_project(project):
                 validate_failure_override(event[key], saved=True)
     graphs = project.get('graphs', [])
     if not graphs:
-        raise ValueError('A project needs at least one graph definition.')
+        raise ValueError('A project needs at least one analysis definition.')
     ids, names = set(), set()
     for graph in graphs:
         ident = graph['id']
         name = graph['name'].strip()
         if not ident or ident in ids or not name or name.casefold() in names:
-            raise ValueError('Graph names and IDs must be nonempty and unique.')
+            raise ValueError('Analysis names and IDs must be nonempty and unique.')
         ids.add(ident)
         names.add(name.casefold())
         if not isinstance(graph.get('settings'), dict) or not isinstance(graph.get('definition'), dict):
-            raise ValueError('Each graph needs calculation settings and a definition.')
+            raise ValueError('Each analysis needs calculation settings and a definition.')
         settings = graph['settings']
         validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
@@ -107,14 +107,14 @@ def validate_project(project):
                 raise ValueError('Gauge settings require a sample-group name.')
             validate_group_policy(policy)
         if not isinstance(settings.get('gauge_correction', False), bool):
-            raise ValueError('Gauge reconstruction must be a graph-level on/off setting.')
+            raise ValueError('Gauge reconstruction must be an analysis-level on/off setting.')
         target = settings.get('target_gauge_mm', 0)
         if (isinstance(target, bool) or not isinstance(target, (int, float)) or
                 not math.isfinite(target) or target < 0 or
                 (settings.get('gauge_correction') and target <= 0)):
             raise ValueError('Gauge reconstruction requires a positive target gauge length in mm.')
         if not isinstance(graph['settings'].get('groups'), list):
-            raise ValueError('Graph sample groups must be a list.')
+            raise ValueError('Analysis sample groups must be a list.')
         if len(set(graph['settings']['groups'])) != len(graph['settings']['groups']):
             raise ValueError('Sample groups cannot be repeated.')
         if not isinstance(graph['settings'].get('families'), list):
@@ -130,7 +130,7 @@ def validate_project(project):
                 or not isinstance(value.get('included'), bool)
                 or not isinstance(value.get('reason', ''), str)
                 for key, value in selections.items()):
-            raise ValueError('Graph specimen overrides require an Include value and optional reason.')
+            raise ValueError('Analysis specimen overrides require an Include value and optional reason.')
         for policy in selections.values():
             validate_data_mode(policy.get('mode', 'all' if policy['included'] else 'exclude'))
             if 'mode' in policy and policy['included'] != (policy['mode'] != 'exclude'):
@@ -139,14 +139,14 @@ def validate_project(project):
             if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
                 raise ValueError(f'Colour override for {group} must be a six-digit hex colour, e.g. #1f77b4.')
     if project.get('selected_graph') not in ids:
-        raise ValueError('The selected graph does not exist.')
+        raise ValueError('The selected analysis does not exist.')
     deleted = project.get('deleted_graphs', [])
     if not isinstance(deleted, list):
-        raise ValueError('Deleted graphs must be a list.')
+        raise ValueError('Deleted analyses must be a list.')
     for entry in deleted:
         if (not isinstance(entry, dict) or not isinstance(entry.get('graph'), dict)
                 or not isinstance(entry.get('index'), int) or entry['index'] < 0):
-            raise ValueError('Invalid deleted-graph recovery entry.')
+            raise ValueError('Invalid deleted-analysis recovery entry.')
         graph = entry['graph']
         validate_project({'schema_version': 1, 'graphs': [graph], 'selected_graph': graph.get('id')})
 
@@ -252,12 +252,12 @@ class ProjectStore:
             base['definition'].pop(DISABLED, None)
             base['definition'].pop('specimen_exclusions', None)
             base['definition'].pop('specimen_inclusion_overrides', None)
-            # Older personal projects retain their own new-graph template.
-            # Apply the safe default to new graphs without changing saved ones
-            # or an explicitly duplicated graph's live-preview preference.
+            # Older personal projects retain their own new-analysis template.
+            # Apply the safe default to new analyses without changing saved ones
+            # or an explicitly duplicated analysis's live-preview preference.
             base['settings']['live_update'] = False
         existing = {g['name'].casefold() for g in project['graphs']}
-        stem = base['name'] + ' copy' if template else 'New graph'
+        stem = base['name'] + ' copy' if template else 'New analysis'
         name, number = stem, 2
         while name.casefold() in existing:
             name = f'{stem} {number}'
@@ -275,7 +275,7 @@ class ProjectStore:
         entry = {'graph': project['graphs'].pop(index), 'index': index}
         if not project['graphs']:
             draft = deepcopy(project['new_graph_defaults'])
-            draft.update(id=uuid.uuid4().hex, name='New graph')
+            draft.update(id=uuid.uuid4().hex, name='New analysis')
             draft['definition']['name'] = draft['name']
             draft['definition'].pop('specimen_exclusions', None)
             draft['definition'].pop('specimen_inclusion_overrides', None)
@@ -289,7 +289,7 @@ class ProjectStore:
         return self.save(project)
 
     def undo_delete(self):
-        """Restore the latest recycled graph, even after restarting the app."""
+        """Restore the latest recycled analysis, even after restarting the app."""
         project = deepcopy(self.data)
         if not project.get('deleted_graphs'):
             return deepcopy(self.data)

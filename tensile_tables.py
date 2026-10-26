@@ -162,7 +162,7 @@ def specimen_export_frame(samples, comparisons):
     identity = pd.DataFrame([
         {'Include': bool(row['Included']), 'Group': row['Group'], 'Specimen': specimen_label(row),
          'CSV file': Path(str(row['Source File'])).name, 'Instron row': row.get('Instron Row', np.nan),
-         'Applies to': 'This graph only' if row['Inclusion Scope'] == 'graph' else 'Global default',
+         'Applies to': 'This analysis only' if row['Inclusion Scope'] == 'graph' else 'Global default',
          'Exclusion reason': row['Exclusion Reason'], 'Data use': row.get('Data use', 'Use all data'),
          'Excluded properties': row.get('Excluded properties', '')}
         for _, row in samples.iterrows()
@@ -496,7 +496,7 @@ class PropertyTablesView:
             description='R² warning threshold:', continuous_update=False, style={'description_width': 'initial'},
             tooltip='Flag fits below this R² for review. Does not exclude specimens or change the fit.',
             layout=w.Layout(width='300px'))
-        self.threshold_status = w.HTML('Applies to all graphs; warning only.')
+        self.threshold_status = w.HTML('Applies to all analyses; warning only.')
         self.threshold.observe(self._threshold_changed, names='value')
         self.review_only = w.Checkbox(value=False, description='Only specimens needing review', indent=False,
                                      tooltip='Fit, fracture/EL, gauge reconstruction and Instron checks. Does not exclude specimens.',
@@ -545,7 +545,7 @@ class PropertyTablesView:
             return
         try:
             self.on_threshold(change['new'])
-            self.threshold_status.value = 'Saved for all graphs; warning only.'
+            self.threshold_status.value = 'Saved for all analyses; warning only.'
         except Exception as error:
             self.set_threshold(change['old'])
             self.threshold_status.value = '<b>Not saved:</b> ' + escape(str(error))
@@ -678,8 +678,8 @@ class PropertyTablesView:
                                'Calculations and checks retain full precision.</p>'
                                + basis_note + summary_html(summary))
         self.panels[1].value = ('<p><b>Data use</b> changes the global default for statistics, averages, work hardening and all plots. '
-                               'Choose <b>This graph only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
-                               'Other graphs’ explicit overrides are preserved. '
+                               'Choose <b>This analysis only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
+                               'Other analyses’ explicit overrides are preserved. '
                                'Excluded values stay visible, crossed out, and remain in the specimen export with their policy. '
                                'After UTS: keep YS, UTS, E and uniform EL / pre-peak WH. After yield: keep YS, UTS and E only. '
                                'Unreliable throughout: keep UTS only, assuming the stress record is sound. '

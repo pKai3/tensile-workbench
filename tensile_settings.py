@@ -55,7 +55,7 @@ def planned_positions(text):
 
 def validate_group_display(settings):
     if settings.get('properties_by_group_level', 'group') not in ('group', 'specimen'):
-        raise ValueError('Property charts must show group means or individual specimens.')
+        raise ValueError('Property plots must show group means or individual specimens.')
     planned_positions(settings.get('properties_by_group_planned_positions', ''))
     if settings.get('properties_by_group_trend', 'none') not in ('none', 'linear', 'quadratic'):
         raise ValueError('Choose no trendline, linear or quadratic.')
@@ -64,13 +64,13 @@ def validate_group_display(settings):
     groups = settings.get(SPECIMEN_GROUPS_KEY)
     if groups is not None and (not isinstance(groups, list)
             or any(not isinstance(g, str) or not g for g in groups) or len(set(groups)) != len(groups)):
-        raise ValueError('Specimen chart groups must be a list of unique sample-group identities or all groups.')
+        raise ValueError('Specimen plot groups must be a list of unique sample-group identities or all groups.')
     for key in ('xlim', 'ylim', 'el_ylim'):
         limits = settings.get('properties_by_group_' + key)
         if limits is not None and (not isinstance(limits, (tuple, list)) or len(limits) != 2
                 or any(isinstance(v, bool) or not isinstance(v, (float, int)) or not math.isfinite(v) for v in limits)
                 or limits[0] >= limits[1]):
-            raise ValueError('Property chart limits must be finite and increase from min to max.')
+            raise ValueError('Property plot limits must be finite and increase from min to max.')
     for key in ('ys', 'uts', 'el'):
         color = settings.get(f'properties_by_group_{key}_color', GROUP_DEFAULTS[f'properties_by_group_{key}_color'])
         if not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
@@ -92,10 +92,10 @@ def validate_group_display(settings):
 
 
 def specimen_trend(settings):
-    """New bar charts default to quadratic; retain explicit trial linear/quadratic fits.
+    """New bar plots default to quadratic; retain explicit trial linear/quadratic fits.
 
     A separate saved key distinguishes a newly selected None from the trial's
-    automatic no-trend default, without changing group-mean chart settings.
+    automatic no-trend default, without changing group-mean plot settings.
     """
     legacy = settings.get('properties_by_group_trend')
     return settings.get(SPECIMEN_TREND_KEY, legacy if legacy in ('linear', 'quadratic') else 'quadratic')

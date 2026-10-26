@@ -277,11 +277,11 @@ class GroupVariablesTests(unittest.TestCase):
         self.app.controls['properties_by_group_x_variable'].value = 'co2'
         cached = self.session.render(self.state(properties_by_group_x_variable='co2'))
         view = self.app.group_variables
-        self.assertEqual(view.ui.get_title(0), 'Custom variables · shared by all graphs')
+        self.assertEqual(view.ui.get_title(0), 'Custom variables · shared by all analyses')
         before = deepcopy(self.app.store.data)
         view.table._message(None, dict(type='delete', id='co2'), [])
         self.assertEqual(view._pending_delete['id'], 'co2')
-        self.assertIn('Chart 1', view.delete_message.value)
+        self.assertIn('Plot 1', view.delete_message.value)
         self.assertIn('new X-axis selection', view.delete_message.value)
         self.assertEqual(before, self.app.store.data)
         view.delete_cancel.click()
@@ -355,7 +355,7 @@ class GroupVariablesTests(unittest.TestCase):
                            dict(name='Temperature chart', settings={'properties_by_group_x_variable': 'temp'})]})],
             deleted_graphs=[dict(graph=dict(name='Archived', settings=settings))])
         self.assertEqual(variable_usage(project, 'gas'),
-                         ['Legacy — Chart 1', 'Variants — Gas chart', 'Deleted graph: Archived — Chart 1'])
+                         ['Legacy — Plot 1', 'Variants — Gas chart', 'Deleted analysis: Archived — Plot 1'])
         self.assertEqual(variable_usage(project, 'missing'), [])
 
     def test_variants_switch_persist_add_remove_and_titles(self):

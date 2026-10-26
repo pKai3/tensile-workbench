@@ -8,7 +8,7 @@ def group_policy(state, spec, group):
     """One resolver for calculations, inspector, labels, caches and exports."""
     if 'gauge_reconstruction' in spec:
         return validate_group_policy(spec['gauge_reconstruction'].get(group, {}))
-    # Compatibility for a headless caller with an older graph definition.
+    # Compatibility for a headless caller with an older analysis definition.
     return validate_group_policy({'enabled': state.get('gauge_correction', False),
                                   'target_gauge_mm': state.get('target_gauge_mm', 0)})
 
@@ -17,7 +17,7 @@ def migrate_group_gauges(project):
     """Preserve legacy choices for existing groups; newly added groups stay off."""
     from tensile_moves import graph_blocks
     project = deepcopy(project)
-    # Keep recycled graphs and the automatic-draft snapshot in the same schema.
+    # Keep recycled analyses and the automatic-draft snapshot in the same schema.
     # Otherwise migration alone makes an untouched draft look user-edited on Undo.
     for graph in graph_blocks(project):
         settings, spec = graph['settings'], graph['definition']

@@ -176,7 +176,7 @@ class InspectorIntegrationTests(unittest.TestCase):
         self.inspect_event('Alloy A/coupon_2.csv')
         self.assertFalse(self.inspector._payload['included'])
         self.assertIn('Synthetic review', self.inspector.summary.value)
-        self.assertIn('Excluded from this graph', self.inspector.summary.value)
+        self.assertIn('Excluded from this analysis', self.inspector.summary.value)
         self.assertEqual(self.app.store.path.read_bytes(), before)
 
     def test_stale_invalid_and_out_of_graph_ids_cannot_load(self):

@@ -51,7 +51,7 @@ NEW_GRAPH_ACTION = '__create_new_graph__'
 
 
 def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
-    """Upgrade only the shipped demo graph; never reinterpret personal groups."""
+    """Upgrade only the shipped demo analysis; never reinterpret personal groups."""
     project = deepcopy(project)
     demo_names = {'Demo_Ductile', 'Demo_Balanced', 'Demo_Strong'}
     for graph in project['graphs']:
@@ -97,12 +97,13 @@ def graph_menu_options(graphs):
     """Keep saved order, distinguish unnamed drafts, and put creation last."""
     named, drafts = [], []
     for graph in graphs:
-        match = re.fullmatch(r'New graph( \d+)?', graph['name'], re.IGNORECASE)
+        # Recognise legacy draft names without rewriting saved names or IDs.
+        match = re.fullmatch(r'New (?:graph|analysis)( \d+)?', graph['name'], re.IGNORECASE)
         if match and not graph['settings'].get('groups'):
-            drafts.append(('Untitled graph' + (match.group(1) or '') + ' (draft)', graph['id']))
+            drafts.append(('Untitled analysis' + (match.group(1) or '') + ' (draft)', graph['id']))
         else:
             named.append((graph['name'], graph['id']))
-    return named + drafts + [('＋ Create new graph…', NEW_GRAPH_ACTION)]
+    return named + drafts + [('＋ Create new analysis…', NEW_GRAPH_ACTION)]
 
 
 FAMILIES = [
@@ -259,7 +260,7 @@ class PreviewSession:
                 'specimen_failure_history': [event for event in self.project.get('specimen_failure_history', []) if event['specimen_id'] in ids]}
 
     def output_root(self):
-        """Local folder choice overrides the graph template without changing it."""
+        """Local folder choice overrides the analysis template without changing it."""
         from tensile_startup import resolve_folder
         configured = self._output_override if self._output_override is not None else self.project.get('output_directory', './output')
         return resolve_folder(configured, self.project_dir)
@@ -321,7 +322,7 @@ class PreviewSession:
     def group_review_landmark(self, group, state, spec):
         """Only the selected group's diagnostic arrays; no figures or exports."""
         if group not in self.visible_groups(state['groups']):
-            raise ValueError('This group is not selected in the current graph.')
+            raise ValueError('This group is not selected in the current analysis.')
         key = json.dumps(['group-review-landmark', group, spec, state['landmark_points'],
                           group_policy(state, spec, group), self.selection_signature(), self.fit_signature()], sort_keys=True)
         if key not in self._models:
@@ -369,7 +370,7 @@ class PreviewSession:
             if len(self._property_frames) > 16:
                 self._property_frames.pop(next(iter(self._property_frames)))
         # Reorder cached results without recalculating properties or mutating
-        # another graph's cached frames. Export and the viewer share this order.
+        # another analysis's cached frames. Export and the viewer share this order.
         return {name: sort_group_frame(frame, state.get('group_order', []))
                 for name, frame in self._property_frames[key].items()}
 
@@ -412,7 +413,7 @@ class PreviewSession:
         destination = base / self.engine.safe_filename(spec['name']) / (datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_tables')
         destination.mkdir(parents=True, exist_ok=False)
         export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
-                       {'graph': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
+                       {'analysis': spec, 'settings': state, 'fit_policy': self.fit_provenance(state),
                         'group_variables': self.variable_provenance(state),
                         'specimen_variables': self.variable_provenance(state, scope='specimen'),
                         'specimen_selection': self.selection_provenance(state, spec),
@@ -486,7 +487,7 @@ class PreviewSession:
                             'calculation': specimen_calculation(record, fractions, self.engine.LANDMARK_YIELD_R2_WARNING),
                             'reference': reference, 'gauge_policy': policy,
                             'gauge_preview': gauge_record(record, reference, True, policy['target_gauge_mm'])}
-        raise ValueError('Specimen is no longer available in this graph. Refresh the tables.')
+        raise ValueError('Specimen is no longer available in this analysis. Refresh the tables.')
 
     def _wh_settings(self, state, spec):
         overrides = spec.get("youngs_modulus_overrides", {}) if state["respect_modulus_overrides"] else {}
@@ -796,7 +797,7 @@ class PreviewSession:
                 chart_suffix = ''
                 if chart_id:
                     number = chart_numbers.setdefault(chart_id, len(chart_numbers) + 1)
-                    chart_name = self.engine.safe_filename(view_state.get('property_chart_name', 'Chart'))
+                    chart_name = self.engine.safe_filename(view_state.get('property_chart_name', 'Plot'))
                     chart_suffix = f'_chart{number:02d}_{chart_name}'
                 if view_state['family'] == SPECIMEN_FAMILY:
                     group = view_state['groups'][0]
@@ -817,7 +818,7 @@ class PreviewSession:
         state, spec = {**result['state'], 'groups': self._export_groups(results)}, result['graph_spec']
         graph = self.engine.safe_filename(spec['name'])
         export_results(self.property_tables(state, spec), destination / f'{graph}_results.xlsx',
-                       {'graph': spec, 'views': [r['state'] for r in results],
+                       {'analysis': spec, 'views': [r['state'] for r in results],
                         'group_variables': self.variable_provenance(state),
                         'specimen_variables': self.variable_provenance(state, scope='specimen'),
                         'specimen_selection': self.selection_provenance(state, spec),
@@ -831,7 +832,7 @@ class PreviewSession:
 
 
 class TensileWorkbench:
-    """Graph editor and multi-plot board. Definitions autosave independently of previews."""
+    """Analysis editor and multi-plot board. Definitions autosave independently of previews."""
 
     def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None, activity=None):
         import ipywidgets as w
@@ -850,18 +851,20 @@ class TensileWorkbench:
         self._results, self._signature = [], None
         self._pending_delete = None
         self.controls, self.axes, self.title_inputs = {}, {}, {}
-        self.graph = w.Dropdown(description="Graph:", layout=w.Layout(width="98%"))
-        self.name = w.Text(description="Name:", continuous_update=False, layout=w.Layout(width="98%"))
-        self.new_button = w.Button(description="New graph")
-        self.duplicate_button = w.Button(description="Duplicate graph")
-        self.delete_button = w.Button(description='Delete graph', button_style='danger')
+        self.graph = w.Dropdown(description="Saved analyses:", style={'description_width': '120px'},
+                                layout=w.Layout(width="98%"))
+        self.name = w.Text(description="Analysis name:", style={'description_width': '120px'},
+                           continuous_update=False, layout=w.Layout(width="98%"))
+        self.new_button = w.Button(description="New analysis", layout=w.Layout(width='auto'))
+        self.duplicate_button = w.Button(description="Duplicate analysis", layout=w.Layout(width='auto'))
+        self.delete_button = w.Button(description='Delete analysis', button_style='danger', layout=w.Layout(width='auto'))
         self.undo_delete_button = w.Button(description='Undo delete', disabled=True)
         self.delete_message = w.HTML()
         self.confirm_delete_button = w.Button(description='Confirm delete', button_style='danger')
         self.cancel_delete_button = w.Button(description='Cancel')
         self.delete_confirmation = w.VBox([self.delete_message,
             self._row([self.confirm_delete_button, self.cancel_delete_button])], layout=w.Layout(display='none'))
-        self.saved_button = w.Button(description="Reload saved graphs", layout=w.Layout(width='auto'))
+        self.saved_button = w.Button(description="Reload saved analyses", layout=w.Layout(width='auto'))
         self.save_status = w.HTML()
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
@@ -911,8 +914,8 @@ class TensileWorkbench:
         self.display_order_down.on_click(lambda _: self._move_display_order(1))
         self.display_order_select.observe(lambda _: self._sync_display_order_buttons(), names='value')
         self.display_order_panel = w.Accordion(children=[w.VBox([
-            w.HTML('Top to bottom in group legends and tables, and left to right on the YS/UTS/EL-by-sample chart. '
-                   'Select a group, then move it. Saved for this graph; colours stay unchanged.'),
+            w.HTML('Top to bottom in group legends and tables, and left to right on the YS/UTS/EL-by-sample plot. '
+                   'Select a group, then move it. Saved for this analysis; colours stay unchanged.'),
             self.display_order_select,
             self._row([self.display_order_up, self.display_order_down])
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
@@ -969,7 +972,7 @@ class TensileWorkbench:
         self.palette_swatches = w.HTML()
         self.override_name = w.Text(description="Legend label:", continuous_update=False,
                                     style={"description_width": "initial"}, layout=w.Layout(width="98%"))
-        self.override_color_enabled = w.Checkbox(description='Override colour for this graph', indent=False)
+        self.override_color_enabled = w.Checkbox(description='Override colour for this analysis', indent=False)
         self.override_color = w.ColorPicker(description='Colour:', value='#1f77b4', concise=False)
         self.override_e_enabled = w.Checkbox(description="Use a group-specific WH modulus", indent=False)
         self.override_e = w.BoundedFloatText(value=115, min=1, max=1000, description="E (GPa):")
@@ -1021,7 +1024,7 @@ class TensileWorkbench:
         general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
                              self.override_group, self.override_name,
                              self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
-        general.set_title(0, "Labels and colours · this graph, all plot types")
+        general.set_title(0, "Labels and colours · this analysis, all plot types")
         self.plot_settings = {}
         self.plot_selectors = {}
         self.property_variants = PropertyVariantsView(w, self._capture_property_chart,
@@ -1051,7 +1054,7 @@ class TensileWorkbench:
         self.custom_variable_tabs.set_title(1, 'Individual specimens')
         self.custom_variables_panel = w.Accordion(children=[self.custom_variable_tabs], selected_index=None,
             layout=w.Layout(width='100%', min_width='0'))
-        self.custom_variables_panel.set_title(0, 'Custom variables · shared by all graphs')
+        self.custom_variables_panel.set_title(0, 'Custom variables · shared by all analyses')
         self.custom_variables_panel.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
         self.custom_variable_tabs.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
         for label, family in FAMILIES:
@@ -1083,7 +1086,7 @@ class TensileWorkbench:
                 label_settings.set_title(0, 'X-axis labels · this plot only')
                 self.group_plot_label_settings = label_settings
                 local += [w.HTML('Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
-                                 'with their actual spacing. Missing values omit that group from this chart only. '
+                                 'with their actual spacing. Missing values omit that group from this plot only. '
                                  'Edit values in <b>Custom variables</b> below the sample selector.'),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
@@ -1130,7 +1133,7 @@ class TensileWorkbench:
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.analysis_ui = w.VBox([
-            w.HTML("<h2>Analysis workspace</h2><p>Choose a graph and its sample groups. Changes save automatically; export when you are ready.</p>"),
+            w.HTML("<h2>Analysis workspace</h2><p>Choose an analysis and its sample groups. Changes save automatically; export when you are ready.</p>"),
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
@@ -1244,7 +1247,7 @@ class TensileWorkbench:
             self.save_status.value += '<br><b>' + escape(self.store.backup_warning) + '</b> Open Backups & restore to retry.'
         deleted = self.store.data.get('deleted_graphs', [])
         self.undo_delete_button.disabled = not deleted
-        self.undo_delete_button.tooltip = ('Restore ' + deleted[-1]['graph']['name']) if deleted else 'No deleted graphs to restore'
+        self.undo_delete_button.tooltip = ('Restore ' + deleted[-1]['graph']['name']) if deleted else 'No deleted analyses to restore'
 
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
@@ -1258,7 +1261,7 @@ class TensileWorkbench:
         state[SPECIMEN_VARIANTS_KEY] = self.specimen_charts.snapshot()
         if variants:
             state[VARIANTS_KEY] = variants
-            # Keep the original top-level keys as the first chart for compatibility.
+            # Keep the original top-level keys as the first plot for compatibility.
             state.update({key: value for key, value in variants[0]['settings'].items() if key in GROUP_DEFAULTS})
         return state
 
@@ -1330,7 +1333,7 @@ class TensileWorkbench:
         if not REQUIRED_VARIABLES[scope].keys() <= variables.keys():
             raise ValueError('Required variables cannot be deleted.')
         if not self.save_current():
-            raise ValueError('Save the current graph settings before updating variables.')
+            raise ValueError('Save the current analysis settings before updating variables.')
         project = deepcopy(self.store.data)
         minimums = project['group_variables'][SPECIMEN_COUNT].get('minimums', {})
         project[scope + '_variables'] = deepcopy(variables)
@@ -1516,12 +1519,12 @@ class TensileWorkbench:
             check = {**state, "groups": state["groups"] or ["draft"], "family": state["families"][0] if state["families"] else "landmark"}
             self.session._validate(check)
             # Preserve legacy gauge choices before replacing settings with the
-            # current controls (which no longer contain graph-wide gauge fields).
+            # current controls (which no longer contain analysis-wide gauge fields).
             project = migrate_group_gauges(self.store.data)
             graph = project["graphs"][self._index()]
             previous_groups = list(graph['settings']['groups'])
             graph["name"] = self.name.value.strip()
-            # Hiding samples is not a graph edit. Keep their previous selections
+            # Hiding samples is not an analysis edit. Keep their previous selections
             # while saving changes to the visible research groups/settings.
             hidden = [g for g in graph['settings']['groups'] if self.session.hidden_sample_group(g)]
             if hidden:
@@ -1602,12 +1605,12 @@ class TensileWorkbench:
         if change and change.get('owner') is self.controls['live_update'] and change['new'] and not ready:
             self.update(save=False)
 
-    @busy('Loading graph and sample groups…')
+    @busy('Loading analysis and sample groups…')
     def _graph_changed(self, change):
         if self._paused:
             return
         if change['new'] == NEW_GRAPH_ACTION:
-            # Restore a real graph before save_current/_index reads the selector.
+            # Restore a real analysis before save_current/_index reads the selector.
             old, self._paused = self._paused, True
             try:
                 self.graph.value = change['old']
@@ -1626,14 +1629,14 @@ class TensileWorkbench:
             if self.controls["live_update"].value:
                 self.update(save=False)
             else:
-                self.status.value = "Graph restored. Click <b>Update plots</b> when ready."
+                self.status.value = "Analysis restored. Click <b>Update plots</b> when ready."
         except Exception as error:
             self._paused = True
             self.graph.value = change["old"]
             self._paused = False
             self.save_status.value = "<b>Could not switch:</b> " + escape(str(error))
 
-    @busy('Preparing graph…')
+    @busy('Preparing analysis…')
     def new_graph(self, duplicate=False):
         if not self.save_current():
             return
@@ -1646,15 +1649,15 @@ class TensileWorkbench:
             self._apply_graph(self.store.data["selected_graph"])
             self._paused = False
             self._show_saved()
-            self.status.value = "Graph created and saved. Choose groups and the plots to display."
+            self.status.value = "Analysis created and saved. Choose groups and the plots to display."
             self._refresh_properties()
             if duplicate and self.controls["live_update"].value:
                 self.update(save=False)
         except Exception as error:
             self._paused = False
-            self.save_status.value = "<b>Could not create graph:</b> " + escape(str(error))
+            self.save_status.value = "<b>Could not create analysis:</b> " + escape(str(error))
 
-    @busy('Loading saved graph definitions…')
+    @busy('Loading saved analysis definitions…')
     def reload_definitions(self, _=None):
         try:
             self.store.reload()
@@ -1679,7 +1682,7 @@ class TensileWorkbench:
         if not self.save_current():
             return
         self._pending_delete = self.graph.value
-        self.delete_message.value = ('Delete graph <b>' + escape(self._current()['name'])
+        self.delete_message.value = ('Delete analysis <b>' + escape(self._current()['name'])
             + '</b>? Only its saved definition is removed. Data and exported files are untouched. '
               'You can restore it with Undo delete.')
         self.delete_confirmation.layout.display = ''
@@ -1708,9 +1711,9 @@ class TensileWorkbench:
         try:
             name = self._current()['name']
             self.store.delete_graph(ident)
-            self._after_graph_action(f'Deleted graph “{name}”. Undo delete can restore it; data and exports are unchanged.')
+            self._after_graph_action(f'Deleted analysis “{name}”. Undo delete can restore it; data and exports are unchanged.')
         except Exception as error:
-            self.save_status.value = '<b>Could not delete graph:</b> ' + escape(str(error))
+            self.save_status.value = '<b>Could not delete analysis:</b> ' + escape(str(error))
 
     def _undo_delete_graph(self, _=None):
         deleted = self.store.data.get('deleted_graphs', [])
@@ -1723,9 +1726,9 @@ class TensileWorkbench:
             return
         try:
             self.store.undo_delete()
-            self._after_graph_action('Deleted graph restored, including its specimen selections.')
+            self._after_graph_action('Deleted analysis restored, including its specimen selections.')
         except Exception as error:
-            self.save_status.value = '<b>Could not restore graph:</b> ' + escape(str(error))
+            self.save_status.value = '<b>Could not restore analysis:</b> ' + escape(str(error))
 
     @busy('Applying specimen data-use settings…')
     def _specimen_changed(self, ident, included, reason, scope='global', action='selection', mode=None):
@@ -1735,10 +1738,10 @@ class TensileWorkbench:
             self._refresh_properties()
             return
         try:
-            # Never apply a stale browser row to a different selected group/graph.
+            # Never apply a stale browser row to a different selected group/analysis.
             known = {r['specimen_id'] for group in self.state()['groups'] for r in self.session._load(group)}
             if ident not in known:
-                raise ValueError('Specimen is no longer in this graph. Reload its tables.')
+                raise ValueError('Specimen is no longer in this analysis. Reload its tables.')
             project = deepcopy(self.store.data)
             spec = project['graphs'][self._index()]['definition']
             mode = mode if mode is not None else ('all' if included else 'exclude')
@@ -1752,7 +1755,7 @@ class TensileWorkbench:
                 overrides[ident] = {'included': included, 'mode': mode, 'reason': reason.strip()}
             else:
                 # Normal Include changes are global. Existing explicit overrides
-                # in other graphs remain deliberate exceptions.
+                # in other analyses remain deliberate exceptions.
                 clear_disabled(project, ('specimen_exclusions', 'specimen_data_modes'), ident)
                 exclusions = project.setdefault('specimen_exclusions', {})
                 modes = project.setdefault('specimen_data_modes', {})
@@ -1777,15 +1780,15 @@ class TensileWorkbench:
             if self.controls['live_update'].value:
                 self.update(save=False)
             else:
-                self.status.value = ('Specimen selection saved ' + ('for this graph.' if scope == 'graph' and action != 'inherit'
-                    else 'globally; explicit graph overrides remain in effect.' if action != 'inherit'
+                self.status.value = ('Specimen selection saved ' + ('for this analysis.' if scope == 'graph' and action != 'inherit'
+                    else 'globally; explicit analysis overrides remain in effect.' if action != 'inherit'
                     else 'using the global default.') + ' Tables updated; click Update plots when ready.')
         except Exception as error:
             self.save_status.value = '<b>Specimen selection not saved:</b> ' + escape(str(error))
             self._refresh_properties()
 
     def _sync_gauge_rows(self, force=False):
-        """Rebuild only on graph/group changes, not while a row is being edited."""
+        """Rebuild only on analysis/group changes, not while a row is being edited."""
         graph, w = self._current(), self.w
         groups = self.session.visible_groups(graph['settings']['groups'])
         if not force and self._gauge_graph_id == graph['id'] and tuple(self._gauge_rows) == tuple(groups):
@@ -1832,7 +1835,7 @@ class TensileWorkbench:
         try:
             policy = validate_group_policy({'enabled': enabled.value, 'target_gauge_mm': target.value})
             if not self.save_current():
-                raise ValueError('Graph settings could not be saved; gauge settings were not applied.')
+                raise ValueError('Analysis settings could not be saved; gauge settings were not applied.')
             project = deepcopy(self.store.data)
             project['graphs'][self._index()]['definition'].setdefault('gauge_reconstruction', {})[group] = policy
             self.store.save(project)
@@ -1875,7 +1878,7 @@ class TensileWorkbench:
         self.override_rep.options = choices
         self.override_rep.value = saved
 
-    @busy('Applying graph settings…')
+    @busy('Applying analysis settings…')
     def _apply_overrides(self, _=None):
         if not self.save_current() or self.override_group.value is None:
             return
@@ -1970,7 +1973,7 @@ class TensileWorkbench:
         self.sample_data_toggle.disabled = True
         try:
             if not self.save_current():
-                raise RuntimeError('Resolve the graph-save warning before changing sample visibility.')
+                raise RuntimeError('Resolve the analysis-save warning before changing sample visibility.')
             self.session.show_sample_data = change['new']
             self.session.reload_data()
             self._save_reconciled_counts()
@@ -2086,7 +2089,7 @@ class TensileWorkbench:
 
     @busy('Applying failure-elongation override…')
     def _apply_specimen_failure(self, ident, source_sha256, override, reason):
-        """Validate against unchanged raw data, then save an endpoint for all graphs."""
+        """Validate against unchanged raw data, then save an endpoint for all analyses."""
         if not self.save_current():
             raise ValueError('Save failed; failure EL was not changed.')
         payload = self._inspect_specimen(ident)
@@ -2258,8 +2261,8 @@ class TensileWorkbench:
                         items.append({**item, "error": message})
                         messages.append(label + ": " + message)
             if not charts:
-                self.viewer.clear('No sample groups selected for specimen charts. Tick All sample groups or individual groups in their Settings.')
-                self.status.value = 'Choose sample groups for the specimen charts. Workspace tables are unchanged.'
+                self.viewer.clear('No sample groups selected for specimen plots. Tick All sample groups or individual groups in their Settings.')
+                self.status.value = 'Choose sample groups for the specimen plots. Workspace tables are unchanged.'
                 return
             self.viewer.set_items(items)
             self._signature = self._current_signature()

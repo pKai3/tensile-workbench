@@ -15,7 +15,7 @@ class BackupPanel:
         self.before_backup = before_backup
         self.after_restore = after_restore
         self.pending = None
-        self.file = w.Dropdown(options=[('Project · graphs, variables and specimen overrides', PROJECT_NAME),
+        self.file = w.Dropdown(options=[('Project · analyses, variables and specimen overrides', PROJECT_NAME),
                                         ('Folders · data/output locations and sample visibility', PATHS_NAME)],
                                layout=w.Layout(width='560px', max_width='100%'))
         self.snapshots = w.Select(rows=7, layout=w.Layout(width='780px', max_width='100%'))
@@ -70,7 +70,7 @@ class BackupPanel:
                     damaged += 1
                     continue
                 when = datetime.fromisoformat(entry['created']).astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
-                count = f' · {entry["graphs"]} graphs' if entry['graphs'] is not None else ''
+                count = f' · {entry["graphs"]} analyses' if entry['graphs'] is not None else ''
                 if entry.get('revision') is not None:
                     count += f' · r{entry["revision"]}'
                 label = f'{when}{count} · {entry["reason"].replace("-", " ")}'
@@ -84,7 +84,7 @@ class BackupPanel:
                     try:
                         project = validate_settings(vault.path, raw)
                         when = datetime.fromtimestamp(previous.stat().st_mtime).astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')
-                        label = f'{when} · {len(project["graphs"])} graphs · previous-save fallback'
+                        label = f'{when} · {len(project["graphs"])} analyses · previous-save fallback'
                         self._entries[str(previous)] = label
                         options.append((label, str(previous)))
                     except Exception:

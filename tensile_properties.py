@@ -94,7 +94,7 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
 
     This is the single calculation path for tables, landmarks and inspection.
     Diagnostic arrays are built only on demand; the properties cache stays small.
-    Specimen overrides take precedence over graph-level automatic fit fractions.
+    Specimen overrides take precedence over analysis-level automatic fit fractions.
     A preview override can be passed explicitly without changing the record.
     """
     low, high = map(float, fit_fractions)

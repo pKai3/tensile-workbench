@@ -1,5 +1,23 @@
 # Implementation record
 
+## Change notes — 2026-10-26
+
+### Saved analyses and individual plots — implemented
+
+- Use **analysis** for a saved setup of sample groups, settings, overrides,
+  plots and tables. Individual figures and their variant controls use **plot**.
+- Update the selector, name field, actions, override scopes, inspector help,
+  loading/error messages, backup summaries, export labels, notebook and guides.
+  Size the longer labels and action buttons to keep them readable.
+- New setups and automatic replacement drafts are named **New analysis**.
+  Recognise legacy unnamed drafts as **Untitled analysis (draft)** without
+  renaming existing user definitions. Keep internal storage keys, scope values,
+  identifiers and recovery snapshots compatible with saved project files.
+- Verification: exercised the 388-test synthetic suite, updated old wording
+  assertions and reran the final affected check successfully. Browser review
+  confirmed readable analysis controls and the new plot-variant labels. No
+  research files or personal settings were changed; the preview was stopped.
+
 ## Change notes — 2026-10-23
 
 ### Table-only custom-variable editing — implemented
@@ -40,10 +58,10 @@
   underscore-, hyphen- and space-separated specimen numbers. Do not infer a
   location from a CSV row suffix, an unseparated group code or conflicting labels.
 - Keep one parser for the lightweight catalogue, variable editor, specimen
-  charts and exported effective locations. Preserve manual overrides; clearing
+  plots and exported effective locations. Preserve manual overrides; clearing
   an override restores the detected number without saving defaults as edits.
-- Verification: all 21 focused synthetic location, catalogue and specimen-chart
-  tests pass, including editor/table defaults, reload, override/reset, chart
+- Verification: all 21 focused synthetic location, catalogue and specimen-plot
+  tests pass, including editor/table defaults, reload, override/reset, plot
   positions and Excel values. No research data or personal settings changed.
 
 ### Regression clean-up and safe Undo — implemented
@@ -52,9 +70,9 @@
   display, five-decimal fit diagnostics, operator/CSV specimen labels, global
   exclusions and combined fit/EL review rules. Keep independent checks for the
   calculation behaviour; do not replace regression checks with blanket skips.
-- Fix Undo delete after the last graph is deleted: apply schema migrations to
+- Fix Undo delete after the last analysis is deleted: apply schema migrations to
   both the automatic draft and its recovery snapshot. Remove only an untouched
-  replacement draft; preserve a genuinely edited new graph.
+  replacement draft; preserve a genuinely edited new analysis.
 - Fix a gap-related fracture-search regression: an earlier acquisition gap
   must not shorten the supported collapse duration. Keep every comparison
   inside an uninterrupted segment, with the whole-test sampling scale.
@@ -80,12 +98,12 @@
 - Verification: all 386 tests pass, including 23 new backup/recovery tests.
   Tests redirect backups to temporary folders and use synthetic settings only.
   Browser checks verified recovery from damaged settings, cancellation, explicit
-  restore confirmation, reopening graphs, manual backup of both files and
+  restore confirmation, reopening analyses, manual backup of both files and
   switching between project/folder histories. The temporary preview was stopped.
 
-### Specimen bars, quadratic trends and chart group selection — implemented
+### Specimen bars, quadratic trends and plot group selection — implemented
 
-- Use grouped YS/UTS/EL bars in the specimen-location section, one chart per
+- Use grouped YS/UTS/EL bars in the specimen-location section, one plot per
   chosen sample group. Keep YS/UTS on the strength axis and EL on its own axis;
   an EL-only selection uses a single axis. Omitted properties create no zero
   bars. Duplicate locations stay separate, with adjacent bars and specimen
@@ -95,10 +113,10 @@
   distinct locations for quadratic fits. Retain dotted extrapolation through
   reserved, untested positions without inventing measurements or fit weight.
 - Add an All sample groups checkbox and individual workspace-group checkboxes
-  in each specimen chart variant's Settings. Save independently per variant;
+  in each specimen plot variant's Settings. Save independently per variant;
   do not alter workspace selection, tables or specimen exclusions. Keep shared
   group order, dormant selections, approved moves and forget-group handling.
-  An empty selection clears these charts with an actionable message.
+  An empty selection clears these plots with an actionable message.
 - Verification: 117 synthetic tests ran; 114 passed. Three older strength–EL
   expectations (hover labels and the automatic endpoint) fail identically in
   the preceding commit. New bar/filter tests and variable/export tests pass.
@@ -106,7 +124,7 @@
   quadratic defaults, dual-axis bars and reserved positions. Static output was
   visually checked. Research data and personal settings were not changed.
 
-### Separate specimen charts and required integer variables — implemented
+### Separate specimen plots and required integer variables — implemented
 
 - Split **YS/UTS/EL by specimen** from **YS/UTS/EL by sample group & custom
   variable**. Specimen variants have independent settings and generate one
@@ -119,23 +137,23 @@
 - Make **Specimen count** a permanent whole-number sample-group variable in
   Custom variables. At startup and Reload data, use the lightweight catalogue
   to raise it to at least the imported count, including excluded specimens.
-  Preserve larger tested + untested totals. Location charts extend to 1–count
+  Preserve larger tested + untested totals. Location plots extend to 1–count
   without fabricated observations, zero-valued points or trendline fit weight.
 - Protect both variables from deletion/renaming and reject fractional edits
   and pastes. Keep unrestricted numeric custom variables for physical units.
-  Migrate trial specimen charts and saved integer Location values; convert
+  Migrate trial specimen plots and saved integer Location values; convert
   old 1:N reservations into shared counts. Preserve fractional/unit-based
   legacy locations separately rather than rounding away their values.
 - Include counts and locations in stale-preview/export checks, approved moves
   and forgetting groups. Automatic inventory counts do not cause move
-  protection to fingerprint every data group. Split-chart exports retain all
+  protection to fingerprint every data group. Split-plot exports retain all
   rendered groups and use unique figure filenames.
 - Verification: all 93 focused synthetic tests pass. Expanded coverage ran
   193 tests: 184 passed and nine older failures/errors reproduce unchanged at
   the preceding commit (selection/export expectations, inspector layout,
-  graph undo and old workbook filenames). These were not new regressions.
+  analysis undo and old workbook filenames). These were not new regressions.
   Browser checks verified all-specimen browsing, editing/clearing Location,
-  minimum-count correction, integer ticks and separate group charts. No
+  minimum-count correction, integer ticks and separate group plots. No
   research data, outputs or personal settings were changed.
 
 ### Fast individual-specimen variable catalogue — implemented
@@ -152,8 +170,8 @@
 
 ### Individual specimen properties versus location — trial implemented
 
-- Add Group means / Individual specimens modes to independent YS/UTS/EL chart
-  variants. Existing saved group charts retain their behaviour. Specimen mode
+- Add Group means / Individual specimens modes to independent YS/UTS/EL plot
+  variants. Existing saved group plots retain their behaviour. Specimen mode
   starts with markers only and the operator specimen number as the numeric X-axis;
   CSV acquisition indices and ambiguous names are never inferred as locations.
 - Add separate Sample groups / Individual specimens tabs under Custom variables.
@@ -161,14 +179,14 @@
   initial editable Location draft from operator numbers, with a fill-blanks
   action. Load the specimen catalogue lazily; include excluded specimens for
   editing, retain stable IDs, shared group order and natural specimen ordering.
-- Preserve untested locations with a per-chart Planned locations field (inclusive
+- Preserve untested locations with a per-plot Planned locations field (inclusive
   integer range or numeric list), without inventing measurements or statistical
   weight. Optional linear/quadratic trends fit only real eligible observations;
   dashed in-range segments become dotted extrapolations beyond each property's
   measured range. Keep repeated locations separate and fits/connections per group.
 - Respect partial exclusions, fit/EL overrides and gauge reconstruction through
   the existing property pipeline. Show no SD bars or duplicate with/without views
-  for individual charts. Preserve specimen identities in interactive hovers and
+  for individual plots. Preserve specimen identities in interactive hovers and
   planned numeric ticks in static and interactive plots.
 - Persist shared specimen variables separately from group variables. Include
   cache/export invalidation, project validation, approved move/forget handling,
@@ -198,41 +216,41 @@
 ### Custom-variable deletion — implemented
 
 - Add Delete variable in the single editor and an accessible × button per
-  table column. Require confirmation, list affected chart variants (including
-  deleted graphs), and allow cancellation without writes.
+  table column. Require confirmation, list affected plot variants (including
+  deleted analyses), and allow cancellation without writes.
 - Remove only the selected variable and its group values globally; preserve
   other unsaved edits. Unsaved-column removal does not write the project.
-  Keep existing chart references explicitly unavailable rather than silently
+  Keep existing plot references explicitly unavailable rather than silently
   changing axes. Invalidate stale exports and require a new X-axis selection.
 - Reject deletion if the saved target changed after confirmation was opened;
-  leave drafts intact on failed saves and cancel pending deletion on graph or
+  leave drafts intact on failed saves and cancel pending deletion on analysis or
   editor switches. Document the workflow and use synthetic regression checks.
 - Verification: 67 focused synthetic tests pass (variables, clipboard, group
   ordering/property plots and setup). Browser checks confirm table-column
-  deletion, cancellation, affected-chart warnings and the single-editor control;
+  deletion, cancellation, affected-plot warnings and the single-editor control;
   no personal project variables were changed.
 
 ### Property plot and custom-variable labels — implemented
 
 - Rename the plot-view label to "YS, UTS and elongation by sample & by custom
   variable" and update the matching documentation. The internal plot ID, saved
-  definitions and generated/custom chart titles are unchanged.
-- Rename the editor section to "Custom variables · shared by all graphs" and
+  definitions and generated/custom plot titles are unchanged.
+- Rename the editor section to "Custom variables · shared by all analyses" and
   keep navigation guidance and messages consistent.
 
 ### Automatic title units — implemented
 
-- Put units in parentheses in both the property-chart automatic title and its
+- Put units in parentheses in both the property-plot automatic title and its
   grey placeholder, matching the variable-axis label: Heat Treat Time (h).
   Omit parentheses when units are blank; retain script formatting and custom
   title overrides. Verify with synthetic title/editor/plot regression checks.
 
-### Variable table, clipboard editing and automatic chart titles — implemented
+### Variable table, clipboard editing and automatic plot titles — implemented
 
 - Add a Table / One variable editor switch. The table shows editable names in
   row 1, units in row 2 and group values below, with fixed group identities,
   sticky headers, scrolling, Add variable (column) and Save all variables.
-  Both editors share drafts; row order follows the graph and Show all includes
+  Both editors share drafts; row order follows the analysis and Show all includes
   unselected groups. Saving validates the entire batch before updating shared
   variables; hidden-group values and stable variable IDs are preserved.
 - Support rectangular CSV/TSV/Excel paste at a chosen cell, quoted fields,
@@ -240,9 +258,9 @@
   needed, but reject row overflow, ragged/invalid blocks or nonfinite data
   without partial edits. Copy variable cells as TSV for spreadsheet use.
   Clipboard edits remain drafts until explicitly saved.
-- Use the same automatic property-chart title for plotting and the grey title
+- Use the same automatic property-plot title for plotting and the grey title
   placeholder: YS/UTS/EL vs. variable name and unit. Follow selected variables,
-  enabled properties and chart variants without persisting generated text or
+  enabled properties and plot variants without persisting generated text or
   overwriting custom titles. Format numeric sub/superscripts (CO_2, mm^2,
   m^{-3}) as Unicode in these titles and variable-axis labels only; keep saved
   text, numeric data and spreadsheet exports unchanged.
@@ -256,7 +274,7 @@
 - Prevent variable-entry rows from shrinking into the capped list viewport;
   keep readable inputs and scroll through all groups. Allow wrapping on narrow
   screens and keep the save button compact. Clarify that Show all does not
-  change the graph's selected groups.
+  change the analysis's selected groups.
 - Verification: 19 synthetic variable/order tests passed. A standalone browser
   preview with 60 fake groups confirmed readable rows and scrolling to the
   final group. Draft values and selection remain unchanged when toggling.
@@ -265,15 +283,15 @@
 
 - Include the required template and favicon in synthetic installation fixtures
   so launch/check/missing-environment tests reach their intended checks.
-- Move gauge, failure-override and property-chart settings validation into a
+- Move gauge, failure-override and property-plot settings validation into a
   shared standard-library-only module. Keep existing calculation-module imports
   compatible via re-exports. Route active, disabled and historical saved
   policies through the same validators without loading the numerical/UI stack.
-- Property-chart colours use the project's existing six-digit hex rule,
-  including nested chart variants, without importing Matplotlib to validate.
+- Property-plot colours use the project's existing six-digit hex rule,
+  including nested plot variants, without importing Matplotlib to validate.
   Keep full setup/check imports intact; ordinary launch remains lightweight.
 - Strengthen the cold-process import guard and test populated saved projects,
-  disabled overrides, histories, variables and chart variants. Invalid values
+  disabled overrides, histories, variables and plot variants. Invalid values
   must still fail with useful messages and leave saved files untouched.
 - Verification: all 24 setup tests and the final 63-test setup/variable/plot/
   order/saved-override run passed. A broader 115-test synthetic run had
@@ -287,31 +305,31 @@
 
 ### Variable editor follows sample group order — implemented
 
-- Apply the shared per-graph order to variable-entry rows, including the
+- Apply the shared per-analysis order to variable-entry rows, including the
   Show all sample groups view; append unranked groups alphabetically.
-- Refresh on order changes and graph load without discarding unsaved numeric
+- Refresh on order changes and analysis load without discarding unsaved numeric
   entries. Preserve zero, deselected-group values and the variable name/units.
   Numeric plot X positions still use their actual numeric values.
 - Verification: 18 synthetic variable/order tests passed, including reorder,
-  Show all toggling, draft preservation, save/reopen and switching graphs.
+  Show all toggling, draft preservation, save/reopen and switching analyses.
 
-### Sample-group variables and multiple property charts — implemented
+### Sample-group variables and multiple property plots — implemented
 
 - Add a collapsed Sample-group variables editor below sample selection/order.
   Save named numeric variables with optional units and per-group values across
-  all graphs. Blank means missing, zero remains valid; reject nonfinite values
+  all analyses. Blank means missing, zero remains valid; reject nonfinite values
   and duplicate names. Keep values in the ignored personal project, preserve
   unselected groups and remap/forget them with approved folder operations.
-- Extend the YS/UTS/EL chart to choose sample names or a numeric variable.
+- Extend the YS/UTS/EL plot to choose sample names or a numeric variable.
   Use real numeric spacing and ascending X order, with separate groups at
   equal X values. Flag missing values/overlap outside publication figures.
   Keep group/specimen identities and valid n in interactive hover text.
-- Add any number of separately configured chart variants within one graph.
+- Add any number of separately configured plot variants within one analysis.
   Each has independent X variable, YS/UTS/EL switches, title, axis limits,
   short categorical labels, connecting lines, colours and SD bars. The editor
   switches between saved variants; Add copies the current one, Remove deletes
-  only that chart. Existing graphs load as one compatible chart. Only EL or
-  only strength uses a single axis; mixed charts retain dual axes.
+  only that plot. Existing analyses load as one compatible plot. Only EL or
+  only strength uses a single axis; mixed plots retain dual axes.
 - Preserve property eligibility, independent means, sample SDs, reconstruction
   policy and shared limits with/without individuals. Variables affect display,
   not specimen calculations. Invalidate cached numeric plots when values
@@ -324,7 +342,7 @@
   static/Plotly conversion, control save/reopen, legacy categorical behaviour,
   folder moves, export values/filenames and related colour/order/writer tests.
   Visually inspected a synthetic dual-axis numeric plot. No research outputs
-  regenerated; personal graph definitions and data were not edited.
+  regenerated; personal analysis definitions and data were not edited.
 - Broader setup checks: five existing failures reproduced unchanged from
   commit 33b1c1d (four fixtures omit required web assets; one test forbids a
   NumPy import already made by project validation). They are not caused or
@@ -332,14 +350,14 @@
 
 ### Shared group order — implemented
 
-- Add a saved per-graph Group order list with Move up/down in a collapsible
+- Add a saved per-analysis Group order list with Move up/down in a collapsible
   Sample group order panel directly below the sample selector, above the tables.
   Group legends follow it in static and Plotly plots and both specimen
   display variants; WH comparisons keep the two methods adjacent per group.
 - Summary/specimen tables use it for their default Group sort; explicit other
   sorts and filters remain available. Apply the same order to Calc–Instron
-  charts/SD tables and numeric Excel table rows. The categorical YS/UTS/EL
-  chart now uses this same order for its x-axis; its property legend stays fixed.
+  plots/SD tables and numeric Excel table rows. The categorical YS/UTS/EL
+  plot now uses this same order for its x-axis; its property legend stays fixed.
 - Preserve colours, calculations, curve geometry, specimen eligibility and
   within-group row order. Reorder cached table frames without recalculating.
   Remember deselected/hidden groups, append new selections, remap on approved
@@ -356,7 +374,7 @@
 - Single-order follow-up: remove the triple-property plot's separate selector
   and move buttons. Remove the old setting entirely, with no migration/fallback
   into the shared order. Ignore it on load and strip it from active/deleted
-  graphs and new-graph defaults on normal saves. Only shared order participates
+  analyses and new-analysis defaults on normal saves. Only shared order participates
   in folder-move tracking. No shared order means alphabetical folder order.
   Update the triple-plot cache key and short-label editor to follow shared order.
   Twenty-nine focused synthetic plot/control/persistence/move checks passed,
@@ -446,9 +464,9 @@
 ### Strength–EL mean populations — implemented, not runtime-tested
 
 - Add **Group means** to each YS–EL / UTS–EL plot's Settings, independently
-  persisted per graph: all eligible values per property (default), consistent
+  persisted per analysis: all eligible values per property (default), consistent
   with summary-table means, or paired specimens. Apply the default to fresh
-  graphs and missing settings; preserve explicit saved choices. Update the
+  analyses and missing settings; preserve explicit saved choices. Update the
   starter definitions, renderer/UI fallbacks and export documentation together.
 - Remove the README's B-number naming reference; describe arbitrary sample
   names and the new scatter default for external users.
@@ -478,7 +496,7 @@
   pointer/keyboard interaction while active and restore previous focus/state.
   Delay the visible spinner briefly to avoid flicker for quick actions. Do not
   alter measurement calculations or generate outputs merely to show activity.
-- Use formal sample-group names in Calc–Instron chart ticks/hover, ignoring
+- Use formal sample-group names in Calc–Instron plot ticks/hover, ignoring
   publication aliases. Preserve full internal IDs for grouping and leave
   publication labels and comparison numbers unchanged.
 - Source review only; no tests, app launch or research outputs generated.
@@ -497,10 +515,10 @@
 
 ### Saved specimen overrides page — implemented, runtime verification deferred
 
-- Show current overrides across all specimens and graphs, including unavailable
-  data, independently of the current graph selection. This is a settings view,
+- Show current overrides across all specimens and analyses, including unavailable
+  data, independently of the current analysis selection. This is a settings view,
   not an event/history log.
-- One row per override: group, specimen, type, global/graph scope, setting,
+- One row per override: group, specimen, type, global/analysis scope, setting,
   reason, active/disabled status and data availability. Search and filter rows.
 - Provide selection tickboxes, select/clear visible selection, and bulk Disable,
   Enable and Remove actions. Disable must retain values while preventing their
@@ -508,7 +526,7 @@
   automatic behaviour. Never modify raw data.
 - Persist disabled settings in the ignored personal project file; cover move
   migration and forgetting as well as cache invalidation and refreshed UI.
-- Keep graph-wide colour/gauge settings in their existing editors.
+- Keep analysis-wide colour/gauge settings in their existing editors.
 - Add a top-level **Saved specimen overrides** page beside **Analysis**. Opening
   it reads settings and cached identities only, without processing specimen data.
   Refresh on entry; clearly distinguish unavailable data and CSV-name fallbacks.
@@ -528,7 +546,7 @@
 - Allow a specimen's individual properties to be excluded without discarding its
   valid remaining measurements. Keep whole-specimen exclusion available.
 - Record the property, reason and scope against the stable specimen identity;
-  default to specimen-wide persistence across graphs, with explicit graph
+  default to specimen-wide persistence across analyses, with explicit analysis
   exceptions consistent with the existing inclusion policy.
 - Preserve imported/calculated values for inspection and audit; mark them as
   excluded rather than deleting or overwriting them. Atypical values alone are
@@ -550,18 +568,18 @@
   100%-normalised bars. Calculate 100 × (Calc − Instron) / Instron for each
   included specimen/property pair; show group mean ±1 sample SD of those
   percentages. This is not the percentage difference between group means.
-- The collapsible chart below Summary renders only when opened. Properties
+- The collapsible plot below Summary renders only when opened. Properties
   use compact panels three across (two/one on narrow screens) with independent percentage-axis ranges, so larger
   discrepancies cannot hide small ones. Hover reports paired n,
   original-unit means and the count of pairs carrying specimen checks.
-- UTS is omitted from these charts and their spread tables. Its existing
+- UTS is omitted from these plots and their spread tables. Its existing
   original-CSV-versus-summary check still flags disagreements beyond exported
   precision tolerance; no matching logic or tolerances were relaxed.
 - Each panel has a spread table below it: paired n, Instron sample SD, Calc
   sample SD and 100 × (SD Calc / SD Instron − 1). The two SDs use exactly the
   same paired specimens as that panel. n<2 has no SD, and zero Instron SD
   leaves percentage change unavailable. Less scatter is not proof of accuracy.
-  This is distinct from the chart's SD of paired percentage differences.
+  This is distinct from the plot's SD of paired percentage differences.
 - Use existing reference assignments and include decisions; require both
   finite values and a nonzero Instron denominator. Do not filter out numerical
   disagreement or existing review warnings to improve apparent agreement.
@@ -577,10 +595,10 @@
 
 ### Inspector layout — implemented
 
-- Specimen check messages now sit above the graph and update with
+- Specimen check messages now sit above the analysis and update with
   specimen selection and unsaved fit/EL previews; an empty check list is hidden.
-- Show on plot stays directly below the chart as an always-visible checkbox
-  legend whenever a specimen chart is present; it is outside all folds.
+- Show on plot stays directly below the plot as an always-visible checkbox
+  legend whenever a specimen plot is present; it is outside all folds.
 - Adjust elastic fit and Adjust failure elongation are individually collapsible
   directly below specimen warnings and above the plot, outside the details fold.
 - Calculation/source/gauge reports and method explanations are collapsible
@@ -596,7 +614,7 @@ measured/reconstructed overlays implemented. Runtime verification not performed.
 Tests and output generation deliberately not run, at the user's request.
 The runtime uses each specimen's imported Strain 1 gauge length as confirmed
 AVE initial dot spacing. Each sample group has its own persistent toggle and
-target gauge length within each graph. Invalid metadata in enabled groups
+target gauge length within each analysis. Invalid metadata in enabled groups
 blocks reconstructed plots rather than silently substituting measured curves.
 No specimen geometry or manual peak/endpoint editor has been added.
 
@@ -613,11 +631,11 @@ The following scope supersedes the historical design notes farther below.
   Gauge basis/targets and method notes remain in logs, tables and metadata.
 - Replace the former all-groups reconstruction controls with controls for each
   sample group: enabled/disabled and target gauge length in mm. Storage
-  is per-group settings inside each graph definition, alongside the existing
+  is per-group settings inside each analysis definition, alongside the existing
   per-group overrides. This permits two groups with different targets in one
   comparison without changing the imported specimen metadata.
-- Preserve existing graph-wide choices through explicit legacy fallback or
-  migration to the graph's existing groups. Newly added groups should default to
+- Preserve existing analysis-wide choices through explicit legacy fallback or
+  migration to the analysis's existing groups. Newly added groups should default to
   measured/off, not silently inherit an unrelated target.
 - Resolve one effective group policy centrally for plots, properties, caches,
   inspector previews and exports. Retain each specimen's own AVE dot spacing;
@@ -652,7 +670,7 @@ The following scope supersedes the historical design notes farther below.
 
 ## 1. Consolidated Excel exports — approved
 
-Produce at most two Excel workbooks per graph export in the existing snapshot
+Produce at most two Excel workbooks per analysis export in the existing snapshot
 folder. Do not regenerate historical research outputs or change source files.
 
 ### `{graph_name}_results.xlsx`
@@ -667,7 +685,7 @@ folder. Do not regenerate historical research outputs or change source files.
   Do not expose raw override JSON as a wrapping table column.
 - **Instron comparison:** paired group-level agreement statistics, including
   paired n, mean/SD difference and mean/max absolute difference.
-- **Export info:** export identity/time, graph and calculation settings, units,
+- **Export info:** export identity/time, analysis and calculation settings, units,
   software identification and source provenance. Distinguish fitted specimen
   modulus from the modulus configured for work hardening.
 
@@ -739,13 +757,13 @@ forming group statistics; do not apply one ratio to group-average properties.
   spacing, or confuse either with overall specimen/reduced-section length.
 - Overall specimen length and parallel-section length are distinct optional
   metadata; neither is an input to this formula.
-- Allow persistent specimen-level entries/overrides shared across graphs, with
+- Allow persistent specimen-level entries/overrides shared across analyses, with
   convenient group/bulk entry and specimen exceptions. Bind overrides to stable
   specimen/source identity and flag changed sources rather than silently reuse
   stale overrides. Personal values remain in ignored local settings.
 - Record target-standard identification when provided, but do not infer a
   standard or hard-code a required length from the example values.
-- The display/analysis basis selection is persistent per graph. Show the active
+- The display/analysis basis selection is persistent per analysis. Show the active
   basis clearly in tables, axes, tooltips and exports.
 
 ### Import and endpoint audit
@@ -835,7 +853,7 @@ Use synthetic fixtures, not regenerated research outputs:
   histories and explicit endpoint selection.
 - No pre-peak/WH changes; no alteration of imported Instron values; corrected
   statistics never mix raw fallbacks without explicit labeling.
-- Persistence across graphs/restarts, source-change invalidation and cache
+- Persistence across analyses/restarts, source-change invalidation and cache
   invalidation when lengths or the selected basis change.
 - Excel sheet selection, wide numeric curve layout, preserved precision and
   agreement between exported arrays/settings and the displayed views.

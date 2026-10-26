@@ -1,4 +1,4 @@
-"""User-supplied group/specimen variables, shared by saved graphs."""
+"""User-supplied group/specimen variables, shared by saved analyses."""
 from copy import deepcopy
 from html import escape
 import math
@@ -61,19 +61,19 @@ def property_chart_title(variable=None, properties=('ys', 'uts', 'el'), *, scope
 
 
 def variable_usage(project, ident, *, scope='group'):
-    """Describe affected saved charts without rewriting their axis selections."""
+    """Describe affected saved plots without rewriting their axis selections."""
     graphs = [(graph, '') for graph in project.get('graphs', [])]
-    graphs += [(item['graph'], 'Deleted graph: ') for item in project.get('deleted_graphs', []) if 'graph' in item]
+    graphs += [(item['graph'], 'Deleted analysis: ') for item in project.get('deleted_graphs', []) if 'graph' in item]
     used = []
     for graph, prefix in graphs:
         settings = graph.get('settings', {})
-        charts = [*(settings.get('properties_by_group_variants') or [dict(name='Chart 1', settings=settings)]),
+        charts = [*(settings.get('properties_by_group_variants') or [dict(name='Plot 1', settings=settings)]),
                   *settings.get('properties_by_specimen_variants', [])]
         for chart in charts:
             config = chart.get('settings', {})
             if (config.get('properties_by_group_level', 'group') == scope
                     and config.get('properties_by_group_x_variable') == ident):
-                used.append(prefix + graph.get('name', 'Unnamed graph') + ' — ' + chart.get('name', 'Chart'))
+                used.append(prefix + graph.get('name', 'Unnamed analysis') + ' — ' + chart.get('name', 'Plot'))
     return used
 
 
@@ -117,7 +117,7 @@ class GroupVariablesView:
         self._paused = False
         self._drafts = self._editable(get_variables())
         self.all_groups = w.Checkbox(description='Show all ' + entity, indent=False,
-                                     tooltip='Include unselected groups without changing the graph selection. Values include excluded specimens.',
+                                     tooltip='Include unselected groups without changing the analysis selection. Values include excluded specimens.',
                                      layout=w.Layout(width='auto'))
         self.table = VariableTable(on_delete=self._request_delete, required=self.required,
                                    layout=w.Layout(width='100%', min_width='0'))
@@ -138,16 +138,16 @@ class GroupVariablesView:
             self.table], layout=w.Layout(width='100%', min_width='0'))
         self.status = w.HTML()
         self.ui = w.Accordion(children=[w.VBox([
-            w.HTML('Numeric values attached to ' + entity + ', shared by all graphs. Create as many variables as needed. '
-                   'Rows follow this graph’s sample group order. '
-                   'Leave unknown values blank; zero is a valid value. Save before switching graphs.'
+            w.HTML('Numeric values attached to ' + entity + ', shared by all analyses. Create as many variables as needed. '
+                   'Rows follow this analysis’s sample group order. '
+                   'Leave unknown values blank; zero is a valid value. Save before switching analyses.'
                    + (' Specimen rows use operator labels when available; hover a row label for its stable CSV identity. '
                       'Location defaults to the operator specimen number. Enter a whole number to override it; clear the cell to restore the default. '
                       'CSV row numbers are never used as locations. '
                       'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else '')),
             self.all_groups, self.delete_panel, self.table_ui, self.status
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
-        self.ui.set_title(0, 'Custom variables · shared by all graphs')
+        self.ui.set_title(0, 'Custom variables · shared by all analyses')
         self.all_groups.observe(self._scope_changed, names='value')
         self.table.observe(self._table_changed, names='columns')
         self.add.on_click(self._add_column)
@@ -244,14 +244,14 @@ class GroupVariablesView:
         self._pending_delete = dict(id=ident, saved=deepcopy(saved.get(ident)), persisted=ident in saved)
         name = self._drafts[ident]['name'].strip() or 'Unnamed variable'
         if ident in saved:
-            message = f'<b>Delete {escape(name)}?</b> This removes the variable and all its values from every graph. '
+            message = f'<b>Delete {escape(name)}?</b> This removes the variable and all its values from every analysis. '
             usage = self.get_usage(ident)
             if usage:
-                message += '<br><b>Charts needing a new X-axis selection:</b><ul>'
+                message += '<br><b>Plots needing a new X-axis selection:</b><ul>'
                 message += ''.join('<li>' + escape(label) + '</li>' for label in usage) + '</ul>'
-                message += 'These charts will remain unavailable until you choose another variable. No automatic axis substitution. '
+                message += 'These plots will remain unavailable until you choose another variable. No automatic axis substitution. '
             else:
-                message += 'No saved charts currently use it. '
+                message += 'No saved plots currently use it. '
         else:
             message = f'<b>Remove unsaved column {escape(name)}?</b> Its draft values will be discarded. '
         self.delete_message.value = message + 'Other variable edits will not be saved or removed.'
@@ -305,6 +305,6 @@ class GroupVariablesView:
             self._drafts = self._editable(self.get_variables())
             self._sync_table()
             self.status.value = ''
-            self.table.notice = 'All variables saved for all graphs.'
+            self.table.notice = 'All variables saved for all analyses.'
         except Exception as error:
             self.table.notice = 'Not saved: ' + str(error)

@@ -53,7 +53,7 @@ footer = w.HTML('<footer class="tw-copyright">' + escape(copyright_notice.replac
     + '<p>Third-party dependencies retain their own licences. This software licence does not change '
       'the rights applying to imported datasets or generated results.</p></details></footer>')
 page = w.VBox([
-    w.HTML('<h1>Tensile Workbench</h1><p>Select your folders, choose a graph, and analyse your samples. '
+    w.HTML('<h1>Tensile Workbench</h1><p>Select your folders, choose an analysis, and analyse your samples. '
            'No notebook commands are needed. Keep the launcher window open while you work.</p>'),
     workbench.ui,
     footer,

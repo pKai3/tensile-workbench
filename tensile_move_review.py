@@ -75,7 +75,7 @@ class MoveReview:
             pairs = ''.join('<li>' + escape(a) + ' → ' + escape(b) + '</li>'
                             for a, b in proposal['mapping'].items())
             detail = (f'<b>{old} → {new}</b><br>{len(proposal["mapping"])} unchanged CSV file(s) matched. '
-                      'Review this group before transferring graph selections, specimen overrides/exclusions, '
+                      'Review this group before transferring analysis selections, specimen overrides/exclusions, '
                       'data-use modes, labels, colours, gauges and other group settings.')
             if proposal['partial_evidence']:
                 detail += '<br><b>Partial evidence:</b> matched saved override fingerprints; no older full-group inventory exists.'
@@ -109,7 +109,7 @@ class MoveReview:
 
     def _ask_forget(self, group):
         self._pending_forget = group
-        self.forget_message.value = ('<b>Forget ' + escape(group) + '?</b> This removes its saved graph selections, '
+        self.forget_message.value = ('<b>Forget ' + escape(group) + '?</b> This removes its saved analysis selections, '
             'labels, specimen overrides/exclusions and tracking/history. No forgotten-group log is kept. '
             'Source files and exports are untouched; specimen settings belonging to other available groups are kept.')
         self.confirmation.layout.display = ''
@@ -146,7 +146,7 @@ class MoveReview:
         button.disabled = self.check.disabled = True
         try:
             if not self.before_apply():
-                raise ValueError('Resolve the graph-save warning before approving a move.')
+                raise ValueError('Resolve the analysis-save warning before approving a move.')
             # Rediscover and verify at approval, not just against stale UI/cache.
             self.session.reload_data()
             tracking, proposals, _ = scan_moves(self.store.data, self.session.data_dir,

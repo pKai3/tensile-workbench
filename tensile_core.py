@@ -1,6 +1,6 @@
 """Standalone numerical library for Tensile Workbench v16.
 
-No batch entry point, graph definitions, file discovery on import, or
+No batch entry point, analysis definitions, file discovery on import, or
 dependency on plot_tensile scripts. Calculations preserved from v15.
 All output writes require explicit calls with destination paths.
 """
@@ -246,7 +246,7 @@ def summarize_toughness_stats(models, plot_spec):
         def difference(area, valid=True):
             return 100*(area-mean_T)/mean_T if valid and np.isfinite(area) and np.isfinite(mean_T) and mean_T != 0 else np.nan
         rows.append({
-            "Graph": plot_spec["name"],
+            "Analysis": plot_spec["name"],
             "Group": g,
             "Display Name": get_display_name(g, plot_spec.get("name_overrides")),
             "n_curves": len(curves),

@@ -151,7 +151,7 @@ def spread_table(summary):
 
 
 class ComparisonView:
-    """Lazy summary chart: opening the fold never reruns specimen calculations."""
+    """Lazy summary plot: opening the fold never reruns specimen calculations."""
     def __init__(self, widgets):
         self.w = widgets
         self.summary = pd.DataFrame(columns=COMPARISON_COLUMNS)
@@ -168,9 +168,9 @@ class ComparisonView:
             '<b>100 × (Calc − Instron) / Instron</b>. Bars show the group mean of these paired differences; '
             'error bars show ±1 sample SD, not confidence intervals. Zero means agreement; positive means Calc is higher. '
             'Hover for paired n and original-unit means. Missing, nonfinite and zero Instron values are omitted; n=1 has no SD bar. '
-            'Below each chart, sample SDs use exactly the same paired specimens. '
+            'Below each plot, sample SDs use exactly the same paired specimens. '
             '<b>Δ SD (%) = 100 × (SD Calc / SD Instron − 1)</b>; negative means less scatter in Calc, '
-            'not necessarily greater accuracy. This is distinct from the chart’s SD of paired differences. '
+            'not necessarily greater accuracy. This is distinct from the plot’s SD of paired differences. '
             'SDs are unavailable for n&lt;2; percentage change is also unavailable for zero Instron SD. '
             '<b>Measured values only:</b> gauge reconstruction is not compared with uncorrected Instron. '
             'Failure EL endpoints may differ between methods. Existing specimen checks remain applicable; '
@@ -238,7 +238,7 @@ class ComparisonView:
             self._resize(1200)
         except Exception as error:
             self._dispose()
-            message = self.w.HTML('Comparison chart unavailable: ' + escape(str(error)))
+            message = self.w.HTML('Comparison plot unavailable: ' + escape(str(error)))
             self._owned.append(message)
             self.box.children = (message,)
 

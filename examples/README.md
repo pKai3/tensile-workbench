@@ -2,7 +2,7 @@
 
 These are **invented mathematical curves**, not experimental measurements and not properties of titanium or any real material. They are included only to demonstrate the app. No research data or Instron-reported summary values are included.
 
-Use **Show sample data** beside the sample-group selector. The three groups appear as **Ductile (sample)**, **Balanced (sample)** and **Strong (sample)** alongside your own data. No paths need changing, and nothing is copied into your data folder. The visibility setting is remembered. Fresh installations start with samples visible and a **Demo comparison** graph showing representative curves with individual specimens. Existing personal graphs are preserved; create a new graph and tick the sample groups to explore them. Hiding the samples excludes them from plots and tables but retains saved selections and exclusions for the next time they are shown.
+Use **Show sample data** beside the sample-group selector. The three groups appear as **Ductile (sample)**, **Balanced (sample)** and **Strong (sample)** alongside your own data. No paths need changing, and nothing is copied into your data folder. The visibility setting is remembered. Fresh installations start with samples visible and a **Demo comparison** analysis showing representative curves with individual specimens. Existing personal analyses are preserved; create a new analysis and tick the sample groups to explore them. Hiding the samples excludes them from plots and tables but retains saved selections and exclusions for the next time they are shown.
 
 The bundled source is tracked internally as a second, relative path (`./examples/data`) in the local ignored settings. It is not shown as another folder input. Your own `./data` and `./output` defaults and any custom choices stay independent. Group and specimen identities have a separate sample namespace, so a research group with the same filename cannot be mixed into a synthetic average.
 
@@ -22,4 +22,4 @@ With engineering strain `e` as a fraction, `ey = elastic_limit / E`. Stress is `
 
 Specimens 1/2/3 multiply the stress inputs by 0.98/1.00/1.02 and peak/terminal strains by 0.95/1.00/1.05. E is unchanged. Sampling uses 101 points from 0 to 0.01 strain, 120 further points to the peak, and 80 further points to terminal strain; time is `e / 0.001`. Values are stored to six decimal places. There is no randomness, external source, fitted research curve, or implied measurement precision.
 
-Personal graph edits are saved in ignored `tensile_workbench.project.json`. Back this file up yourself if needed; updating the app will not version your personal definitions.
+Personal analysis edits are saved in ignored `tensile_workbench.project.json`. Back this file up yourself if needed; updating the app will not version your personal definitions.

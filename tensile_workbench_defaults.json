@@ -89,7 +89,7 @@
   ],
   "new_graph_defaults": {
     "id": "",
-    "name": "New graph",
+    "name": "New analysis",
     "settings": {
       "groups": [],
       "show_individuals": false,
@@ -140,7 +140,7 @@
       "properties_by_group_el_color": "#2ca02c"
     },
     "definition": {
-      "name": "New graph",
+      "name": "New analysis",
       "name_overrides": {},
       "youngs_modulus_overrides": {},
       "representative_overrides": {},

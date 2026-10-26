@@ -1,4 +1,4 @@
-"""First-run folder selection, kept separate from shared graph definitions."""
+"""First-run folder selection, kept separate from shared analysis definitions."""
 from html import escape
 import json
 import os
@@ -270,7 +270,7 @@ class WorkbenchLauncher:
         self.save_button.disabled = True
         try:
             if self.app is not None and not self.app.save_current():
-                raise RuntimeError('Resolve the graph-save warning before changing folders.')
+                raise RuntimeError('Resolve the analysis-save warning before changing folders.')
             values = self._values()
             paths = validate_folders(values, self.root, create=True)
             self._open(paths, save_values=values)

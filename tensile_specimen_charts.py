@@ -1,4 +1,4 @@
-"""Independent settings for one specimen-property chart per sample group."""
+"""Independent settings for one specimen-property plot per sample group."""
 from copy import deepcopy
 from tensile_locations import LOCATION
 from tensile_property_variants import PropertyVariantsView, SPECIMEN_DEFAULTS, TITLE_KEY
@@ -46,7 +46,7 @@ class SpecimenChartsView:
         axis_panel.set_title(0, 'Axes · this plot')
         self.variants = PropertyVariantsView(w, self.capture, self.apply, self._changed)
         self.ui = w.VBox([
-            w.HTML('One grouped bar chart per chosen sample group, with individual YS/UTS/EL values. '
+            w.HTML('One grouped bar plot per chosen sample group, with individual YS/UTS/EL values. '
                    '<b>Location</b> defaults to the operator specimen number; edit overrides in '
                    '<b>Custom variables → Individual specimens</b>. Set the tested + untested total in '
                    '<b>Custom variables → Sample groups → Specimen count</b>.'),
@@ -86,7 +86,7 @@ class SpecimenChartsView:
             count = sum(box.value for box in self.group_boxes.values())
             self.all_groups.value = self._selected_groups is None or bool(groups) and count == len(groups)
             self.all_groups.disabled = not groups
-            self.group_note.value = (f'{count} of {len(groups)} workspace groups selected for this chart variant. '
+            self.group_note.value = (f'{count} of {len(groups)} workspace groups selected for this plot variant. '
                                      'Tables and specimen exclusions are unchanged.' if groups else
                                      'Select sample groups in the workspace above first.')
         finally:

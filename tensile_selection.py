@@ -125,7 +125,7 @@ def specimen_id(record):
 
 
 def selection_state(record, spec, project=None):
-    """A graph override wins; otherwise inherit the persistent global choice."""
+    """An analysis override wins; otherwise inherit the persistent global choice."""
     ident = specimen_id(record)
     excluded = (project or {}).get('specimen_exclusions', {})
     override = spec.get('specimen_inclusion_overrides', {}).get(ident)
@@ -148,9 +148,9 @@ def is_included(record, spec, project=None):
 
 
 def migrate_specimen_selections(project):
-    """Promote existing active-graph exclusions once; never lose saved reasons.
+    """Promote existing active-analysis exclusions once; never lose saved reasons.
 
-    Deleted graphs do not change the current global population. Their old
+    Deleted analyses do not change the current global population. Their old
     exclusions become explicit local overrides for use if they are restored.
     """
     project = deepcopy(project)

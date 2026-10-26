@@ -13,7 +13,7 @@
    | Windows | `Setup_Tensile_Workbench.bat` | `Launch_Tensile_Workbench.bat` |
    | Mac | `Setup_Tensile_Workbench.command` | `Tensile Workbench.app` in your user Applications folder, or `Launch_Tensile_Workbench.command` |
 
-4. Wait for **Setup complete**. Internet access is needed for package installation. Setup checks imports and graph-definition validity but does not load research datasets, create plots, change definitions or start Jupyter.
+4. Wait for **Setup complete**. Internet access is needed for package installation. Setup checks imports and analysis-definition validity but does not load research datasets, create plots, change definitions or start Jupyter.
 5. Open the Dock app on Mac, or the Launch file on either platform. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. With the Terminal/console launcher, leave its window open; Ctrl-C stops the server. With the Dock app, use Stop or Quit. The server listens on this computer only (`127.0.0.1`).
 
 Python itself is installed separately, not silently downloaded by these scripts. On a managed computer, ask IT to approve Python/package access if blocked. The scripts do not require changing PowerShell execution policy or disabling security protections.
@@ -50,7 +50,7 @@ Normal Launch checks installed package versions and saved definitions without im
 | New environment | `%LOCALAPPDATA%\TensileWorkbench\venv` | `~/Library/Application Support/Tensile Workbench/venv` |
 | Existing environment reused | Original `%LOCALAPPDATA%\TensileWorkbench\v17-py313-<fingerprint>\venv`, if present and no new default environment exists | Same path as above |
 | Jupyter/configuration caches | Beside the selected environment | Beside the selected environment |
-| Code and graph definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
+| Code and analysis definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
 | Dock app (optional) | Not applicable | `~/Applications/Tensile Workbench.app` |
 | Dock app logs | Not applicable | `~/Library/Logs/Tensile Workbench/launcher.log` (one previous launch retained) |
 | Data and output | Your chosen folders | Your chosen folders |
@@ -76,7 +76,7 @@ Launch serves the existing widgets using [Voilà](https://voila.readthedocs.io/e
 
 The small `workbench_server.py` wrapper corrects Voilà 0.5's tokenless browser redirect. It opens the authenticated URL using the actual available port, without changing the installed package or disabling authentication. No setup rerun is needed for this code-only fix. A cleared/expired login-cookie warning can occur after restarting the server; the new token link establishes a fresh login.
 
-Close unused tabs; each page load starts a session. Disconnected idle kernels are cleaned up after 30 minutes. Keep one editing session per project to avoid conflicting saves. Refreshing/reopening restores saved graph definitions, not temporary plot zoom. Stop and restart Launch after updates. Docker/remote deployment is not included in these local launchers.
+Close unused tabs; each page load starts a session. Disconnected idle kernels are cleaned up after 30 minutes. Keep one editing session per project to avoid conflicting saves. Refreshing/reopening restores saved analysis definitions, not temporary plot zoom. Stop and restart Launch after updates. Docker/remote deployment is not included in these local launchers.
 
 ## Checks without plots
 

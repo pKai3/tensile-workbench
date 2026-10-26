@@ -28,7 +28,7 @@ def ensure_required_variables(project):
     """Upgrade the trial's Location column and references without duplicating it.
 
     Fractional legacy locations remain a separately named custom variable, so
-    migration never rounds away a user's measurements or breaks their chart.
+    migration never rounds away a user's measurements or breaks their plot.
     """
     from tensile_moves import graph_blocks
     project = deepcopy(project)

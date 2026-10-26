@@ -13,7 +13,7 @@ KINDS = {
     'specimen_failure_overrides': 'Failure elongation',
     'specimen_exclusions': 'Whole-specimen exclusion',
     'specimen_data_modes': 'Data use',
-    'specimen_inclusion_overrides': 'Graph data use',
+    'specimen_inclusion_overrides': 'Analysis data use',
 }
 GLOBAL_KINDS = tuple(key for key in KINDS if key != 'specimen_inclusion_overrides')
 GRAPH_KINDS = ('specimen_inclusion_overrides', 'specimen_exclusions')
@@ -58,7 +58,7 @@ def validate_disabled(block, *, graph=False):
                     raise ValueError('Invalid disabled data-use setting.')
                 if kind == 'specimen_inclusion_overrides':
                     if not isinstance(value.get('included'), bool):
-                        raise ValueError('Disabled graph selection requires an Include value.')
+                        raise ValueError('Disabled analysis selection requires an Include value.')
                     mode = value.get('mode', 'all' if value['included'] else 'exclude')
                     if value['included'] != (mode != 'exclude'):
                         raise ValueError('Disabled data-use mode conflicts with Include value.')
@@ -86,7 +86,7 @@ def setting_text(kind, value):
 
 
 def override_entries(project):
-    """Current global and saved-graph settings only, never historical snapshots."""
+    """Current global and saved-analysis settings only, never historical snapshots."""
     blocks = [(None, 'Global', project, GLOBAL_KINDS)] + [
         (graph['id'], graph['name'], graph['definition'], GRAPH_KINDS)
         for graph in project.get('graphs', [])]

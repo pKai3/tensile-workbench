@@ -358,7 +358,7 @@ def fracture_detection_help():
       the missing crossing is not assigned an endpoint. Only the actual final section can supply a
       terminal estimate, with its preceding eight increments uninterrupted.
       Stop searching for sudden drops at the first 10% crossing, excluding the unloaded tail.
-      Post-crossing recovery requires review. See <i>Fracture detection details</i> below the chart for
+      Post-crossing recovery requires review. See <i>Fracture detection details</i> below the plot for
       this specimen’s criterion, selected row and evidence.</p>
       <p><b>Review warnings</b> identify unresolved terminal estimates, unusable measurements or
       conflicting evidence. A clearly detected load collapse is not flagged simply because the export
@@ -461,8 +461,8 @@ def inspection_summary(payload):
               '<div class="tw-inspect-summary">',
               '<details><summary>Specimen identity and inclusion</summary>',
               '<p><b>' + escape(payload['group'] + ' · ' + (reference.get('label') or payload['sample'])) + '</b> · ' +
-              ('Included in this graph' if payload['included'] else 'Excluded from this graph') + '</p>']
-    result.append('<p>Inclusion: ' + ('explicit override for this graph' if payload.get('selection_scope') == 'graph'
+              ('Included in this analysis' if payload['included'] else 'Excluded from this analysis') + '</p>']
+    result.append('<p>Inclusion: ' + ('explicit override for this analysis' if payload.get('selection_scope') == 'graph'
                                     else 'inherited from the global default') + '.</p>')
     if payload.get('data_use'):
         result.append('<p><b>Data use:</b> ' + escape(payload['data_use']) +
@@ -692,7 +692,7 @@ class SpecimenInspector:
         self.line_fields = w.HBox([self.y0, self.y1], layout=w.Layout(flex_flow='row wrap', display='none'))
         self.reason = w.Text(description='Reason:', placeholder='Why is the fit being adjusted?', continuous_update=True,
                              layout=w.Layout(width='min(100%, 800px)'))
-        self.apply_button = w.Button(description='Apply override · all graphs', button_style='primary',
+        self.apply_button = w.Button(description='Apply override · all analyses', button_style='primary',
                                      layout=w.Layout(width='auto'), disabled=True)
         self.cancel_button = w.Button(description='Cancel preview', disabled=True)
         self.restore_button = w.Button(description='Restore automatic fit', layout=w.Layout(width='auto'), disabled=True)
@@ -709,7 +709,7 @@ class SpecimenInspector:
                                             continuous_update=False, style={'description_width': 'initial'})
         self.failure_reason = w.Text(description='Reason:', placeholder='Why is the endpoint being adjusted?',
                                      layout=w.Layout(width='min(100%, 800px)'))
-        self.failure_apply = w.Button(description='Apply EL override · all graphs', button_style='primary',
+        self.failure_apply = w.Button(description='Apply EL override · all analyses', button_style='primary',
                                       layout=w.Layout(width='auto'), disabled=True)
         self.failure_cancel = w.Button(description='Cancel EL preview', layout=w.Layout(width='auto'), disabled=True)
         self.failure_restore = w.Button(description='Restore automatic EL', layout=w.Layout(width='auto'), disabled=True)
@@ -940,7 +940,7 @@ class SpecimenInspector:
             self._seed_failure_editor(payload)
             self._paint(payload)
             self.status.value = ('Read-only until Apply override · drag to zoom; use Reset zoom to return. '
-                                 'Fit and EL overrides apply to this specimen in every graph.')
+                                 'Fit and EL overrides apply to this specimen in every analysis.')
             self.edit_status.value = 'Choose Manual range or Manual line to start an unsaved preview.'
         except Exception as error:
             self._dispose()
@@ -1019,7 +1019,7 @@ class SpecimenInspector:
                 'Enter a reason, then Apply. Recorded values and Instron results are unchanged.')
         except Exception as error:
             self.failure_status.value = ('<b>Invalid EL preview:</b> ' + escape(str(error)) +
-                                         ' Nothing saved; chart retains the last valid view.')
+                                         ' Nothing saved; plot retains the last valid view.')
         finally:
             self._buttons()
 
@@ -1067,8 +1067,8 @@ class SpecimenInspector:
             self.on_failure_apply(self.choice.value, self._saved_payload['source_sha256'],
                                   None if restore else deepcopy(self._failure_draft), self.failure_reason.value)
             self._selected()
-            self.failure_status.value = ('Automatic EL restored in all graphs.' if restore else
-                                         'Manual EL saved for this specimen in all graphs. Update plots when ready.')
+            self.failure_status.value = ('Automatic EL restored in all analyses.' if restore else
+                                         'Manual EL saved for this specimen in all analyses. Update plots when ready.')
         except Exception as error:
             self.failure_status.value = '<b>EL override not saved:</b> ' + escape(str(error))
 
@@ -1166,11 +1166,11 @@ class SpecimenInspector:
                            'all selected points are refitted.' if self.mode.value == 'range' else
                            'Use Set start / Set end and click the measured curve, or drag either purple line endpoint; '
                            'this directly changes slope/intercept.')
-            self.edit_status.value = '<b>Unsaved preview.</b> ' + instruction + ' Enter a reason, then Apply override to use it in every graph.'
+            self.edit_status.value = '<b>Unsaved preview.</b> ' + instruction + ' Enter a reason, then Apply override to use it in every analysis.'
             if calc['properties']['Yield status'] != 'resolved':
                 self.edit_status.value += '<br><b>Cannot apply:</b> ' + escape(calc['properties']['Notes'])
         except Exception as error:
-            self.edit_status.value = '<b>Invalid preview:</b> ' + escape(str(error)) + ' The chart retains the last valid view; nothing has been saved.'
+            self.edit_status.value = '<b>Invalid preview:</b> ' + escape(str(error)) + ' The plot retains the last valid view; nothing has been saved.'
         finally:
             self._editing = False
             self._buttons()
@@ -1255,7 +1255,7 @@ class SpecimenInspector:
             self.on_apply(self.choice.value, self._saved_payload['source_sha256'],
                           None if restore else deepcopy(self._draft), self.reason.value)
             self._selected()
-            self.edit_status.value = 'Automatic fit restored in all graphs.' if restore else 'Override saved for this specimen in all graphs.'
+            self.edit_status.value = 'Automatic fit restored in all analyses.' if restore else 'Override saved for this specimen in all analyses.'
         except Exception as error:
             self.edit_status.value = '<b>Not applied:</b> ' + escape(str(error))
 

@@ -41,9 +41,16 @@ class WebAppTests(unittest.TestCase):
         app = self.make_app()
         before = deepcopy(app.store.data['graphs'])
         self.assertEqual(app.graph.options, (('Baseline', '0'), ('Annealed', '2'),
-                                           ('Untitled graph (draft)', '1'), ('＋ Create new graph…', NEW_GRAPH_ACTION)))
+                                           ('Untitled analysis (draft)', '1'), ('＋ Create new analysis…', NEW_GRAPH_ACTION)))
         self.assertEqual(app.store.data['graphs'], before)
         self.assertEqual(app.graph.value, '0')
+        # Current drafts use the same presentation as older saved drafts.
+        current = deepcopy(before)
+        current[1]['name'] = 'New analysis 2'
+        self.assertEqual(graph_menu_options(current)[-2], ('Untitled analysis 2 (draft)', '1'))
+        # A user-named analysis that includes "graph" is never relabelled.
+        current[1]['name'] = 'My graph of heat treatments'
+        self.assertIn(('My graph of heat treatments', '1'), graph_menu_options(current))
 
     def test_create_action_creates_once_and_is_never_saved_as_a_graph_id(self):
         app = self.make_app()
@@ -53,6 +60,8 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(app.graph.options[-1][1], NEW_GRAPH_ACTION)
         self.assertEqual(app.store.data['selected_graph'], app.graph.value)
         self.assertNotIn(NEW_GRAPH_ACTION, [g['id'] for g in app.store.data['graphs']])
+        self.assertEqual(app.store.data['graphs'][-1]['name'], 'New analysis')
+        self.assertEqual(app.store.data['graphs'][1]['name'], 'New graph')
         app.name.value = 'Tempered'
         self.assertEqual(app.graph.options[-1][1], NEW_GRAPH_ACTION)
         self.assertIn(('Tempered', app.graph.value), app.graph.options)
@@ -67,7 +76,7 @@ class WebAppTests(unittest.TestCase):
             app.graph.value = NEW_GRAPH_ACTION
         self.assertEqual(app.graph.value, '0')
         self.assertEqual(app.store.path.read_bytes(), before)
-        self.assertIn('Could not create graph', app.save_status.value)
+        self.assertIn('Could not create analysis', app.save_status.value)
 
     def test_switching_named_graph_and_refresh_do_not_select_create_action(self):
         app = self.make_app()
