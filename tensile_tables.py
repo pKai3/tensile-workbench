@@ -270,7 +270,7 @@ def specimen_check_failures(properties, reference, gauge=None, mode='all'):
     if property_allowed(mode, 'el') and gauge.get('Elongation basis') == 'Estimated standard gauge':
         if gauge.get('Gauge correction status') != 'Applied':
             failures.append('Gauge reconstruction: ' + gauge.get('Gauge correction status', 'unavailable'))
-        for key in ('Gauge model warning', 'Gauge reconstruction notes'):
+        for key in ('Gauge reconstruction notes',):
             if gauge.get(key):
                 failures.append('Gauge reconstruction: ' + gauge[key])
     return '\n'.join(dict.fromkeys(failures))
@@ -339,6 +339,7 @@ def property_tables(records, spec, engine, instron, project=None):
                                 **location,
                                 'Acquisition units': json.dumps(row.get('_measured_record', row).get('_acquisition', {}).get('unit_declarations', {})),
                                 'Strain reversal count': row.get('_measured_record', row).get('_acquisition', {}).get('strain_reversal_count', 0),
+                                'Acquisition notes': '\n'.join(row.get('_measured_record', row).get('_acquisition', {}).get('import_notes', [])),
                                 'Uniform elongation peak span (%)': p.get('Uniform elongation peak span (%)', np.nan),
                                 'UTS-compatible rows (review only)': reference.get('identity_review_note', ''),
                                 **fit_fields, 'Source File': row['source_file'], 'Source SHA256': row.get('source_sha256', ''),
@@ -516,14 +517,20 @@ def import_status_notice(frames):
     """Import failures stay visible even if no numerical specimen row exists."""
     summary = frames.get('import_summary', pd.DataFrame())
     issues = frames.get('import_diagnostics', pd.DataFrame())
-    counts = ['<b>' + escape(str(row['Group'])) + '</b>: '
-              f"{row['Tests found']} tests found; {row['Curves loaded']} curves loaded; "
-              f"{row.get('Duplicate candidates', 0)} duplicate candidates; "
-              f"{row['Imports needing attention']} imports needing attention."
-              for _, row in summary.iterrows()]
+    columns = ('Group', 'Tests found', 'Curves loaded', 'Duplicate candidates', 'Imports needing attention')
+    counts = ''
+    if not summary.empty:
+        rows = ''.join('<tr>' + ''.join('<td style="padding:5px 12px;text-align:' +
+                       ('left' if column == 'Group' else 'right') + '">' +
+                       escape(str(row.get(column, 0))) + '</td>' for column in columns) + '</tr>'
+                       for _, row in summary.iterrows())
+        counts = ('<details style="margin:8px 0"><summary>Import summary</summary>'
+                  '<div style="overflow-x:auto"><table><thead><tr>' +
+                  ''.join('<th scope="col" style="padding:5px 12px">' + column + '</th>' for column in columns) +
+                  '</tr></thead><tbody>' + rows + '</tbody></table></div></details>')
     messages = [escape(' · '.join(str(row.get(k, '')) for k in ('Group', 'File', 'Reason') if row.get(k)))
                 for _, row in issues.iterrows()]
-    return ('<div style="margin:8px 0">' + '<br>'.join(counts) + '</div>' if counts else '') + (
+    return counts + (
         '<div style="background:#fff4dc;border-left:3px solid #c76b00;padding:10px"><b>Import review</b><br>' +
         '<br>'.join(messages) + '</div>' if messages else '')
 
@@ -594,14 +601,14 @@ class PropertyTablesView:
                                            on_selection=on_selection, on_inspect=self.open_inspector)
         self.yield_review = GroupYieldReview(w, loader=group_loader, on_inspect=self.open_inspector)
         summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
-        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.inspector.ui, self.group_review.ui,
-                                   self.yield_review.ui],
+        self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.group_review.ui,
+                                   self.yield_review.ui, self.inspector.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
-        for i, name in enumerate(['Summary', 'Specimens', 'Calculation inspector', 'Group curve review',
-                                  'Group yield fits']):
+        for i, name in enumerate(['Summary', 'Specimens', 'Group curve review',
+                                  'Group yield fits', 'Calculation inspector']):
             self.tabs.set_title(i, name)
-        self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 3), names='selected_index')
-        self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 4), names='selected_index')
+        self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 2), names='selected_index')
+        self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
         self.source_status = w.HTML()
         self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
@@ -643,7 +650,7 @@ class PropertyTablesView:
         self.inspector.select(ident)
 
     def show_inspector(self):
-        self.tabs.selected_index = 2
+        self.tabs.selected_index = 4
 
     def clear(self, message='Select sample groups to load property tables.'):
         self.frames = {}

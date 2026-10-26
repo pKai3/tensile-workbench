@@ -244,7 +244,7 @@ class LandmarkReviewTests(unittest.TestCase):
             view = app.tables.group_review
             view.view.value = 'aligned'
             self.assertIsNone(view.figure)
-            app.tables.tabs.selected_index = 3
+            app.tables.tabs.selected_index = 2
             self.assertEqual(view._aligned_model['shape_n'], 3)
             app._specimen_changed('Alloy A/coupon_2.csv', True, 'Synthetic bend', mode='exclude_shape')
             self.assertEqual(view._aligned_model['shape_n'], 2)

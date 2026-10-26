@@ -87,16 +87,23 @@ class ElasticWindowAuditTests(unittest.TestCase):
                 np.testing.assert_array_equal(record['strain_pct'], before_x)
                 np.testing.assert_array_equal(record['stress_mpa'], before_y)
 
-    def test_linear_plastic_hardening_does_not_hide_an_earlier_elastic_window(self):
+    def test_elastic_region_below_cutoff_requires_manual_fit_not_plastic_modulus(self):
         stress = np.linspace(0., 900., 10000)
         strain = 100 * (stress / 200000. + np.maximum(stress - 50., 0.) / 2000.)
         record = {'sample': 'low yield ratio', 'source_file': 'synthetic.csv',
                   'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
                   'stress_mpa': np.r_[stress, 450., 0.]}
         p = specimen_calculation(record)['properties']
-        self.assertAlmostEqual(p['Fitted E (GPa)'], 200., delta=.1)
-        self.assertAlmostEqual(p['Yield (MPa)'], 54., delta=.1)
-        self.assertLess(p['Fit upper stress (MPa)'], 50.)
+        self.assertTrue(np.isnan(p['Fitted E (GPa)']))
+        self.assertTrue(np.isnan(p['Yield (MPa)']))
+        self.assertTrue(p['Fit review required'])
+        self.assertIn('below the 10% UTS automatic cutoff', p['Automatic fit warning'])
+        record['source_sha256'] = 'a' * 64
+        record['_fit_override'] = {'mode': 'range', 'strain_bounds': [.005, .02], 'source_sha256': 'a' * 64}
+        manual = specimen_calculation(record)['properties']
+        self.assertAlmostEqual(manual['Fitted E (GPa)'], 200., delta=.1)
+        self.assertAlmostEqual(manual['Yield (MPa)'], 54., delta=.1)
+        self.assertFalse(manual['Fit review required'])
 
     def test_short_elastic_region_is_preferred_over_linear_seating(self):
         stress = np.linspace(0., 900., 5000)
@@ -112,7 +119,7 @@ class ElasticWindowAuditTests(unittest.TestCase):
         self.assertGreater(p['Fit lower stress (MPa)'], 280.)
         self.assertLess(p['Fit upper stress (MPa)'], 500.)
 
-    def test_noisy_elastic_window_takes_precedence_over_smoother_plastic_fit(self):
+    def test_noisy_elastic_region_below_cutoff_is_not_replaced_by_smoother_plastic_fit(self):
         stress = np.linspace(0., 900., 30000)
         for noise in (.00035, .0005):
             for seed in range(10):
@@ -123,9 +130,30 @@ class ElasticWindowAuditTests(unittest.TestCase):
                               'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
                               'stress_mpa': np.r_[stress, 450., 0.]}
                     p = specimen_calculation(record)['properties']
-                    self.assertAlmostEqual(p['Fitted E (GPa)'], 200., delta=5.)
-                    self.assertAlmostEqual(p['Yield (MPa)'], 54., delta=.25)
-                    self.assertLess(p['Fit upper stress (MPa)'], 50.)
+                    self.assertTrue(np.isnan(p['Fitted E (GPa)']))
+                    self.assertTrue(np.isnan(p['Yield (MPa)']))
+                    self.assertIn('below the 10% UTS automatic cutoff', p['Automatic fit warning'])
+                    record['source_sha256'] = 'a' * 64
+                    record['_fit_override'] = {'mode': 'range', 'strain_bounds': [.003, .023],
+                                               'source_sha256': 'a' * 64}
+                    manual = specimen_calculation(record)['properties']
+                    self.assertAlmostEqual(manual['Fitted E (GPa)'], 200., delta=5.)
+                    self.assertAlmostEqual(manual['Yield (MPa)'], 54., delta=.25)
+
+    def test_automatic_floor_applies_to_every_search_seed_without_changing_measurements(self):
+        for fractions in ((.01, .08), (.03, .4), (.2, .5), (.4, .65)):
+            with self.subTest(fractions=fractions):
+                record = noisy_loading_record(seating=True, noise=.001)
+                before_x, before_y = record['strain_pct'].copy(), record['stress_mpa'].copy()
+                calc = specimen_calculation(record, fractions)
+                p = calc['properties']
+                self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=2.)
+                self.assertAlmostEqual(p['Yield (MPa)'], 652.4, delta=1.)
+                selected = calc['stress_mpa'][calc['elastic_mask']]
+                self.assertTrue(len(selected))
+                self.assertGreaterEqual(selected.min(), .1 * p['UTS (MPa)'])
+                np.testing.assert_array_equal(before_x, record['strain_pct'])
+                np.testing.assert_array_equal(before_y, record['stress_mpa'])
 
     def test_r_squared_warning_threshold_still_applies_to_noise_tolerant_fit(self):
         record = noisy_loading_record()

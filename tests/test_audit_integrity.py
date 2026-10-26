@@ -155,7 +155,15 @@ class AuditIntegrityTests(unittest.TestCase):
         self.assertIn(peak, ids)
         self.assertIn(peak, fids)
         self.assertEqual(ys.max(), fy.max())
-        self.assertIn('Strain reverses', ' '.join(record['_acquisition']['import_warnings']))
+        self.assertNotIn('Strain reverses', ' '.join(record['_acquisition']['import_warnings']))
+        self.assertIn('Strain reverses', ' '.join(record['_acquisition']['import_notes']))
+        frames = session.property_tables(state, spec)
+        row = frames['tensile_samples'].loc[frames['tensile_samples']['Sample'].eq(record['sample'])].iloc[0]
+        self.assertNotIn('Strain reverses', row['Checks'])
+        from tensile_inspector import inspection_summary, inspection_checks
+        payload = session.specimen_inspection(state, spec, record['specimen_id'])
+        self.assertNotIn('Strain reverses', inspection_checks(payload))
+        self.assertIn('Strain reverses', inspection_summary(payload))
 
     def test_location_provenance_soft_notice_and_explicit_override(self):
         record = {'specimen_id': 'group/test.csv', 'source_file': 'test.csv', 'specimen_label': 'Wall repeat 250'}
@@ -166,6 +174,48 @@ class AuditIntegrityTests(unittest.TestCase):
         self.assertIn('retained', detail['Location review'])
         project['specimen_variables'] = {LOCATION: {'values': {'group/test.csv': 4}}}
         self.assertEqual(location_details(record, project, 'group')['Location review'], '')
+
+    def test_import_counts_are_a_collapsed_table_but_import_failures_remain_visible(self):
+        session, state, spec = self.session()
+        frames = session.property_tables(state, spec)
+        frames['import_diagnostics'] = pd.DataFrame([{'Group': 'Alloy A', 'File': 'broken.csv',
+                                                     'Reason': '<bad units>'}])
+        html = import_status_notice(frames)
+        from html.parser import HTMLParser
+        class Elements(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.details, self.rows = [], 0
+            def handle_starttag(self, tag, attrs):
+                if tag == 'details': self.details.append(dict(attrs))
+                if tag == 'tr': self.rows += 1
+        parser = Elements()
+        parser.feed(html)
+        self.assertEqual(len(parser.details), 1)
+        self.assertNotIn('open', parser.details[0])
+        self.assertEqual(parser.rows, len(frames['import_summary']) + 1)
+        self.assertIn('Import summary', html)
+        self.assertIn('Imports needing attention', html)
+        self.assertIn('broken.csv', html.split('</details>')[1])
+        self.assertIn('&lt;bad units&gt;', html)
+
+    def test_longer_target_gauge_is_a_note_and_does_not_add_review_checks(self):
+        self.summaries()
+        session, state, spec = self.session()
+        baseline = session.property_tables(state, spec)['tensile_samples']
+        spec = deepcopy(spec)
+        spec['gauge_reconstruction'] = {'Alloy A': {'enabled': True, 'target_gauge_mm': 30.}}
+        frames = session.property_tables(state, spec)
+        samples = frames['tensile_samples']
+        self.assertTrue(samples['Gauge model note'].str.contains('EL will be lower').all())
+        self.assertEqual(samples['Checks'].tolist(), baseline['Checks'].tolist())
+        from tensile_inspector import inspection_summary, inspection_checks
+        payload = session.specimen_inspection(state, spec, samples.iloc[0]['Specimen ID'])
+        self.assertIn('<b>Note:</b> Target gauge', inspection_summary(payload))
+        self.assertNotIn('Target gauge exceeds', inspection_checks(payload))
+        # Real failures are still review items.
+        payload['gauge_preview']['_gauge']['Gauge correction status'] = 'Missing gauge length'
+        self.assertIn('Missing gauge length', inspection_checks(payload))
 
     def test_ambiguous_representative_override_requires_exact_identity(self):
         from tensile_core import choose_representative_curve

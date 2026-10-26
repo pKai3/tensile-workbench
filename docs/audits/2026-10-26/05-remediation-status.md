@@ -111,3 +111,27 @@ overrides or analysis definitions are regenerated.
 Verification: **443 tests pass**. The 185-curve read-only check confirms broader
 selected regions for the two reported examples. All return finite E/YS; that
 availability result is not a physical calibration of the individual fits.
+
+## Follow-up — seating exclusion and group visual review
+
+Further user review identified fits influenced by initial settling and narrow
+low-load intervals. Version 4 excludes readings below 10% UTS from automatic
+fits, while retaining the measured data and unrestricted manual ranges. Broad
+high-R² windows receive a scatter-dependent half-slope allowance to avoid
+mistaking correlated tracking variation for a distinct, steeper elastic region.
+The guide records the exact conditions and heuristic limits. If the elastic
+region appears to lie entirely below the cutoff, automatic E/YS are withheld
+with a manual-review explanation rather than replaced by a plastic slope.
+
+The new Group yield fits view supports visual comparison of every specimen's
+curve, selected interval, fitted line, offset YS and matched Instron YS, with R²
+on each plot. R² is explicitly described as local agreement, not validation of
+the elastic-region choice. Synthetic preview curves exercise UI states and are
+not evidence of physical fit accuracy. Focused numerical checks also use the
+user-reported raw curves without writing research outputs or personal state.
+
+Verification: **452 tests pass**. Existing accuracy bounds are retained for
+elastic regions above the new cutoff; below-cutoff tests now require explicit
+rejection and check that manual fitting recovers the known properties. Real-data
+checks cover 168 unambiguously located curves plus the specifically identified
+example paths. The checks do not establish calibration or universal fit accuracy.

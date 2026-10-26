@@ -7,7 +7,8 @@ from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
-ELASTIC_METHOD = 'Context-supported elastic-window search (v3)'
+ELASTIC_METHOD = 'Context-supported elastic-window search (v4)'
+AUTOMATIC_FIT_MIN_UTS_FRACTION = .10
 
 EL_SOURCE_FIELDS = (
     ('Instron', 'Instron summary EL (%)'),
@@ -94,7 +95,9 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
     """Find a supported loading window without assuming seating ends at zero.
 
     Try the requested range, translations above it (ending by 80% UTS), and
-    progressively lower ranges, plus wider regions of the loading curve. A local
+    progressively lower ranges, plus wider regions of the loading curve. All
+    automatic candidates exclude readings below 10% UTS to avoid initial seating.
+    This exclusion applies to the fit only, not the recorded curve. A local
     patch must not supersede a wider linear region that also explains that patch.
     Distinct, stiffer elastic regions can still supersede seating or plastic flow
     when those lower-stiffness lines cannot explain the elastic readings.
@@ -118,8 +121,22 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
     # the sustained elastic trend. Search wider contexts, not just more patches.
     windows.extend((lower / 20, upper / 20)
                    for upper in range(6, 17) for lower in range(upper - 3))
-    candidates = []
+    candidates, below_cutoff = [], []
+    seen = set()
     for lower, upper in windows:
+        # Excluded early windows are diagnostic only: if their stiffness is
+        # much higher, the usable elastic region may already be below the floor.
+        early = upper <= AUTOMATIC_FIT_MIN_UTS_FRACTION
+        if early and upper - lower < AUTOMATIC_FIT_MIN_UTS_FRACTION / 10:
+            continue
+        if not early:
+            lower = max(AUTOMATIC_FIT_MIN_UTS_FRACTION, lower)
+        if upper <= lower:
+            continue
+        key = (round(lower, 12), round(upper, 12))
+        if key in seen:
+            continue
+        seen.add(key)
         ids = np.flatnonzero((loading_y >= lower * uts) & (loading_y <= upper * uts))
         if len(ids) < 12 or np.ptp(loading_x[ids]) <= 0:
             continue
@@ -132,10 +149,16 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
         total = np.sum((loading_y[ids] - np.mean(loading_y[ids])) ** 2)
         r2 = 1 - np.sum(residual ** 2) / total if total else 0.
         difference = abs(slopes[0] - slopes[1]) / slope if slope > 0 else np.inf
-        if np.isfinite(slope) and slope > 0 and r2 >= .98 and difference <= .05:
-            candidates.append(dict(lower=lower, upper=upper, slope=slope, intercept=intercept,
+        # Broad windows can average out correlated tracking drift even when
+        # their half-slopes differ. Bound that allowance by the actual residual
+        # scatter, and restrict it to broad, high-R² regions. Short windows
+        # still need the original half-slope agreement.
+        scatter_allowance = (10 * np.sqrt(np.mean(residual ** 2)) / np.ptp(loading_y[ids])
+                             if not early and upper - lower >= .4 and r2 >= .995 else 0.)
+        if np.isfinite(slope) and slope > 0 and r2 >= .98 and difference <= max(.05, scatter_allowance):
+            (below_cutoff if early else candidates).append(dict(lower=lower, upper=upper, slope=slope, intercept=intercept,
                                    r2=r2, difference=difference,
-                                   strict=r2 >= .995 and difference <= .025,
+                                   strict=r2 >= .995 and difference <= max(.025, scatter_allowance),
                                    width=upper - lower, mean_x=np.mean(loading_x[ids]),
                                    mean_y=np.mean(loading_y[ids]), variance_x=np.var(loading_x[ids]),
                                    mse=np.mean(residual ** 2), stress_span=np.ptp(loading_y[ids])))
@@ -163,6 +186,7 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
                        key=lambda candidate: (-candidate['width'], -candidate['r2'], candidate['lower']))
     preferred = [candidate for candidate in supported if candidate['strict']] or supported
     chosen = preferred[0] if preferred else None
+    warning = ''
     if chosen:
         # Only an independently supported region may supersede the wider fit.
         # A smooth plastic segment must still not hide a shorter elastic region.
@@ -180,7 +204,12 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
                        and candidate['mse'] < .25 * chosen['mse']]
         if refinements:
             chosen = max(refinements, key=lambda candidate: (candidate['width'], -candidate['mse']))
-        low, high = chosen['lower'], chosen['upper']
+        if any(candidate['slope'] > 2 * chosen['slope'] for candidate in below_cutoff):
+            chosen = None
+            warning = ('A substantially stiffer region lies below the 10% UTS automatic cutoff. '
+                       'The later line may represent plastic deformation; use a manual elastic fit.')
+        else:
+            low, high = chosen['lower'], chosen['upper']
     if details is not None:
         details.update({
             'Automatic fit support': ('Stricter window' if chosen['strict'] else 'Measurement-noise tolerance')
@@ -188,9 +217,9 @@ def automatic_elastic_mask(x, y, peak, uts, low, high, *, details=None):
             'Automatic fit half-slope difference (%)': 100 * chosen['difference'] if chosen else np.nan,
         })
     mask = np.zeros(len(x), dtype=bool)
-    mask[:peak] = (loading_y >= low * uts) & (loading_y <= high * uts)
-    return mask, '' if chosen else (
-        'No supported automatic elastic region was found below or above the starting fit range. '
+    mask[:peak] = (loading_y >= max(low, AUTOMATIC_FIT_MIN_UTS_FRACTION) * uts) & (loading_y <= high * uts)
+    return mask, '' if chosen else warning or (
+        'No supported automatic elastic region was found at or above 10% UTS. '
         'Review the fit range before using YS or elastic modulus.')
 
 

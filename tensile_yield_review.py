@@ -11,13 +11,13 @@ from tensile_properties import DEFAULT_FIT_FRACTIONS, specimen_calculation
 from tensile_selection import DATA_MODES, specimen_id
 
 
-FIT_LAYERS = {'measured', 'fit_points', 'elastic_fit', 'offset', 'yield_calc'}
+FIT_LAYERS = {'measured', 'fit_points', 'elastic_fit', 'offset', 'yield_calc', 'yield_instron'}
 
 
 def yield_fit_figure(record, calculation, *, crop_range=None):
     """Reuse inspector traces and exact fit diagnostics; only the view is reduced."""
     figure = inspection_figure({'record': record, 'calculation': calculation,
-                                'reference': {'values': {}}}, mode='yield')
+                                'reference': record.get('_review_reference', {'values': {}})}, mode='yield')
     figure.data = tuple(trace for trace in figure.data
                         if (trace.meta or {}).get('inspector_layer') in FIT_LAYERS)
     figure.layout.shapes = tuple(shape for shape in figure.layout.shapes
@@ -25,7 +25,7 @@ def yield_fit_figure(record, calculation, *, crop_range=None):
     # Keep acquisition order, reversals and gaps in the displayed yield region.
     # Include neighbours at crop boundaries and insert a gap between disjoint
     # runs, so reducing the display payload never draws invented connections.
-    left, right = crop_range or inspection_ranges(calculation, 'yield')[0]
+    left, right = crop_range or figure.layout.xaxis.range
     measured = next(trace for trace in figure.data if trace.meta['inspector_layer'] == 'measured')
     x, y = np.asarray(measured.x, float), np.asarray(measured.y, float)
     keep = np.isfinite(x) & (x >= left) & (x <= right)
@@ -71,7 +71,7 @@ class GroupYieldReview:
         legend = ' &nbsp; '.join(layer_swatch(color, symbol, dash) + ' ' + label for label, color, symbol, dash in [
             ('Measured CSV', '#334155', None, None), ('Fit points', '#16a085', 'circle', None),
             ('Elastic fit', '#16a085', None, 'dash'), ('0.2% offset', '#d97706', None, 'dash'),
-            ('Calc YS', '#d97706', 'diamond', None)])
+            ('Calc YS', '#d97706', 'diamond', None), ('Instron YS', '#be185d', 'diamond-open', None)])
         self.grid = w.GridBox(layout=w.Layout(width='100%', min_width='0', grid_gap='14px',
                                               grid_template_columns='repeat(3, minmax(0, 1fr))'))
         self.plot = w.VBox(layout=w.Layout(width='100%', min_width='0'))
@@ -169,7 +169,9 @@ class GroupYieldReview:
             try:
                 record = records[row['id']]
                 calculation = specimen_calculation(record, record.get('_review_fit_fractions', DEFAULT_FIT_FRACTIONS))
-                calculated.append((row, record, calculation, inspection_ranges(calculation, 'yield')))
+                ranges = inspection_ranges(calculation, 'yield',
+                    reported_ys=record.get('_review_reference', {}).get('values', {}).get('ys', np.nan))
+                calculated.append((row, record, calculation, ranges))
             except Exception as error:
                 failures[row['id']] = str(error)
         # Crop only the display arrays, to the union of yield-detail regions.

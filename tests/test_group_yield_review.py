@@ -23,6 +23,7 @@ class YieldFigureTests(unittest.TestCase):
         for manual in (False, True):
             with self.subTest(manual=manual):
                 record = bilinear_record()
+                record['_review_reference'] = {'values': {'ys': 418.5}}
                 record['source_sha256'] = 'a' * 64
                 if manual:
                     record['_fit_override'] = {'mode': 'line', 'strain_bounds': [.1, .3],
@@ -30,7 +31,7 @@ class YieldFigureTests(unittest.TestCase):
                 calc = specimen_calculation(record)
                 before = deepcopy(calc['properties'])
                 reference = inspection_figure({'record': record, 'calculation': calc,
-                                               'reference': {'values': {}}})
+                                               'reference': record['_review_reference']})
                 grid = yield_fit_figure(record, calc)
                 full_traces = {t.meta['inspector_layer']: t for t in reference.data}
                 self.assertEqual({t.meta['inspector_layer'] for t in grid.data}, FIT_LAYERS)
@@ -42,6 +43,21 @@ class YieldFigureTests(unittest.TestCase):
                 self.assertEqual(calc['properties']['Fitted E (GPa)'], before['Fitted E (GPa)'])
                 self.assertEqual(calc['properties']['Fit method'], 'Manual line' if manual else 'Automatic')
                 self.assertEqual([s.name for s in grid.layout.shapes], ['inspector:fit_points'])
+                instron = next(t for t in grid.data if t.meta['inspector_layer'] == 'yield_instron')
+                self.assertEqual(instron.marker.symbol, 'diamond-open')
+                self.assertEqual(tuple(instron.y), (418.5,))
+
+    def test_instron_marker_outside_calc_detail_range_remains_visible_and_missing_is_not_invented(self):
+        record = bilinear_record()
+        record['_review_reference'] = {'values': {'ys': 500.}}
+        calc = specimen_calculation(record)
+        grid = yield_fit_figure(record, calc)
+        instron = next(t for t in grid.data if t.meta['inspector_layer'] == 'yield_instron')
+        self.assertGreater(grid.layout.xaxis.range[1], instron.x[0])
+        self.assertNotIn('instron_ys_level', {t.meta['inspector_layer'] for t in grid.data})
+        record['_review_reference'] = {'values': {}, 'candidate_values': {'ys': 500.}}
+        grid = yield_fit_figure(record, calc)
+        self.assertNotIn('yield_instron', {t.meta['inspector_layer'] for t in grid.data})
 
     def test_measured_crop_preserves_acquisition_reversals_and_missing_readings(self):
         record = bilinear_record()
@@ -120,15 +136,16 @@ class YieldReviewTests(unittest.TestCase):
                 self.addCleanup(app.tables.clear)
                 view = app.tables.yield_review
                 self.assertFalse(view.entries)
-                self.assertEqual(app.tables.tabs.get_title(4), 'Group yield fits')
-                app.tables.tabs.selected_index = 4
+                self.assertEqual(app.tables.tabs.get_title(3), 'Group yield fits')
+                self.assertEqual(app.tables.tabs.get_title(4), 'Calculation inspector')
+                app.tables.tabs.selected_index = 3
                 self.assertEqual(len(view.entries), 3)
                 entry = view.entries[1]
                 expected = app._inspect_specimen(entry['id'])['calculation']['properties']
                 self.assertEqual(entry['calculation']['properties']['Elastic fit R2'], expected['Elastic fit R2'])
                 self.assertEqual(entry['calculation']['properties']['Fitted E (GPa)'], expected['Fitted E (GPa)'])
                 view.grid.children[1].children[-1].click()
-                self.assertEqual(app.tables.tabs.selected_index, 2)
+                self.assertEqual(app.tables.tabs.selected_index, 4)
                 self.assertEqual(app.tables.inspector.choice.value, entry['id'])
                 self.assertFalse(view.active)
                 self.assertEqual(before, (root / 'tensile_workbench.project.json').read_bytes())

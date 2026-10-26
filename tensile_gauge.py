@@ -58,10 +58,10 @@ def acquisition_metadata(engine, frame, units, strain, stress):
     backwards = changes[np.isfinite(changes) & (changes < 0)]
     largest_reversal = float(-np.min(backwards)) if len(backwards) else 0.
     warnings = [time_warning] if time_warning else []
+    notes = []
     finite_x = x[np.isfinite(x)]
     if len(finite_x) and largest_reversal > max(.01, .001 * np.ptp(finite_x)):
-        warnings.append('Strain reverses in acquisition order. All finite readings are retained; '
-                        'inspect tracking before using strain-derived properties.')
+        notes.append('Strain reverses in acquisition order. All finite readings are retained.')
     peak = int(np.argmax(np.where(valid_force, force, -np.inf))) if valid_force.any() else None
     return {'strain': x.copy(), 'stress': y.copy(), 'force': force.copy(),
             'time': time.copy(), 'peak': peak,
@@ -72,7 +72,7 @@ def acquisition_metadata(engine, frame, units, strain, stress):
             'unit_declarations': {kind: {'column': col, 'header_unit': header_unit(col),
                 'units_row': units.get(col, ''), 'scale': conversion(col, units, kind)}
                 for kind, col in (('strain', strain_col), ('stress', stress_col)) if col},
-            'import_warnings': warnings}
+            'import_warnings': warnings, 'import_notes': notes}
 
 
 def prepared_indices(metadata):
@@ -94,7 +94,7 @@ def gauge_record(record, reference, enabled, target):
     audit = {'Elongation basis': 'Estimated standard gauge' if enabled else 'Measured AVE',
              'AVE dot spacing (mm)': dots, 'Target gauge length (mm)': target if target > 0 else np.nan,
              'Gauge ratio': np.nan, 'Gauge correction status': 'Unavailable',
-             'Gauge model warning': '',
+             'Gauge model note': '',
              'Gauge source': reference.get('source', ''),
              'Estimated failure elongation (%)': np.nan, 'Estimated toughness (MJ/m^3)': np.nan,
              'Peak-force measurement row (1-based)': np.nan, 'Peak-force time (s)': np.nan,
@@ -123,7 +123,7 @@ def gauge_record(record, reference, enabled, target):
         if not np.isfinite(target) or target <= 0:
             raise ValueError('Enter a positive target gauge length')
         if target > dots + 1e-9:
-            audit['Gauge model warning'] = (
+            audit['Gauge model note'] = (
                 'Target gauge exceeds AVE spacing; reconstructed EL will be lower.')
         meta = record['_acquisition']
         peak = meta['peak']

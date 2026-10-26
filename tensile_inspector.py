@@ -54,7 +54,20 @@ def layer_swatch(color, symbol=None, dash=None):
     return f'<span aria-hidden="true" style="display:inline-block;width:25px;border-top:2px {style} {color}"></span>'
 
 
-def inspection_ranges(calculation, mode='yield'):
+def instron_ys_strain(calculation, reported):
+    """Place reported stress on the first ascending pre-UTS CSV crossing."""
+    if not np.isfinite(reported):
+        return np.nan
+    x, y, peak = calculation['strain_pct'], calculation['stress_mpa'], calculation['uts_index']
+    crossings = np.flatnonzero((y[:-1] <= reported) & (y[1:] >= reported) & (np.diff(y) > 0))
+    crossings = crossings[crossings < peak] if peak is not None else np.array([], dtype=int)
+    if not len(crossings):
+        return np.nan
+    i = int(crossings[0])
+    return float(x[i] + (reported - y[i]) / (y[i + 1] - y[i]) * (x[i + 1] - x[i]))
+
+
+def inspection_ranges(calculation, mode='yield', *, reported_ys=np.nan):
     """Explicit reset ranges, independent of the publication plot settings."""
     x, y = calculation['strain_pct'], calculation['stress_mpa']
     if not len(x):
@@ -65,6 +78,9 @@ def inspection_ranges(calculation, mode='yield'):
         candidates = x[calculation['elastic_mask']].tolist()
         if np.isfinite(p['Yield strain (%)']):
             candidates.append(p['Yield strain (%)'])
+        reported_strain = instron_ys_strain(calculation, reported_ys)
+        if np.isfinite(reported_strain):
+            candidates.append(reported_strain)
         # With an unresolved yield, show the fit plus some material beyond it.
         right = min(right, max(candidates) * 1.3 + .2 if candidates else max(1., right * .15))
     span = max(right - left, .1)
@@ -76,7 +92,8 @@ def inspection_ranges(calculation, mode='yield'):
 def overlay_ranges(payload, mode='yield', show_gauge=False):
     if mode == 'failure':
         return failure_detail_ranges(payload, show_gauge)
-    xrange, yrange = inspection_ranges(payload['calculation'], mode)
+    xrange, yrange = inspection_ranges(payload['calculation'], mode,
+        reported_ys=payload['reference'].get('values', {}).get('ys', np.nan))
     reported_el = payload['reference'].get('values', {}).get('el', np.nan)
     if mode == 'full' and np.isfinite(reported_el):
         padding = .04 * max(xrange[1] - xrange[0], .1)
@@ -256,13 +273,8 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
              '#be185d', layer='instron_ys_level', dash='dot', width=1.8)
         # Instron supplies the yield stress here, not a yield strain. Locate
         # the first ascending crossing on the measured pre-UTS loading curve.
-        peak = calculation['uts_index']
-        crossings = np.flatnonzero((y[:-1] <= reported) & (y[1:] >= reported) & (np.diff(y) > 0))
-        crossings = crossings[crossings < peak] if peak is not None else np.array([], dtype=int)
-        if len(crossings):
-            i = int(crossings[0])
-            fraction = (reported - y[i]) / (y[i + 1] - y[i])
-            strain_at_reported_ys = float(x[i] + fraction * (x[i + 1] - x[i]))
+        strain_at_reported_ys = instron_ys_strain(calculation, reported)
+        if np.isfinite(strain_at_reported_ys):
             fig.add_trace(go.Scatter(x=[strain_at_reported_ys], y=[float(reported)],
                 name='Instron YS', mode='markers', meta={'inspector_layer': 'yield_instron'},
                 marker=dict(color='#be185d', symbol='diamond-open', size=13, line=dict(width=2)),
@@ -599,7 +611,9 @@ def inspection_summary(payload):
         if audit['Gauge correction status'] != 'Applied':
             result.append('<p class="tw-inspect-warning"><b>Overlay unavailable:</b> ' + escape(audit['Gauge correction status']) +
                           '. Set and save a target under Gauge reconstruction · per sample group.</p>')
-        for key in ('Gauge model warning', 'Gauge reconstruction notes'):
+        if audit.get('Gauge model note'):
+            result.append('<p><b>Note:</b> ' + escape(audit['Gauge model note']) + '</p>')
+        for key in ('Gauge reconstruction notes',):
             if audit.get(key):
                 result.append('<p class="tw-inspect-warning">' + escape(audit[key]) + '</p>')
         result.append('</details>')
@@ -630,6 +644,8 @@ def inspection_summary(payload):
     if automatic_fit:
         result.append(f'<p>Search starts at {100 * low:.2f}–{100 * high:.2f}% UTS and checks higher, lower '
                       'and shorter loading windows, plus wider regions up to 80% UTS. '
+                      'Points below 10% UTS are excluded from automatic fitting to avoid initial seating; '
+                      'the measured curve and manual fit choices are unchanged. '
                       'A short, steeper patch is set aside when a wider supported line also explains its readings. '
                       f'{escape(p.get("Automatic fit support", ""))}; half-window slope difference '
                       f'{number(p.get("Automatic fit half-slope difference (%)", np.nan))}%.</p>')
@@ -656,7 +672,9 @@ def inspection_summary(payload):
                   'toughness use the selected CSV endpoint, or its reconstruction when enabled. Missing detection '
                   'is not replaced unconditionally by a final reading or an Instron result. Supported estimates '
                   'remain review-flagged; pre-peak calculations remain available.</p></details>')
-    result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + '<p>Source: ' +
+    acquisition_notes = ''.join('<p><b>Note:</b> ' + escape(note) + '</p>'
+                               for note in payload['record'].get('_acquisition', {}).get('import_notes', []))
+    result.append('<details><summary>Source and preparation details</summary>' + acquisition_note + acquisition_notes + '<p>Source: ' +
                   escape(payload['source_file']) + '</p><p>SHA256: ' + escape(payload.get('source_sha256', '')) +
                   '</p><p>The measured line preserves original acquisition order. Elastic-fit points use the '
                   'existing property preparation: finite pairs sorted by strain, with the maximum stress retained '
@@ -1253,8 +1271,8 @@ class SpecimenInspector:
                         audit.get('Gauge correction status', 'No gauge preview available'))
                 else:
                     self.gauge_status.value = 'Display-only overlay: solid measured; dashed reconstructed. No settings or measurements changed.'
-                    if audit.get('Gauge model warning'):
-                        self.gauge_status.value += '<br><b>Model warning:</b> ' + escape(audit['Gauge model warning'])
+                    if audit.get('Gauge model note'):
+                        self.gauge_status.value += '<br><b>Note:</b> ' + escape(audit['Gauge model note'])
             if self._probe and self._probe.pixels:
                 self._resize(self._probe.pixels)
         finally:

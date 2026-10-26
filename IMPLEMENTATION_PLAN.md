@@ -2,6 +2,27 @@
 
 ## Change notes — 2026-10-26
 
+### Seating cutoff and review-view refinements
+
+- Automatic elastic fits exclude readings below 10% UTS. Preserve measured
+  curves and manual ranges. A supported, much stiffer region entirely below the
+  cutoff triggers manual review instead of returning a later plastic modulus.
+- For broad high-R² intervals only, scale half-slope tolerance with residual
+  scatter so correlated tracking variation does not force a short local fit.
+  Keep existing known-modulus accuracy limits for eligible automatic fits;
+  low-yield fixtures now verify cutoff rejection and accurate manual recovery.
+- Add matched Instron YS hollow diamonds to the group yield overview using the
+  inspector's shared CSV-crossing calculation; include them in the detail range.
+- Put import counts in a collapsed table, while keeping actual import failures
+  visible. Move Calculation inspector to the final tab and update navigation.
+- Reclassify acquisition strain reversals and longer-target-gauge EL reduction
+  as notes in inspector details and Audit; neither increases review counts.
+- Verification: 452 tests pass. Focused numerical checks on the reported raw
+  specimens select broader regions above the cutoff. Additional read-only checks
+  cover 168 unambiguously located curves; finite results indicate availability,
+  not calibrated accuracy. Synthetic UI fixtures check display/navigation only.
+  No research plots, tables, source files or personal settings were rewritten.
+
 ### Group yield-fit overview
 
 - Add a lazy **Group yield fits** tab with naturally ordered specimen cards,

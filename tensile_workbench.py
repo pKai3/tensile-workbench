@@ -355,6 +355,7 @@ class PreviewSession:
         fractions = spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS)
         return [{**self.selected_record(row, spec),
                  '_review_fit_fractions': tuple(fractions),
+                 '_review_reference': self.instron.match(group, row),
                  '_review_properties': self.engine.specimen_properties(row, fractions,
                      self.engine.LANDMARK_YIELD_R2_WARNING, apply_policy=False)} for row in self._load(group)]
 
@@ -451,8 +452,8 @@ class PreviewSession:
                     print(f'[GAUGE] {g}: reconstructed post-peak strain at target gauge {target:.2f} mm; '
                           f'{sum(curve_allowed(r) for r in rows)} eligible specimens, each using its own AVE dot spacing.')
                     for r in rows:
-                        if r['_gauge']['Gauge model warning']:
-                            print(f"[GAUGE WARNING] {g}/{r['sample']}: {r['_gauge']['Gauge model warning']}")
+                        if r['_gauge']['Gauge model note']:
+                            print(f"[GAUGE NOTE] {g}/{r['sample']}: {r['_gauge']['Gauge model note']}")
         return result
 
     def export_properties(self, state, spec):
@@ -1050,7 +1051,7 @@ class TensileWorkbench:
             self.gauge_message,
             w.HTML('Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
                    'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
-                   'overlay in the specimen inspector. Longer targets are allowed with a model warning; '
+                   'overlay in the specimen inspector. Longer targets are allowed and reduce reconstructed EL; '
                    'all reconstructed results remain derived estimates.'),
             w.HTML(gauge_model_help(expanded=True))])], selected_index=None)
         self.gauge_panel.set_title(0, 'Gauge reconstruction · per sample group')
