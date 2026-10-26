@@ -351,6 +351,8 @@ def property_tables(records, spec, engine, instron, project=None):
                                 'Override Definition': json.dumps(saved_fit, sort_keys=True) if saved_fit else '',
                                 'Yield Method': p['Yield method'], 'Yield Status': p['Yield status'], 'Yield Notes': p['Notes'],
                                 'Automatic fit strategy': p.get('Automatic fit strategy', ''),
+                                'Automatic fit support': p.get('Automatic fit support', ''),
+                                'Automatic fit half-slope difference (%)': p.get('Automatic fit half-slope difference (%)', np.nan),
                                 'Automatic fit warning': p.get('Automatic fit warning', ''),
                                 'Fitted E (GPa)': p['Fitted E (GPa)'], 'Elastic Fit R2': p['Elastic fit R2'],
                                 'Elastic Intercept (MPa)': p['Elastic intercept (MPa)'],

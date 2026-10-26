@@ -614,14 +614,24 @@ def inspection_summary(payload):
         result.append('<p class="tw-inspect-warning"><b>Yield ' + escape(p['Yield status']) + ':</b> ' +
                       escape(p['Notes']) + '</p>')
     low, high = calculation['fit_fractions']
-    description = (f'Automatic elastic fit: {100 * low:.2f}–{100 * high:.2f}% of this specimen’s UTS'
-                   if p.get('Fit method', 'Automatic') == 'Automatic' else
-                   f'{p["Fit method"]}: {number(p["Fit lower strain (%)"], 5)}–{number(p["Fit upper strain (%)"], 5)}% strain')
+    automatic_fit = p.get('Fit method', 'Automatic') == 'Automatic'
+    if automatic_fit:
+        uts = p['UTS (MPa)']
+        selected_low = 100 * p['Fit lower stress (MPa)'] / uts if uts > 0 else np.nan
+        selected_high = 100 * p['Fit upper stress (MPa)'] / uts if uts > 0 else np.nan
+        description = f'Automatic fit range: {number(selected_low)}–{number(selected_high)}% of this specimen’s UTS'
+    else:
+        description = f'{p["Fit method"]}: {number(p["Fit lower strain (%)"], 5)}–{number(p["Fit upper strain (%)"], 5)}% strain'
     result.append(f'<p>{description}, before the first UTS point '
                   f'({number(p["Fit lower stress (MPa)"])}–{number(p["Fit upper stress (MPa)"])} MPa); '
                   f'<b>{int(calculation["elastic_mask"].sum())} selected points</b>. '
                   f'R² = {number(p["Elastic fit R2"], 5)}; intercept = {number(p["Elastic intercept (MPa)"])} MPa. '
                   'This fitted E is independent of the WH modulus.</p>')
+    if automatic_fit:
+        result.append(f'<p>Search starts at {100 * low:.2f}–{100 * high:.2f}% UTS and checks higher, lower '
+                      'and shorter loading windows to avoid seating and plastic flow. '
+                      f'{escape(p.get("Automatic fit support", ""))}; half-window slope difference '
+                      f'{number(p.get("Automatic fit half-slope difference (%)", np.nan))}%.</p>')
     result.append(f'<p>Review threshold: R² &lt; {calculation.get("r2_threshold", .98):.5f}. '
                   'Checks use full precision, before display rounding. '
                   'A high R² alone does not establish that a region is elastic.</p>')

@@ -2,6 +2,27 @@
 
 ## Change notes — 2026-10-26
 
+### Automatic elastic-fit rejection regression
+
+- Reproduced the audit change rejecting real curves: it searched only lower
+  loads, required near-noiseless R² and imposed a rigid 2.5% half-slope limit.
+- Search higher and lower loading ranges and half-width windows between seating
+  and yielding. Prefer stricter supported fits, but permit R² ≥ 0.98 with 5%
+  half-slope agreement when no stricter window exists. Keep unsupported fits
+  unavailable and retain manual overrides and the user-set review threshold.
+- Prefer a substantially steeper supported region over linear seating or plastic
+  hardening. Do not choose an unchecked maximum slope or smooth measurements.
+- Report actual selected bounds in the inspector and retain selection support
+  and half-slope difference in the exported Audit.
+- Add known-modulus tests with seating, quantisation and measurement noise,
+  short elastic regions, and linear plastic hardening. Preserve the existing
+  Ramberg–Osgood accuracy checks and inadequate-data rejection tests.
+- Verification: all 441 tests pass. A read-only comparison of 185 local raw
+  curves resolves automatic modulus and YS for 184, versus 96 accepted by v1.
+  No previously accepted curve becomes rejected. One remains unavailable for
+  manual review. These counts demonstrate availability, not physical calibration;
+  research files, overrides and saved analyses were not changed.
+
 ### External audit — fracture selection milestone
 
 - Closed the near-zero denominator failure in the single-reading sudden-drop

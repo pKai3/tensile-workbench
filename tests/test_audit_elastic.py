@@ -3,7 +3,98 @@ import numpy as np
 from tensile_properties import specimen_calculation
 
 
+def noisy_loading_record(seed=0, *, seating=False, noise=.006, quantum=.0005):
+    """Known 110 GPa elasticity followed by plastic flow, with AVE-like error."""
+    rng = np.random.default_rng(seed)
+    stress = np.linspace(0., 800., 5000)
+    strain = 100 * (stress / 110000. + np.maximum(stress - 650., 0.) / 1200.)
+    if seating:
+        progress = np.minimum(stress / 300., 1.)
+        strain += .1 * (2 * progress - progress ** 2)
+    strain += rng.normal(0., noise, len(strain))
+    if quantum:
+        strain = np.round(strain / quantum) * quantum
+    return {'sample': 'synthetic noisy AVE', 'source_file': 'synthetic.csv',
+            'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+            'stress_mpa': np.r_[stress, 400., 0.]}
+
+
 class ElasticWindowAuditTests(unittest.TestCase):
+    def test_measurement_noise_does_not_require_near_perfect_r_squared(self):
+        for seed in range(20):
+            with self.subTest(seed=seed):
+                p = specimen_calculation(noisy_loading_record(seed))['properties']
+                self.assertEqual(p['Yield status'], 'resolved')
+                self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=4.)
+                self.assertAlmostEqual(p['Yield (MPa)'], 652.4, delta=3.)
+                self.assertGreaterEqual(p['Elastic fit R2'], .98)
+                self.assertLess(p['Elastic fit R2'], .995)
+                self.assertEqual(p['Automatic fit support'], 'Measurement-noise tolerance')
+                self.assertFalse(p['Fit review required'])
+
+    def test_search_moves_above_seating_region_without_smoothing_measurements(self):
+        for seed in range(20):
+            with self.subTest(seed=seed):
+                record = noisy_loading_record(seed, seating=True, noise=.001)
+                before_x, before_y = record['strain_pct'].copy(), record['stress_mpa'].copy()
+                calc = specimen_calculation(record)
+                p = calc['properties']
+                self.assertEqual(p['Yield status'], 'resolved')
+                self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=2.)
+                self.assertAlmostEqual(p['Yield (MPa)'], 652.4, delta=1.)
+                self.assertGreater(p['Fit lower stress (MPa)'], .3 * p['UTS (MPa)'])
+                self.assertEqual(p['Fit point count'], calc['elastic_mask'].sum())
+                np.testing.assert_array_equal(record['strain_pct'], before_x)
+                np.testing.assert_array_equal(record['stress_mpa'], before_y)
+
+    def test_linear_plastic_hardening_does_not_hide_an_earlier_elastic_window(self):
+        stress = np.linspace(0., 900., 10000)
+        strain = 100 * (stress / 200000. + np.maximum(stress - 50., 0.) / 2000.)
+        record = {'sample': 'low yield ratio', 'source_file': 'synthetic.csv',
+                  'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                  'stress_mpa': np.r_[stress, 450., 0.]}
+        p = specimen_calculation(record)['properties']
+        self.assertAlmostEqual(p['Fitted E (GPa)'], 200., delta=.1)
+        self.assertAlmostEqual(p['Yield (MPa)'], 54., delta=.1)
+        self.assertLess(p['Fit upper stress (MPa)'], 50.)
+
+    def test_short_elastic_region_is_preferred_over_linear_seating(self):
+        stress = np.linspace(0., 900., 5000)
+        strain = 100 * (np.minimum(stress, 280.) / 70000.
+                        + np.maximum(stress - 280., 0.) / 110000.
+                        + np.maximum(stress - 500., 0.) / 2000.)
+        record = {'sample': 'seating then elastic then plastic', 'source_file': 'synthetic.csv',
+                  'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                  'stress_mpa': np.r_[stress, 450., 0.]}
+        p = specimen_calculation(record)['properties']
+        self.assertAlmostEqual(p['Fitted E (GPa)'], 110., delta=.1)
+        self.assertAlmostEqual(p['Yield (MPa)'], 504., delta=.1)
+        self.assertGreater(p['Fit lower stress (MPa)'], 280.)
+        self.assertLess(p['Fit upper stress (MPa)'], 500.)
+
+    def test_noisy_elastic_window_takes_precedence_over_smoother_plastic_fit(self):
+        stress = np.linspace(0., 900., 30000)
+        for noise in (.00035, .0005):
+            for seed in range(10):
+                with self.subTest(noise=noise, seed=seed):
+                    strain = 100 * (stress / 200000. + np.maximum(stress - 50., 0.) / 2000.)
+                    strain += np.random.default_rng(seed).normal(0., noise, len(stress))
+                    record = {'sample': 'noisy low yield ratio', 'source_file': 'synthetic.csv',
+                              'strain_pct': np.r_[strain, strain[-1] + [.1, .11]],
+                              'stress_mpa': np.r_[stress, 450., 0.]}
+                    p = specimen_calculation(record)['properties']
+                    self.assertAlmostEqual(p['Fitted E (GPa)'], 200., delta=5.)
+                    self.assertAlmostEqual(p['Yield (MPa)'], 54., delta=.25)
+                    self.assertLess(p['Fit upper stress (MPa)'], 50.)
+
+    def test_r_squared_warning_threshold_still_applies_to_noise_tolerant_fit(self):
+        record = noisy_loading_record()
+        p = specimen_calculation(record, r2_warning=.999)['properties']
+        self.assertTrue(np.isfinite(p['Fitted E (GPa)']))
+        self.assertTrue(np.isfinite(p['Yield (MPa)']))
+        self.assertTrue(p['Fit review required'])
+        self.assertIn('low R2', p['Notes'])
+
     def test_known_modulus_and_offset_yield_across_strength_ratios(self):
         for uts in (280., 315., 400., 500., 650., 830.):
             stress = np.linspace(0., uts, 5000)

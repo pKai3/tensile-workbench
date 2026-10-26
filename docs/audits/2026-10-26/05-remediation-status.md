@@ -9,7 +9,7 @@ OneDrive installation were not modified.
 | C1 — accidental group pooling | Nested groups remain separate despite stray parent files or empty export folders. Boundary notices explain the ambiguity. An explicit `.tensile-group` marker confirms intentionally combined runs; summary searches respect discovered boundaries. |
 | C2 — duplicate exports | Content/export-row/summary-row collisions form connected review sets. Multiple included candidates contribute no results until Data use retains one. No source deletion or arbitrary first-file choice. |
 | C3 — false sudden fracture | A single decrement must pass the five-times comparison, 5% of peak, twelve noise units and existing recovery checks. A later below-2% reading cannot waive these requirements. The multi-reading collapse path remains separate. |
-| C4 — elastic fit in plastic region | Starting fit fractions are checked for slope stability; progressively lower ranges are searched. Insufficient/unstable data yields unavailable automatic modulus/YS and review guidance, not a high-R² false assurance. Manual fits remain available. |
+| C4 — elastic fit in plastic region | Starting fit fractions are checked for slope stability; higher, lower and shorter ranges are searched. The initial downward-only search and rigid rejection thresholds were corrected after real-data review (see follow-up below). Insufficient/unstable data still yields unavailable automatic modulus/YS and review guidance. Manual fits remain available. |
 | C5 — percent/fraction scaling | Explicit header/units-row conversion replaces magnitude guessing. Missing/conflicting units require correction. |
 | C6 — stress units and true channels | Recognised units convert to MPa; true-only stress/strain is rejected. Prefer a simultaneous engineering channel. Conversion metadata is exported. |
 | C7 — unverified reference contamination | Failed name/UTS verification withholds all candidate reference values from statistics, gauge reconstruction and automatic Location. Candidate values and evidence remain inspectable; no numerical rematching. |
@@ -61,3 +61,27 @@ review notice; no smoothing silently changes UTS or its location.
   sync to finish. Hourly backups improve recovery, not distributed coordination.
 - The withdrawn pointwise `ddof=0` finding required no change: those callers do not
   publish that intermediate SD.
+
+## Follow-up — real-data elastic-fit regression
+
+The first elastic-fit remediation passed the idealised fixtures but rejected
+89 of 185 locally available real curves in a read-only numerical check. Searching
+only lower loads moved into seating/tracking variation, while R² ≥ 0.995 and 2.5%
+half-slope agreement were too restrictive as universal acceptance conditions.
+
+Version 2 also searches above the starting range and uses shorter windows where
+seating and yielding leave a limited linear interval. It prefers the stricter
+conditions, with a second supported tier allowing R² ≥ 0.98 and 5% half-slope
+agreement. A substantially steeper supported region supersedes a low-stiffness
+seating or plastic-hardening region. The actual chosen range and support tier are
+auditable. Noise/quantisation, seating and short-elastic-region regression tests
+supplement the original known-modulus and curved-plastic controls. Obtaining a
+finite fit is not itself validation of its physical accuracy.
+
+Follow-up verification: **441 tests pass**. Using identical preparation and
+automatic settings on 185 local raw curves, v1 accepts 96; v2 resolves modulus and
+YS for 184. No previously accepted curve becomes rejected. One curve still fails
+the automatic checks and remains available for manual fitting. The numerical
+comparison bypassed personal overrides and exclusions to compare the algorithms;
+it did not save settings or regenerate research plots/tables. No raw research data
+or per-specimen results are included in the repository.

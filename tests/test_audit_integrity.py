@@ -69,6 +69,17 @@ class AuditIntegrityTests(unittest.TestCase):
         self.assertFalse(fixed['tensile_samples'].Checks.str.contains('Duplicate export').any())
         self.assertEqual(len(session.included_records(state['groups'], spec)['Alloy A']), 3)
 
+    def test_elastic_window_support_is_retained_in_export_audit(self):
+        session, state, spec = self.session()
+        frames = session.property_tables(state, spec)
+        self.assertIn('Automatic fit support', frames['specimen_diagnostics'])
+        self.assertIn('Automatic fit half-slope difference (%)', frames['specimen_diagnostics'])
+        for row, (_, audit) in zip(session._load('Alloy A'), frames['specimen_diagnostics'].iterrows()):
+            properties = session.engine.specimen_properties(row)
+            self.assertEqual(audit['Automatic fit support'], properties['Automatic fit support'])
+            self.assertAlmostEqual(audit['Automatic fit half-slope difference (%)'],
+                                   properties['Automatic fit half-slope difference (%)'])
+
     def test_failed_identity_withholds_reference_gauge_and_location_but_keeps_calc(self):
         self.summaries(mismatch=True)
         session, state, spec = self.session()

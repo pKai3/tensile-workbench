@@ -41,6 +41,17 @@ def assert_properties_equal(left, right):
 
 
 class CalculationTests(unittest.TestCase):
+    def test_automatic_description_reports_actual_window_not_starting_fractions(self):
+        from test_audit_elastic import noisy_loading_record
+        data = payload(noisy_loading_record(seating=True, noise=.001))
+        p = data['calculation']['properties']
+        lower = 100 * p['Fit lower stress (MPa)'] / p['UTS (MPa)']
+        upper = 100 * p['Fit upper stress (MPa)'] / p['UTS (MPa)']
+        html = inspection_summary(data)
+        self.assertIn(f'Automatic fit range: {lower:.2f}–{upper:.2f}%', html)
+        self.assertIn('Search starts at 20.00–50.00%', html)
+        self.assertIn('half-window slope difference', html)
+
     def test_analytical_offset_yield_and_all_markers(self):
         record = bilinear_record()
         calculation = specimen_calculation(record)
