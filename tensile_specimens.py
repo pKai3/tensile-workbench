@@ -12,38 +12,38 @@ class SpecimenTable(anywidget.AnyWidget):
     modes = traitlets.Dict(DATA_MODES).tag(sync=True)
 
     _css = """
-    .tw-specimens {overflow:auto; max-height:510px; width:100%; min-width:0; max-width:100%; border:1px solid #cbd5e1; box-sizing:border-box;}
+    .tw-specimens {overflow:auto; max-height:510px; width:100%; min-width:0; max-width:100%; border:1px solid var(--tw-border, #cbd5e1); box-sizing:border-box;}
     .tw-specimens table {border-collapse:separate; border-spacing:0; width:100%; font:12px/1.4 Arial,sans-serif;}
-    .tw-specimens th,.tw-specimens td {padding:7px 9px; border-bottom:1px solid #dce3e9; text-align:right; min-width:100px;}
-    .tw-specimens th {position:sticky; top:0; z-index:2; background:#e8eef4; color:#152c3f; text-align:left;}
+    .tw-specimens th,.tw-specimens td {padding:7px 9px; border-bottom:1px solid var(--tw-border, #dce3e9); text-align:right; min-width:100px;}
+    .tw-specimens th {position:sticky; top:0; z-index:2; background:var(--tw-table-head-bg, #e8eef4); color:var(--tw-table-head-text, #152c3f); text-align:left;}
     .tw-specimens thead tr:nth-child(2) th {top:var(--tw-specimen-header-height,34px);text-align:center;}
     .tw-specimens th[scope=colgroup] {text-align:center;}
-    .tw-specimens .property-start {border-left:1px solid #cbd5e1;}
-    .tw-specimens td {background:#fff;}
-    .tw-specimens tr:nth-child(even) td {background:#f6f8fa;}
-    .tw-specimens tr.excluded td {background:#eef0f3; color:#737b86;}
-    .tw-specimens tr.fit-warning td:first-child {border-left:4px solid #d97706;}
-    .tw-specimens .fit-override {color:#175ca5;font-weight:bold;}
+    .tw-specimens .property-start {border-left:1px solid var(--tw-border, #cbd5e1);}
+    .tw-specimens td {background:var(--tw-panel-bg, #fff);}
+    .tw-specimens tr:nth-child(even) td {background:var(--tw-table-stripe-bg, #f6f8fa);}
+    .tw-specimens tr.excluded td {background:var(--tw-surface-alt, #eef0f3); color:var(--tw-muted, #737b86);}
+    .tw-specimens tr.fit-warning td:first-child {border-left:4px solid var(--tw-warning-border, #d97706);}
+    .tw-specimens .fit-override {color:var(--tw-link, #175ca5);font-weight:bold;}
     .tw-specimens thead tr:first-child th:first-child,.tw-specimens tbody td:first-child {position:sticky; left:0; min-width:210px; text-align:left; z-index:1;}
-    .tw-specimens .property-excluded {text-decoration:line-through;color:#88929e;}
+    .tw-specimens .property-excluded {text-decoration:line-through;color:var(--tw-muted, #88929e);}
     .tw-specimens thead tr:first-child th:first-child {z-index:3;}
     .tw-specimens td:nth-child(2),.tw-specimens td:nth-child(3) {text-align:left; min-width:130px; max-width:220px; overflow-wrap:anywhere;}
-    .tw-specimens input[type=checkbox] {width:17px; height:17px; cursor:pointer; accent-color:#1767a5;}
-    .tw-specimens input[type=text] {box-sizing:border-box; width:215px; padding:5px; border:1px solid #b6c1cd; border-radius:3px; font:inherit; color:#24354a; background:#fff;}
-    .tw-specimens input:focus-visible {outline:2px solid #1767a5; outline-offset:2px;}
+    .tw-specimens input[type=checkbox] {width:17px; height:17px; cursor:pointer; accent-color:var(--tw-accent, #1767a5);}
+    .tw-specimens input[type=text] {box-sizing:border-box; width:215px; padding:5px; border:1px solid var(--tw-control-border, #b6c1cd); border-radius:3px; font:inherit; color:var(--tw-control-text, #24354a); background:var(--tw-control-bg, #fff);}
+    .tw-specimens input:focus-visible {outline:2px solid var(--tw-accent, #1767a5); outline-offset:2px;}
     .tw-specimens input:disabled {cursor:default; opacity:.65;}
     .tw-specimens select {font:inherit;padding:5px;min-width:135px;cursor:pointer;}
     .tw-specimens .selection-scope {text-align:left;white-space:nowrap;}
-    .tw-specimens .selection-scope small {display:block;color:#526170;}
-    .tw-specimens .checks {white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:#944900;}
-    .tw-specimens .inspect {border:0;background:none;padding:0;color:#1767a5;text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere;}
+    .tw-specimens .selection-scope small {display:block;color:var(--tw-muted, #526170);}
+    .tw-specimens .checks {white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:var(--tw-warning-text, #944900);}
+    .tw-specimens .inspect {border:0;background:none;padding:0;color:var(--tw-link, #1767a5);text-align:left;font:inherit;cursor:pointer;overflow-wrap:anywhere;}
     .tw-specimens .inspect:hover {text-decoration:underline;}
-    .tw-specimens .inspect:focus-visible {outline:2px solid #1767a5;outline-offset:3px;}
-    .tw-specimens .source-file {margin-top:4px;font-size:11px;color:#526170;max-width:220px;}
+    .tw-specimens .inspect:focus-visible {outline:2px solid var(--tw-accent, #1767a5);outline-offset:3px;}
+    .tw-specimens .source-file {margin-top:4px;font-size:11px;color:var(--tw-muted, #526170);max-width:220px;}
     .tw-specimens .source-file summary {cursor:pointer;overflow-wrap:anywhere;}
     .tw-specimens .source-file textarea {box-sizing:border-box;width:100%;max-width:220px;resize:vertical;
       font:11px/1.4 monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
-    .tw-specimens .assigned-row {display:block;font-size:11px;color:#526170;margin-top:3px;}
+    .tw-specimens .assigned-row {display:block;font-size:11px;color:var(--tw-muted, #526170);margin-top:3px;}
     """
     _esm = """
     export default {render({model, el}) {

@@ -90,16 +90,18 @@ class PlotView:
                     'padding:0;display:block;width:100%;height:auto;min-height:0;'
                     f'aspect-ratio:{float(width)}/{float(height)};'
                     'font-size:0;cursor:zoom-in;}'
-                    '.' + scope + '.jupyter-button:focus-visible{outline:2px solid var(--jp-brand-color1,#1976d2);outline-offset:2px;}'
+                    '.' + scope + '.jupyter-button:focus-visible{outline:2px solid var(--tw-accent,var(--jp-brand-color1,#1976d2));outline-offset:2px;}'
                     '</style>', layout=self.w.Layout(height='0px', min_height='0px', margin='0', overflow='hidden'))
                 thumb = self.w.Button(description='Enlarge ' + item['label'], tooltip='Click to enlarge: ' + item['label'],
                                      layout=self.w.Layout(width='100%', height='auto', margin='0'))
                 thumb.add_class(scope)
+                thumb.add_class('tw-plot-thumbnail')
                 thumb.on_click(lambda _, key=item['key']: self.open_focus(key))
                 card = self.w.VBox([heading, css, thumb], layout=self.w.Layout(width='100%', min_width='0'))
                 self._owned.extend([css, thumb, card])
             if item.get('warning'):
-                warning = self.w.HTML('<div style="background:#fff7e6;border-left:3px solid #d97706;padding:8px;white-space:normal">'
+                warning = self.w.HTML('<div style="background:var(--tw-warning-bg,#fff7e6);color:var(--tw-warning-text,inherit);'
+                                      'border-left:3px solid var(--tw-warning-border,#d97706);padding:8px;white-space:normal">'
                                       + escape(item['warning']) + '</div>')
                 card.children = (card.children[0], warning, *card.children[1:])
                 self._owned.append(warning)

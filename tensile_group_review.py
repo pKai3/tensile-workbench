@@ -230,14 +230,17 @@ class GroupCurveReview:
             layout=self.w.Layout(width='100%', min_width='0', height='auto', min_height='28px'))
         scope = 'tw-review-key-' + token
         button.add_class(scope)
+        button.add_class('tw-review-key')
         if row['id'] == self.selected:
             button.add_class('tw-review-highlighted')
         css = self.w.HTML('<style>.' + scope + '{white-space:normal!important;line-height:1.25!important;'
                          'text-align:left;text-overflow:clip;background:transparent;border:1px solid transparent;'
-                         'box-shadow:none;padding:3px 5px;}.' + scope + ':hover{background:#eef3f8;}.' + scope +
-                         '.tw-review-highlighted{font-weight:600;background:#e8f0f8;border-color:#b9cede;}</style>',
+                         'box-shadow:none;padding:3px 5px;color:var(--tw-control-text,inherit);}.' + scope +
+                         ':hover{background:var(--tw-surface-alt,#eef3f8);}.' + scope +
+                         '.tw-review-highlighted{font-weight:600;background:var(--tw-selected-bg,#e8f0f8);'
+                         'border-color:var(--tw-control-border,#b9cede);}</style>',
                          layout=self.w.Layout(height='0px', width='0px', overflow='hidden'))
-        swatch = self.w.HTML(('<svg width="30" height="16" aria-hidden="true"><line x1="0" x2="30" y1="8" y2="8" '
+        swatch = self.w.HTML(('<svg width="30" height="16" aria-hidden="true" style="background:white;border-radius:2px"><line x1="0" x2="30" y1="8" y2="8" '
             f'stroke="{color}" stroke-width="3" stroke-dasharray="{DASH_PIXELS[dash]}"/></svg>') if has_curve else '',
             layout=self.w.Layout(width='32px', flex='0 0 32px'))
         def clicked(_):

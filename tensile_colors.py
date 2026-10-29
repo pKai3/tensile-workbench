@@ -82,7 +82,7 @@ def palette_preview(palette, classic_colors=None):
     colors = tuple(to_hex(color) for color in palette_colors(palette, classic_colors))
     swatches = ''.join(
         '<span title="' + escape(color, quote=True) + '" aria-label="' + escape(color, quote=True)
-        + '" style="display:inline-block;width:32px;height:19px;border:1px solid #0002;'
+        + '" style="display:inline-block;width:32px;height:19px;border:1px solid var(--tw-control-border,#0002);'
           'border-radius:4px;background:' + escape(color, quote=True) + '"></span>'
         for color in colors)
     return ('<div style="display:flex;flex-wrap:wrap;gap:5px;margin:5px 0">' + swatches + '</div>'

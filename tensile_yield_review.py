@@ -83,7 +83,8 @@ class GroupYieldReview:
             w.HBox([self.group, self.show_excluded], layout=w.Layout(flex_flow='row wrap', align_items='center')),
             w.HBox([self.shared_axes, self.columns, self.reset],
                    layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
-            w.HTML(legend), self.status, self.plot,
+            w.HTML('<div style="background:white;color:#334155;padding:4px 6px;border-radius:3px">'
+                   + legend + '</div>'), self.status, self.plot,
         ], layout=w.Layout(width='100%', min_width='0'))
         self.group.observe(self._changed, names='value')
         self.show_excluded.observe(self._changed, names='value')
@@ -190,9 +191,9 @@ class GroupYieldReview:
             mode = row.get('mode', 'all' if row['included'] else 'exclude')
             info = '<b>' + escape(row['sample']) + '</b>'
             if mode != 'all':
-                info += '<br><span style="color:#64748b">' + escape(DATA_MODES[mode]) + '</span>'
+                info += '<br><span style="color:var(--tw-muted,#64748b)">' + escape(DATA_MODES[mode]) + '</span>'
             if row.get('withheld'):
-                info += '<br><span style="color:#a65b00">Duplicate review · results withheld</span>'
+                info += '<br><span style="color:var(--tw-warning-text,#a65b00)">Duplicate review · results withheld</span>'
             content = []
             if row['id'] in by_id:
                 _, record, calculation, ranges = by_id[row['id']]
@@ -204,7 +205,7 @@ class GroupYieldReview:
                     sensitivity = (p.get('Automatic fit sensitivity warning', '')
                                    if p['Fit method'] == 'Automatic' else '')
                     review_label = 'Fit sensitive to selected range' if sensitivity else 'Fit needs review · inspect for details'
-                    info += ('<br><span style="color:#a65b00" title="' + escape(sensitivity or p['Notes'], quote=True) +
+                    info += ('<br><span style="color:var(--tw-warning-text,#a65b00)" title="' + escape(sensitivity or p['Notes'], quote=True) +
                              '">' + review_label + '</span>')
                 figure = yield_fit_figure(record, calculation, crop_range=crop)
                 x_range, y_range = common if self.shared_axes.value else ranges
@@ -226,7 +227,7 @@ class GroupYieldReview:
                     self.on_inspect(ident)
             button.on_click(inspect)
             card = w.VBox([heading, *content, button], layout=w.Layout(width='100%', min_width='0',
-                          overflow='hidden', padding='10px', border='1px solid #cbd5e1'))
+                          overflow='hidden', padding='10px', border='1px solid var(--tw-border,#cbd5e1)'))
             self._owned.extend([heading, *content, button, card])
             cards.append(card)
         probe = width_probe(self._resize)

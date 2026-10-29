@@ -1,0 +1,142 @@
+/* TEM Workbench's navy surfaces and teal accent. Light keeps existing fallbacks. */
+html[data-tw-theme="dark"] {
+  --tw-page-bg: #0c121a;
+  --tw-panel-bg: #121c28;
+  --tw-surface-alt: #0f1924;
+  --tw-control-bg: #172332;
+  --tw-control-text: #edf5fc;
+  --tw-text: #dce6ef;
+  --tw-muted: #94a5b8;
+  --tw-label: #b9c7d7;
+  --tw-border: #2b3746;
+  --tw-control-border: #39495c;
+  --tw-accent: #59d4cb;
+  --tw-link: #59d4cb;
+  --tw-warning-bg: #30291e;
+  --tw-warning-text: #dfbe85;
+  --tw-warning-border: #9a773f;
+  --tw-danger-bg: #382328;
+  --tw-danger-text: #ffa79d;
+  --tw-success-bg: #19372f;
+  --tw-success-text: #8fe0bc;
+  --tw-table-head-bg: #172332;
+  --tw-table-head-text: #b9c7d7;
+  --tw-table-stripe-bg: #101925;
+  --tw-selected-bg: #214547;
+  --tw-overlay-bg: rgba(12,18,26,.78);
+  --tw-shadow: #0008;
+}
+
+/* The launch page, including the pre-kernel loading screen. A notebook's own
+   shell is deliberately outside this selector. */
+html[data-tw-app][data-tw-theme="dark"],
+html[data-tw-app][data-tw-theme="dark"] body {
+  background: var(--tw-page-bg);
+  color: var(--tw-text);
+  color-scheme: dark;
+  --jp-layout-color0: #0c121a;
+  --jp-layout-color1: #0c121a;
+  --jp-layout-color2: #121c28;
+}
+html[data-tw-app][data-tw-theme="dark"] #loading {
+  color: var(--tw-text);
+}
+html[data-tw-app][data-tw-theme="dark"] :is(.voila-skeleton-line,.voila-skeleton-avatar) {
+  background: var(--tw-control-bg);
+}
+html[data-tw-theme="dark"] .tw-coupon-pop text {fill: var(--tw-warning-text);}
+
+/* Scope Jupyter colour variables to workbench widgets, never the notebook shell.
+   Rebind dependent widget variables here: their :root values otherwise resolve
+   against Jupyter's original light theme before reaching this subtree. */
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) {
+  color-scheme: dark;
+  color: var(--tw-text);
+  background: var(--tw-page-bg);
+  --jp-layout-color0: #0c121a;
+  --jp-layout-color1: #121c28;
+  --jp-layout-color2: #172332;
+  --jp-layout-color3: #39495c;
+  --jp-layout-color4: #94a5b8;
+  --jp-ui-font-color0: #edf5fc;
+  --jp-ui-font-color1: #dce6ef;
+  --jp-ui-font-color2: #b9c7d7;
+  --jp-ui-font-color3: #94a5b8;
+  --jp-content-font-color0: #edf5fc;
+  --jp-content-font-color1: #dce6ef;
+  --jp-content-font-color2: #b9c7d7;
+  --jp-content-font-color3: #94a5b8;
+  --jp-border-color0: #39495c;
+  --jp-border-color1: #2b3746;
+  --jp-border-color2: #39495c;
+  --jp-border-color3: #2b3746;
+  --jp-brand-color0: #439496;
+  --jp-brand-color1: #59d4cb;
+  --jp-brand-color2: #59d4cb;
+  --jp-brand-color3: #214547;
+  --jp-accent-color1: #59d4cb;
+  --jp-widgets-color: #dce6ef;
+  --jp-widgets-label-color: #b9c7d7;
+  --jp-widgets-readout-color: #dce6ef;
+  --jp-widgets-input-color: #edf5fc;
+  --jp-widgets-input-background-color: #172332;
+  --jp-widgets-input-border-color: #39495c;
+  --jp-widgets-input-focus-border-color: #59d4cb;
+  --jp-widgets-dropdown-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath fill='%23b9c7d7' d='m5 8 5 5 5-5z'/%3E%3C/svg%3E");
+  --jp-widgets-slider-handle-border-color: #439496;
+  --jp-widgets-slider-handle-background-color: #59d4cb;
+  --jp-widgets-slider-active-handle-color: #59d4cb;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) a {
+  color: var(--tw-link);
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) input {
+  accent-color: var(--tw-accent);
+}
+:where(html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher))
+  :is(select,textarea,input[type="text"],input[type="number"]) {
+  background-color: var(--tw-control-bg);
+  color: var(--tw-control-text);
+  border-color: var(--tw-control-border);
+}
+html[data-tw-theme="dark"] .tw-variable-copy {
+  background: var(--tw-control-bg); color: var(--tw-control-text);
+  border: 1px solid var(--tw-control-border); border-radius: 5px;
+}
+html[data-tw-theme="dark"] .tw-variable-copy:hover {border-color: var(--tw-accent);}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  :is(input,textarea)::placeholder {color: var(--tw-muted); opacity: 1;}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  :is(button,input,select,textarea,summary):focus-visible {
+  outline: 2px solid var(--tw-accent); outline-offset: 2px;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  .jupyter-button:not(.tw-plot-thumbnail,.tw-review-key) {
+  border: 1px solid var(--tw-control-border);
+  border-radius: 5px;
+  background: var(--tw-control-bg);
+  color: var(--tw-control-text);
+  box-shadow: none;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  .jupyter-button:not(.tw-plot-thumbnail,.tw-review-key):hover:enabled {
+  border-color: var(--tw-accent);
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  :is(.jupyter-button.mod-primary,.jupyter-button.mod-info,.jupyter-button.mod-success) {
+  background: #275f61; border-color: #439496; color: #edf5fc;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
+  :is(.jupyter-button.mod-active,.jupyter-button:active:enabled):not(.tw-plot-thumbnail,.tw-review-key) {
+  background: var(--tw-selected-bg); border-color: var(--tw-accent);
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .jupyter-button.mod-danger {
+  background: var(--tw-danger-bg); border-color: #845451; color: var(--tw-danger-text);
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .jupyter-button.mod-warning {
+  background: var(--tw-warning-bg); border-color: var(--tw-warning-border); color: var(--tw-warning-text);
+}
+
+/* Figures are publication previews. Never recolour SVG strokes, raster images,
+   trace colours or exported figures when changing the surrounding interface. */
+html[data-tw-theme="dark"] :is(.js-plotly-plot,.tw-plot-key-surface) {color-scheme: light;}

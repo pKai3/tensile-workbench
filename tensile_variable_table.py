@@ -77,30 +77,30 @@ class VariableTable(anywidget.AnyWidget):
 
     _css = """
     .tw-variable-grid {max-width:100%;min-width:0;overflow:auto;max-height:440px;
-      border:1px solid #cbd5e1;box-sizing:border-box;font:13px/1.4 Arial,sans-serif;}
+      border:1px solid var(--tw-border, #cbd5e1);box-sizing:border-box;font:13px/1.4 Arial,sans-serif;}
     .tw-variable-grid table {border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;}
-    .tw-variable-grid td,.tw-variable-grid th {padding:4px 6px;border-right:1px solid #dce3e9;
-      border-bottom:1px solid #dce3e9;box-sizing:border-box;height:40px;text-align:left;}
-    .tw-variable-grid td {background:#fff;}
-    .tw-variable-grid tbody tr:nth-child(even) td {background:#f6f8fa;}
-    .tw-variable-grid th {background:#e8eef4;color:#152c3f;}
+    .tw-variable-grid td,.tw-variable-grid th {padding:4px 6px;border-right:1px solid var(--tw-border, #dce3e9);
+      border-bottom:1px solid var(--tw-border, #dce3e9);box-sizing:border-box;height:40px;text-align:left;}
+    .tw-variable-grid td {background:var(--tw-panel-bg, #fff);}
+    .tw-variable-grid tbody tr:nth-child(even) td {background:var(--tw-table-stripe-bg, #f6f8fa);}
+    .tw-variable-grid th {background:var(--tw-table-head-bg, #e8eef4);color:var(--tw-table-head-text, #152c3f);}
     .tw-variable-grid thead th {position:sticky;top:0;z-index:2;}
     .tw-variable-grid thead tr:nth-child(2) th {top:40px;}
     .tw-variable-grid .group {position:sticky;left:0;z-index:1;min-width:220px;max-width:320px;
       overflow-wrap:anywhere;font-weight:normal;}
     .tw-variable-grid thead .group {z-index:3;font-weight:bold;}
     .tw-variable-grid input {box-sizing:border-box;width:190px;height:30px;padding:4px 6px;
-      border:1px solid #b6c1cd;border-radius:3px;background:white;color:#24354a;font:inherit;}
+      border:1px solid var(--tw-control-border, #b6c1cd);border-radius:3px;background:var(--tw-control-bg, white);color:var(--tw-control-text, #24354a);font:inherit;}
     .tw-variable-grid tbody input {text-align:right;font-variant-numeric:tabular-nums;}
-    .tw-variable-grid input[readonly] {background:#f3f6f9;color:#526170;}
-    .tw-variable-grid input:focus {outline:2px solid #1767a5;outline-offset:0;}
+    .tw-variable-grid input[readonly] {background:var(--tw-surface-alt, #f3f6f9);color:var(--tw-muted, #526170);}
+    .tw-variable-grid input:focus {outline:2px solid var(--tw-accent, #1767a5);outline-offset:0;}
     .tw-variable-count {display:flex;align-items:center;gap:6px;width:190px;}
-    .tw-variable-count-prefix {color:#667085;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .tw-variable-count-prefix {color:var(--tw-muted, #667085);white-space:nowrap;font-variant-numeric:tabular-nums;}
     .tw-variable-count input {width:0;min-width:54px;flex:1 1 auto;}
     .tw-variable-heading {display:flex;align-items:center;gap:6px;}
-    .tw-variable-delete {width:25px;height:28px;flex:0 0 25px;border:1px solid #cbd5e1;
-      border-radius:3px;background:#fff;color:#a42b2b;cursor:pointer;font-size:18px;}
-    .tw-variable-grid-note {margin:6px 0;color:#526170;white-space:pre-wrap;}
+    .tw-variable-delete {width:25px;height:28px;flex:0 0 25px;border:1px solid var(--tw-control-border, #cbd5e1);
+      border-radius:3px;background:var(--tw-control-bg, #fff);color:var(--tw-danger-text, #a42b2b);cursor:pointer;font-size:18px;}
+    .tw-variable-grid-note {margin:6px 0;color:var(--tw-muted, #526170);white-space:pre-wrap;}
     .tw-variable-copy {margin:0 0 8px;padding:5px 10px;cursor:pointer;}
     """
     _esm = r"""

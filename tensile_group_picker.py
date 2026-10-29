@@ -16,9 +16,9 @@ class FolderCheckbox(anywidget.AnyWidget):
     _css = """
       .tw-folder-check {display:flex;align-items:center;gap:6px;cursor:pointer;
         font:inherit;line-height:1.2;margin:0;padding:2px 0;}
-      .tw-folder-check input {accent-color:#1767a5;cursor:pointer;margin:0;flex:0 0 auto;}
+      .tw-folder-check input {accent-color:var(--tw-accent,#1767a5);cursor:pointer;margin:0;flex:0 0 auto;}
       .tw-folder-check strong {overflow-wrap:anywhere;}
-      .tw-folder-check small {color:#526170;white-space:nowrap;font-weight:normal;}
+      .tw-folder-check small {color:var(--tw-muted,#526170);white-space:nowrap;font-weight:normal;}
     """
     _esm = """
     export default {render({model,el}) {

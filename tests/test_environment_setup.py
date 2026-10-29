@@ -45,7 +45,8 @@ class EnvironmentTests(unittest.TestCase):
                      'tensile_workbench_defaults.json', 'tensile_workbench.ipynb'):
             shutil.copy2(ROOT / name, self.root / name)
         for name in ('web/templates/index.html.j2', 'web/templates/spinner.macro.html.j2',
-                     'web/static/tensile-favicon.svg', 'web/static/tensile-loading.svg'):
+                     'web/static/tensile-favicon.svg', 'web/static/tensile-loading.svg',
+                     'web/static/tensile-theme.css', 'web/static/tensile-theme.js'):
             destination = self.root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, destination)
@@ -320,6 +321,19 @@ class EnvironmentTests(unittest.TestCase):
         (self.root / 'tensile_core.py').unlink()
         with self.assertRaisesRegex(RuntimeError, 'tensile_core.py.*missing'):
             environment.check_project_files(self.root)
+
+    def test_preflight_requires_both_bundled_theme_assets(self):
+        for name in ('web/static/tensile-theme.css', 'web/static/tensile-theme.js'):
+            with self.subTest(asset=name):
+                destination = self.root / name
+                destination.unlink()
+                try:
+                    with self.assertRaises(RuntimeError) as error:
+                        environment.check_project_files(self.root)
+                    self.assertIn(name + ' (missing)', str(error.exception))
+                finally:
+                    shutil.copy2(ROOT / name, destination)
+        environment.check_project_files(self.root)
 
     @unittest.skipUnless(sys.platform == 'darwin', 'Mac interpreter smoke test')
     def test_real_minimal_venv_runtime_without_installing_packages(self):

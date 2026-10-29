@@ -1,5 +1,26 @@
 # Implementation record
 
+## Change notes — 2026-10-29
+
+### TEM-style dark interface — implemented
+
+- Added **Theme → Light / Dark · TEM** beside Page width. Light remains the
+  default. Dark uses TEM Workbench's navy page/panels, pale text and teal accents.
+- Theme choice is browser-local, shared by open tabs on the same app address.
+  It does not modify the project file or trigger recalculation. If browser
+  storage is unavailable, the control works for the session and says so.
+- The shared theme bootstrap runs before Voilà's loading screen and is reused
+  by notebook controls. Tables, variable editing, overrides, specimen reviews,
+  warnings and the busy overlay use matching semantic colours.
+- Publication figures, plot palettes and exports retain their original colours.
+  Chart swatches and the inspector's external legend retain readable white
+  surfaces. Notebook appearance is scoped to workbench content.
+- Setup preflight now checks both bundled theme assets. Verified saved-theme
+  loading, table/editor contrast, the inspector legend and static plot previews
+  in an isolated browser session with synthetic specimens. All 469 regression
+  tests passed, including preference persistence, unavailable storage, cross-tab
+  changes and the real streamed startup template.
+
 ## Change notes — 2026-10-26
 
 ### Elastic-fit range-sensitivity review

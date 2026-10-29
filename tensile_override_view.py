@@ -16,25 +16,25 @@ class OverrideTable(anywidget.AnyWidget):
 
     _css = """
     .tw-overrides {width:100%;max-width:100%;min-width:0;overflow:auto;max-height:65vh;
-      border:1px solid #cbd5e1;box-sizing:border-box;font:13px/1.45 Arial,sans-serif;}
+      border:1px solid var(--tw-border, #cbd5e1);box-sizing:border-box;font:13px/1.45 Arial,sans-serif;}
     .tw-overrides table {width:100%;border-collapse:separate;border-spacing:0;}
-    .tw-overrides th {position:sticky;top:0;background:#e8eef4;color:#152c3f;z-index:1;white-space:nowrap;}
-    .tw-overrides th,.tw-overrides td {padding:9px 12px;text-align:left;border-bottom:1px solid #dce3e9;vertical-align:top;}
-    .tw-overrides tr:nth-child(even) td {background:#f6f8fa;}
-    .tw-overrides tr.selected td {background:#edf5ff;}
+    .tw-overrides th {position:sticky;top:0;background:var(--tw-table-head-bg, #e8eef4);color:var(--tw-table-head-text, #152c3f);z-index:1;white-space:nowrap;}
+    .tw-overrides th,.tw-overrides td {padding:9px 12px;text-align:left;border-bottom:1px solid var(--tw-border, #dce3e9);vertical-align:top;}
+    .tw-overrides tr:nth-child(even) td {background:var(--tw-table-stripe-bg, #f6f8fa);}
+    .tw-overrides tr.selected td {background:var(--tw-selected-bg, #edf5ff);}
     .tw-overrides .setting,.tw-overrides .reason {min-width:160px;max-width:300px;white-space:pre-line;overflow-wrap:anywhere;}
     .tw-overrides .identity {min-width:120px;max-width:240px;overflow-wrap:anywhere;}
-    .tw-overrides small {display:block;color:#637385;margin-top:3px;}
+    .tw-overrides small {display:block;color:var(--tw-muted, #637385);margin-top:3px;}
     .tw-overrides details {margin-top:4px;}
-    .tw-overrides summary {cursor:pointer;color:#1767a5;font-size:12px;}
+    .tw-overrides summary {cursor:pointer;color:var(--tw-link, #1767a5);font-size:12px;}
     .tw-overrides .path {max-width:260px;overflow-wrap:anywhere;user-select:all;}
     .tw-overrides .badge {display:inline-block;padding:2px 7px;border-radius:12px;white-space:nowrap;
-      background:#e6f2eb;color:#246046;font-size:12px;}
-    .tw-overrides .off {background:#eceef2;color:#536172;}
-    .tw-overrides .unavailable {color:#94530c;}
-    .tw-overrides input[type=checkbox] {width:17px;height:17px;accent-color:#1767a5;cursor:pointer;}
-    .tw-overrides input:focus-visible {outline:2px solid #1767a5;outline-offset:2px;}
-    .tw-overrides .empty {padding:20px;color:#637385;}
+      background:var(--tw-success-bg, #e6f2eb);color:var(--tw-success-text, #246046);font-size:12px;}
+    .tw-overrides .off {background:var(--tw-surface-alt, #eceef2);color:var(--tw-muted, #536172);}
+    .tw-overrides .unavailable {color:var(--tw-warning-text, #94530c);}
+    .tw-overrides input[type=checkbox] {width:17px;height:17px;accent-color:var(--tw-accent, #1767a5);cursor:pointer;}
+    .tw-overrides input:focus-visible {outline:2px solid var(--tw-accent, #1767a5);outline-offset:2px;}
+    .tw-overrides .empty {padding:20px;color:var(--tw-muted, #637385);}
     """
     _esm = """
     export default {render({model,el}) {

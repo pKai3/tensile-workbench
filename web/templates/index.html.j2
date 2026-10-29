@@ -7,6 +7,11 @@
   {{ super() }}
   <link rel="icon" type="image/svg+xml" sizes="any"
         href="{{ resources.base_url }}voila/static/tensile-favicon.svg?v=1">
+  {# Restore appearance before the body/loading screen or kernel is rendered. #}
+  <style id="tw-theme-styles">{% include 'static/tensile-theme.css' %}</style>
+  <script>document.documentElement.dataset.twApp = 'voila';
+    {% include 'static/tensile-theme.js' %}
+  </script>
 {% endblock html_head %}
 
 {% block body_header %}

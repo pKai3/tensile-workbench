@@ -467,18 +467,18 @@ def summary_html(details):
       .tw18-table-panel {max-width:100%;box-sizing:border-box;}
       .tw18-table-panel .widget-html-content {width:100%;min-width:0;max-width:100%;flex:1 1 0%;box-sizing:border-box;white-space:normal;}
       .tw18-table-panel p {white-space:normal;line-height:1.4;}
-      .tw-summary {overflow:auto;width:max-content;min-width:0;max-width:100%;max-height:510px;box-sizing:border-box;border:1px solid #cbd5e1;}
-      .tw-summary:focus-visible {outline:2px solid #1767a5;outline-offset:-2px;}
+      .tw-summary {overflow:auto;width:max-content;min-width:0;max-width:100%;max-height:510px;box-sizing:border-box;border:1px solid var(--tw-border, #cbd5e1);}
+      .tw-summary:focus-visible {outline:2px solid var(--tw-accent, #1767a5);outline-offset:-2px;}
       .tw-summary table {border-collapse:separate;border-spacing:0;font:12px/1.4 Arial,sans-serif;width:max-content;}
-      .tw-summary th,.tw-summary td {padding:8px 10px;border-bottom:1px solid #dce3e9;white-space:nowrap;text-align:right;}
-      .tw-summary th {background:#e8eef4;color:#152c3f;text-align:center;position:sticky;top:0;z-index:2;}
+      .tw-summary th,.tw-summary td {padding:8px 10px;border-bottom:1px solid var(--tw-border, #dce3e9);white-space:nowrap;text-align:right;}
+      .tw-summary th {background:var(--tw-table-head-bg, #e8eef4);color:var(--tw-table-head-text, #152c3f);text-align:center;position:sticky;top:0;z-index:2;}
       .tw-summary thead tr:nth-child(2) th {top:33px;}
-      .tw-summary td {background:#fff;font-variant-numeric:tabular-nums lining-nums;}
-      .tw-summary tbody tr:nth-child(even) td {background:#f6f8fa;}
+      .tw-summary td {background:var(--tw-panel-bg, #fff);font-variant-numeric:tabular-nums lining-nums;}
+      .tw-summary tbody tr:nth-child(even) td {background:var(--tw-table-stripe-bg, #f6f8fa);}
       .tw-summary td:first-child {position:sticky;left:0;text-align:left;z-index:1;}
       .tw-summary th:first-child[rowspan] {left:0;z-index:3;}
-      .tw-summary small {display:block;color:#526170;}
-      .tw-summary .property-start {border-left:1px solid #cbd5e1;}
+      .tw-summary small {display:block;color:var(--tw-muted, #526170);}
+      .tw-summary .property-start {border-left:1px solid var(--tw-border, #cbd5e1);}
       .tw-summary .tw-summary-stat {display:inline-grid;grid-template-columns:var(--tw-mean-width) var(--tw-pm-width) var(--tw-sd-width);column-gap:var(--tw-stat-gap);align-items:baseline;text-align:right;}
       .tw-summary .tw-summary-pm {text-align:center;}
       </style><div class="tw-summary" tabindex="0" role="region" aria-label="Summary properties; scroll horizontally for additional columns"><table><thead><tr>
@@ -534,7 +534,7 @@ def import_status_notice(frames):
     messages = [escape(' · '.join(str(row.get(k, '')) for k in ('Group', 'File', 'Reason') if row.get(k)))
                 for _, row in issues.iterrows()]
     return counts + (
-        '<div style="background:#fff4dc;border-left:3px solid #c76b00;padding:10px"><b>Import review</b><br>' +
+        '<div style="background:var(--tw-warning-bg, #fff4dc);color:var(--tw-warning-text, inherit);border-left:3px solid var(--tw-warning-border, #c76b00);padding:10px"><b>Import review</b><br>' +
         '<br>'.join(messages) + '</div>' if messages else '')
 
 
@@ -692,32 +692,32 @@ class PropertyTablesView:
             return '<p>No matching rows.</p>'
         style = ('<style>.tw18-table-panel .widget-html-content{width:100%;min-width:0;box-sizing:border-box}'
                  '.tw18-table-panel p{white-space:normal;line-height:1.4}'
-                 '.tw18-table{overflow:auto;max-height:510px;width:100%;border:1px solid #cbd5e1}'
+                 '.tw18-table{overflow:auto;max-height:510px;width:100%;border:1px solid var(--tw-border, #cbd5e1)}'
                  '.tw18-table table{border-collapse:collapse;width:100%;font-size:12px}'
-                 '.tw18-table th{position:sticky;top:0;background:#e8eef4;color:#152c3f;z-index:1;text-align:left}'
-                 '.tw18-table th,.tw18-table td{padding:6px 9px;border-bottom:1px solid #dce3e9;min-width:70px;max-width:450px;overflow-wrap:anywhere}'
-                 '.tw18-table tbody tr:nth-child(even){background:#f6f8fa}.tw18-table td{text-align:right}'
+                 '.tw18-table th{position:sticky;top:0;background:var(--tw-table-head-bg, #e8eef4);color:var(--tw-table-head-text, #152c3f);z-index:1;text-align:left}'
+                 '.tw18-table th,.tw18-table td{padding:6px 9px;border-bottom:1px solid var(--tw-border, #dce3e9);min-width:70px;max-width:450px;overflow-wrap:anywhere}'
+                 '.tw18-table tbody tr:nth-child(even){background:var(--tw-table-stripe-bg, #f6f8fa)}.tw18-table td{text-align:right}'
                  '.tw18-table .tw-fit{width:210px;text-align:left;line-height:1.4}'
-                 '.tw18-table .tw-fit summary{cursor:pointer;color:#1767a5;white-space:normal}'
+                 '.tw18-table .tw-fit summary{cursor:pointer;color:var(--tw-link, #1767a5);white-space:normal}'
                  '.tw18-table .tw-fit summary span{display:block;padding-left:14px;font-size:11px}'
                  '.tw18-table .tw-fit-body{max-height:220px;overflow:auto;margin-top:8px;'
-                 'padding:8px;background:#fff;border:1px solid #dce3e9}'
+                 'padding:8px;background:var(--tw-panel-bg, #fff);border:1px solid var(--tw-border, #dce3e9)}'
                  '.tw18-table .tw-fit-body dl{margin:0}.tw18-table .tw-fit-body dt{font-weight:600}'
                  '.tw18-table .tw-fit-body dd{margin:0 0 8px}.tw18-table .tw-fit-body pre{'
                  'white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.4 monospace;margin:0}'
                  '.tw18-table .tw-fit-date{white-space:nowrap}'
-                 '.tw18-table .tw-checks{white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:#944900;line-height:1.4}'
+                 '.tw18-table .tw-checks{white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:var(--tw-warning-text, #944900);line-height:1.4}'
                  '.tw18-table .tw-path{width:clamp(160px,24vw,280px);text-align:left;font-weight:normal}'
-                 '.tw18-table .tw-path summary{display:block;list-style:none;cursor:pointer;color:#1767a5;border-radius:3px}'
+                 '.tw18-table .tw-path summary{display:block;list-style:none;cursor:pointer;color:var(--tw-link, #1767a5);border-radius:3px}'
                  '.tw18-table .tw-path summary::-webkit-details-marker{display:none}'
                  '.tw18-table .tw-path summary:hover{text-decoration:underline}'
-                 '.tw18-table .tw-path summary:focus-visible{outline:2px solid #1767a5;outline-offset:2px}'
+                 '.tw18-table .tw-path summary:focus-visible{outline:2px solid var(--tw-accent, #1767a5);outline-offset:2px}'
                  '.tw18-table .tw-path-tail{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
                  'text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}'
                  '.tw18-table .tw-path-expanded{margin-top:6px}'
-                 '.tw18-table .tw-path-hint{display:block;font-size:11px;color:#526170;margin-bottom:4px}'
+                 '.tw18-table .tw-path-hint{display:block;font-size:11px;color:var(--tw-muted, #526170);margin-bottom:4px}'
                  '.tw18-table .tw-path-full{display:block;box-sizing:border-box;width:100%;min-width:0;max-width:100%;'
-                 'padding:6px;border:1px solid #aebdcb;border-radius:3px;background:#fff;color:#152c3f;'
+                 'padding:6px;border:1px solid var(--tw-control-border, #aebdcb);border-radius:3px;background:var(--tw-control-bg, #fff);color:var(--tw-control-text, #152c3f);'
                  'font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical;'
                  'white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left}</style>')
         # Keep the shared numeric frames untouched: only the viewer gets HTML.

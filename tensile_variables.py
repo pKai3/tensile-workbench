@@ -157,7 +157,7 @@ class GroupVariablesView:
         self.delete_confirm = w.Button(description='Confirm delete', button_style='danger', layout=w.Layout(width='auto'))
         self.delete_cancel = w.Button(description='Cancel', layout=w.Layout(width='auto'))
         self.delete_panel = w.VBox([self.delete_message, w.HBox([self.delete_confirm, self.delete_cancel])],
-                                   layout=w.Layout(display='none', border='1px solid #d97706', padding='8px'))
+                                   layout=w.Layout(display='none', border='1px solid var(--tw-warning-border,#d97706)', padding='8px'))
         self.add = w.Button(description='Add variable (column)', layout=w.Layout(width='auto'))
         self.save_all = w.Button(description='Save all variables', button_style='primary',
                                  layout=w.Layout(width='auto'))

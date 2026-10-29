@@ -80,6 +80,10 @@ Group identities include their relative folder path, so different colleagues can
 
 ## 3. Everyday workflow
 
+Use **Theme → Dark · TEM** beside **Page width** for the navy-and-teal interface
+shared with TEM Workbench. Light remains the default. Your choice is remembered
+in this browser; plot previews and exports keep their publication colours.
+
 1. **Choose an analysis.** Select an existing analysis, duplicate one, or choose **＋ Create new analysis…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
 2. **Review the data.** Expand **Specimen properties · tables and calculation inspector**. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint.
 3. **Resolve questionable results.** Use **Group curve review** to overlay one group's raw specimen curves, or **Group yield fits** for an array of yield-detail plots with each specimen's fitted line and R². Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Use **Data use** to exclude an entire specimen or only properties affected by AVE failure. Exclusions are global unless you explicitly select an analysis-only exception. Original data files are not altered.

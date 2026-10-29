@@ -142,9 +142,9 @@ def spread_table(summary):
     return ('<style>.tw-comparison-spread{font:11px/1.4 Arial,sans-serif;overflow-x:auto;padding:0 6px 8px}'
             '.tw-comparison-spread table{border-collapse:collapse;width:100%}'
             '.tw-comparison-spread caption{text-align:left;font-weight:600;padding:4px 0}'
-            '.tw-comparison-spread th,.tw-comparison-spread td{padding:4px;border-bottom:1px solid #e2e8f0;text-align:right}'
+            '.tw-comparison-spread th,.tw-comparison-spread td{padding:4px;border-bottom:1px solid var(--tw-border, #e2e8f0);text-align:right}'
             '.tw-comparison-spread th:first-child{text-align:left;overflow-wrap:anywhere}'
-            '.tw-comparison-spread thead{background:#f1f5f9}</style>'
+            '.tw-comparison-spread thead{background:var(--tw-table-head-bg, #f1f5f9)}</style>'
             '<div class="tw-comparison-spread"><table><caption>Spread · SD (' + unit + ')</caption>'
             '<thead><tr><th>Group</th><th>n</th><th>Instron</th><th>Calc</th><th>Δ SD (%)</th></tr></thead>'
             '<tbody>' + ''.join(rows) + '</tbody></table></div>')
@@ -227,7 +227,7 @@ class ComparisonView:
                 chart._config = {**chart._config, 'displaylogo': False, 'responsive': True}
                 spread = self.w.HTML(spread_table(data), layout=self.w.Layout(width='100%', min_width='0'))
                 card = self.w.VBox([chart, spread], layout=self.w.Layout(
-                    width='100%', min_width='0', border='1px solid #e2e8f0', overflow='hidden'))
+                    width='100%', min_width='0', border='1px solid var(--tw-border, #e2e8f0)', overflow='hidden'))
                 self._owned.extend([chart, spread, card])
                 self.charts[prop] = chart
                 cards.append(card)

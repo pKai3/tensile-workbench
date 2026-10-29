@@ -89,7 +89,7 @@ class MoveReview:
                                    disabled=bool(proposal['blocked']), layout=self.w.Layout(width='auto', align_self='flex-start'))
             button.on_click(lambda _, p=proposal, b=button: self._approve(p, b))
             row = self.w.VBox([text, button], layout=self.w.Layout(
-                width='100%', border='1px solid #dfb45c', padding='10px', margin='4px 0'))
+                width='100%', border='1px solid var(--tw-warning-border,#dfb45c)', padding='10px', margin='4px 0'))
             self._owned.extend([text, button, row])
             children.append(row)
         for warning, group in notices:

@@ -45,12 +45,18 @@ class LoadingArtworkTests(unittest.TestCase):
         exporter = VoilaExporter(template_paths=app.template_paths, template_name='lab',
                                  base_url='/nested/workbench/')
         chunks = []
+        theme_script = (ROOT / 'web/static/tensile-theme.js').read_text(encoding='utf-8').strip()
+        theme_css = (ROOT / 'web/static/tensile-theme.css').read_text(encoding='utf-8').strip()
 
         async def start(nb):
-            # Startup artwork must reach the browser before notebook execution.
+            # Saved appearance and artwork must reach the browser before notebook
+            # execution; a dark-theme user must not wait for the kernel to apply it.
             partial = ''.join(chunks)
             self.assertIn('class="tw-coupon"', partial)
             self.assertIn('id="loading_text"', partial)
+            self.assertIn(theme_script, partial)
+            self.assertIn(theme_css, partial)
+            self.assertLess(partial.index(theme_script), partial.index('id="loading"'))
             return 'synthetic-kernel'
 
         async def cells(nb, kernel):
@@ -72,6 +78,11 @@ class LoadingArtworkTests(unittest.TestCase):
         self.assertEqual(html.count('id="loading"'), 1)
         self.assertEqual(html.count('class="tw-coupon"'), 1)
         self.assertIn('<title>Tensile Workbench</title>', html)
+        self.assertEqual(html.count('id="tw-theme-styles"'), 1)
+        self.assertEqual(html.count(theme_script), 1)
+        self.assertIn("document.documentElement.dataset.twApp = 'voila'", html)
+        self.assertLess(html.index(theme_css), html.index(theme_script))
+        self.assertLess(html.index(theme_script), html.index('</head>'))
         self.assertIn('role="status" aria-live="polite"', html)
         self.assertIn('window.voila_finish();', html)
         self.assertIn('window.display_cells = function()', html)

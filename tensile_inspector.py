@@ -446,7 +446,8 @@ def inspection_checks(payload, *, preview=False):
         return ''
     title = 'Specimen checks' + (' · unsaved preview' if preview else '')
     return ('<div role="status" style="font:13px/1.5 Arial,sans-serif;white-space:normal;'
-            'overflow-wrap:anywhere;padding:8px 12px;background:#fff4dc;border-left:3px solid #d97706">'
+            'overflow-wrap:anywhere;padding:8px 12px;background:var(--tw-warning-bg, #fff4dc);'
+            'color:var(--tw-warning-text, inherit);border-left:3px solid var(--tw-warning-border, #d97706)">'
             '<b>' + title + '</b><div style="white-space:pre-line">' + escape(failures) + '</div></div>')
 
 
@@ -467,13 +468,13 @@ def inspection_summary(payload):
                ('Fitted E (GPa)', 'Fitted E (GPa)', 'e')]
     result = ['<style>.tw-inspect-summary{font:13px/1.5 Arial,sans-serif;white-space:normal;overflow-wrap:anywhere}'
               '.tw-inspect-summary table{border-collapse:collapse;width:100%;max-width:850px}'
-              '.tw-inspect-summary th,.tw-inspect-summary td{padding:6px 12px;border-bottom:1px solid #dce3e9;text-align:right}'
+              '.tw-inspect-summary th,.tw-inspect-summary td{padding:6px 12px;border-bottom:1px solid var(--tw-border, #dce3e9);text-align:right}'
               '.tw-inspect-summary th:first-child,.tw-inspect-summary td:first-child{text-align:left}'
-              '.tw-inspect-summary th{background:#e8eef4}.tw-inspect-summary details{margin:8px 0;padding:0 8px;border:1px solid #dce3e9;border-radius:3px}'
+              '.tw-inspect-summary th{background:var(--tw-table-head-bg, #e8eef4)}.tw-inspect-summary details{margin:8px 0;padding:0 8px;border:1px solid var(--tw-border, #dce3e9);border-radius:3px}'
               '.tw-inspect-summary summary{cursor:pointer;padding:8px 0;font-weight:600}'
-              '.tw-gauge-equations{padding:10px 12px;background:#f2f6fa;border-radius:5px;line-height:1.8}'
+              '.tw-gauge-equations{padding:10px 12px;background:var(--tw-surface-alt, #f2f6fa);border-radius:5px;line-height:1.8}'
               '.tw-inspect-summary li{margin:5px 0}'
-              '.tw-inspect-warning{padding:8px;background:#fff4dc;border-left:3px solid #d97706}</style>',
+              '.tw-inspect-warning{padding:8px;background:var(--tw-warning-bg, #fff4dc);color:var(--tw-warning-text, inherit);border-left:3px solid var(--tw-warning-border, #d97706)}</style>',
               '<div class="tw-inspect-summary">',
               '<details><summary>Specimen identity and inclusion</summary>',
               '<p><b>' + escape(payload['group'] + ' · ' + (reference.get('label') or payload['sample'])) + '</b> · ' +
@@ -729,12 +730,21 @@ class SpecimenInspector:
                                      tooltip='Restore the display defaults for this view; calculations are unchanged.')
         layer_heading = w.HTML('<style>.tw-inspector-layer.widget-checkbox {height:auto;min-height:28px}'
                                '.tw-inspector-layer.widget-checkbox label {white-space:normal;line-height:1.3;'
-                               'height:auto;min-width:0}</style>'
+                               'height:auto;min-width:0}'
+                               '.tw-plot-key-surface{background:#fff;color:#24354a;'
+                               '--tw-text:#24354a;--tw-label:#24354a;--tw-muted:#526170;'
+                               '--tw-control-bg:#fff;--tw-control-text:#24354a;--tw-border:#dce3e9;'
+                               '--tw-control-border:#bdc8d3;--tw-accent:#1767a5;--tw-selected-bg:#e8f0f8;'
+                               '--jp-content-font-color1:#24354a;--jp-ui-font-color1:#24354a;'
+                               '--jp-widgets-color:#24354a;--jp-widgets-label-color:#24354a;'
+                               '--jp-widgets-readout-color:#24354a;color-scheme:light}</style>'
                                '<b>Show on plot</b> · display only; tick items to show or hide them.')
         self.layers_panel = w.VBox([
             w.HBox([layer_heading, self.reset_layers], layout=w.Layout(flex_flow='row wrap', grid_gap='12px', align_items='center')),
             self.layer_groups,
         ], layout=w.Layout(width='100%', min_width='0', display='none', padding='8px 0 16px 0'))
+        # Scientific swatches retain the white plotting surface in either UI theme.
+        self.layers_panel.add_class('tw-plot-key-surface')
         self.mode = w.Dropdown(description='Fit:', options=[('Inspect saved fit', 'inspect'),
             ('Manual range', 'range'), ('Manual line', 'line')], value='inspect', layout=w.Layout(width='300px'))
         self.x0 = w.FloatText(description='Start strain (%)', continuous_update=False, style={'description_width': 'initial'})
@@ -908,7 +918,7 @@ class SpecimenInspector:
         for group, rows in groups.items():
             title = w.HTML('<b>' + escape(group) + '</b>', layout=w.Layout(margin='0 0 3px 0'))
             card = w.VBox([title, *rows], layout=w.Layout(flex='1 1 240px', min_width='0', max_width='100%',
-                padding='8px 10px', border='1px solid #dce3e9'))
+                padding='8px 10px', border='1px solid var(--tw-border, #dce3e9)'))
             cards.append(card)
             self._layer_widgets.extend([title, card])
         self.layer_groups.children = tuple(cards)

@@ -332,7 +332,8 @@ class PlotlyView:
                 self._owned.append(message)
                 body = [heading, message]
             if item.get('warning'):
-                warning = self.w.HTML('<div style="background:#fff7e6;border-left:3px solid #d97706;padding:8px;white-space:normal">'
+                warning = self.w.HTML('<div style="background:var(--tw-warning-bg,#fff7e6);color:var(--tw-warning-text,inherit);'
+                                      'border-left:3px solid var(--tw-warning-border,#d97706);padding:8px;white-space:normal">'
                                       + escape(item['warning']) + '</div>')
                 body.insert(1, warning)
                 self._owned.append(warning)

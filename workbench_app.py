@@ -18,13 +18,13 @@ from tensile_startup import launch
 
 display(w.HTML('''<style>
 html { scrollbar-gutter: stable; }
-body { background: #f5f7fa; }
+body { background: var(--tw-page-bg, #f5f7fa); }
 .jp-VoilaCell { padding: 0 !important; }
 .jp-OutputArea-output { width: 100%; min-width: 0; box-sizing: border-box; }
 .tw-webapp { width: var(--tw-content-width, 1600px); max-width: 100%; min-width: 0; margin: 0 auto; padding: 16px 24px 32px; box-sizing: border-box; }
 .tw-webapp .tw-specimens table { width: max-content; }
-.tw-webapp .widget-label { color: #26374a; }
-.tw-webapp h1 { font-size: 28px; margin-bottom: 4px; color: #203650; }
+.tw-webapp .widget-label { color: var(--tw-label, #26374a); }
+.tw-webapp h1 { font-size: 28px; margin-bottom: 4px; color: var(--tw-text, #203650); }
 .tw-webapp h2 { font-size: 21px; }
 .tw-webapp p { line-height: 1.45; }
 .tw-webapp .jupyter-widgets { font-size: 14px; }
@@ -32,8 +32,8 @@ body { background: #f5f7fa; }
 .tw-webapp .widget-accordion { margin: 8px 0; }
 .tw-webapp .widget-accordion .p-Accordion-header,
 .tw-webapp .widget-accordion .lm-AccordionPanel-title { padding: 8px 12px; }
-.tw-webapp .tw-copyright { margin-top:24px; padding-top:12px; border-top:1px solid #dce3e9;
-  color:#536273; font-size:12px; line-height:1.5; white-space:normal; }
+.tw-webapp .tw-copyright { margin-top:24px; padding-top:12px; border-top:1px solid var(--tw-border,#dce3e9);
+  color:var(--tw-muted,#536273); font-size:12px; line-height:1.5; white-space:normal; }
 .tw-webapp .tw-copyright summary { cursor:pointer; padding:4px 0; }
 .tw-webapp .tw-copyright pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; }
 @media(max-width: 700px) { .tw-webapp { padding: 8px; } }

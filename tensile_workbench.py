@@ -1108,7 +1108,7 @@ class TensileWorkbench:
             get_defaults=lambda: {LOCATION: self._specimen_numbers},
             on_scope_change=lambda: self._refresh_specimen_variables(redraw=True))
         self.custom_variable_tabs = w.Tab(children=[w.VBox([
-            w.HTML('<b>Specimen count</b> shows <span style="color:#667085">X tested of</span> an editable total. '
+            w.HTML('<b>Specimen count</b> shows <span style="color:var(--tw-muted,#667085)">X tested of</span> an editable total. '
                    'Enter the whole-number total tested + untested. The grey count comes from imported specimens, including excluded ones. '
                    'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.'),
             self.group_variables.ui.children[0]]), self.specimen_variables.ui.children[0]])
@@ -2205,7 +2205,8 @@ class TensileWorkbench:
     def _update_fit_warning(self, frames=None):
         samples = frames['tensile_samples'] if frames else None
         issues = len(frames.get('import_diagnostics', [])) if frames else 0
-        import_note = (f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
+        import_note = (f'<div style="padding:9px;background:var(--tw-warning-bg,#fff4dc);color:var(--tw-warning-text,inherit);'
+                       'border-left:3px solid var(--tw-warning-border,#d97706)">'
                        f'<b>{issues} import review {"item" if issues == 1 else "items"}</b> · '
                        'See filenames and reasons in Specimen properties.</div>') if issues else ''
         if samples is None or samples.empty:
@@ -2221,7 +2222,8 @@ class TensileWorkbench:
         review_note = 'Other checks do not automatically exclude specimens.' if withheld else 'No automatic exclusion.'
         threshold = self.store.data.get('yield_r2_warning', .98)
         self.fit_warning.value = (
-            f'<div style="padding:9px;background:#fff4dc;border-left:3px solid #d97706">'
+            f'<div style="padding:9px;background:var(--tw-warning-bg,#fff4dc);color:var(--tw-warning-text,inherit);'
+            'border-left:3px solid var(--tw-warning-border,#d97706)">'
             f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} review</b> · {included} included; {excluded} excluded. '
             + duplicate_note + f'Fit, fracture/EL, reconstruction or Instron checks. R² threshold {threshold:.5f}. {review_note}</div>'
             if len(flagged) else f'Specimen checks: no review items. R² threshold {threshold:.5f}.')

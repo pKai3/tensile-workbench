@@ -44,13 +44,13 @@ class BusyOverlay(anywidget.AnyWidget):
 
     _css = """
     .tw-busy-overlay {position:fixed;inset:0;z-index:2147483000;display:flex;
-      align-items:center;justify-content:center;background:rgba(241,245,249,.66);
+      align-items:center;justify-content:center;background:var(--tw-overlay-bg,rgba(241,245,249,.66));
       cursor:wait;touch-action:none;}
     .tw-busy-overlay[hidden] {display:none;}
     .tw-busy-card {display:flex;align-items:center;gap:16px;max-width:calc(100vw - 48px);box-sizing:border-box;
-      background:white;color:#203650;padding:22px 28px;border:1px solid #cbd5e1;
-      border-radius:10px;box-shadow:0 8px 30px #20365025;font:15px/1.5 Arial,sans-serif;outline:none;}
-    .tw-busy-card small {display:block;color:#637385;font-size:12px;margin-top:4px;}
+      background:var(--tw-panel-bg,white);color:var(--tw-text,#203650);padding:22px 28px;border:1px solid var(--tw-border,#cbd5e1);
+      border-radius:10px;box-shadow:0 8px 30px var(--tw-shadow,#20365025);font:15px/1.5 Arial,sans-serif;outline:none;}
+    .tw-busy-card small {display:block;color:var(--tw-muted,#637385);font-size:12px;margin-top:4px;}
     .tw-busy-coupon {display:block;width:130px;flex:0 0 130px;line-height:0;}
     .tw-busy-coupon svg {display:block;width:100%;height:auto;}
     @media(max-width:480px) {.tw-busy-card {flex-direction:column;gap:4px;padding:16px;text-align:center;}
