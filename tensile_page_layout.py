@@ -34,7 +34,7 @@ class ContentWidth(anywidget.AnyWidget):
       const themeLabel=document.createElement('label');
       const themeText=document.createElement('span');themeText.textContent='Theme';
       const theme=document.createElement('select');theme.setAttribute('aria-label','Colour theme');
-      [['light','Light'],['dark','Dark · TEM']].forEach(([value,label])=>{
+      [['light','Light'],['dark','Dark']].forEach(([value,label])=>{
         const option=document.createElement('option');option.value=value;option.textContent=label;theme.append(option);
       });
       theme.title='Interface only. Plot previews and exports keep their publication colours.';

@@ -2,10 +2,10 @@
 
 ## Change notes — 2026-10-29
 
-### TEM-style dark interface — implemented
+### Dark interface — implemented
 
-- Added **Theme → Light / Dark · TEM** beside Page width. Light remains the
-  default. Dark uses TEM Workbench's navy page/panels, pale text and teal accents.
+- Added **Theme → Light / Dark** beside Page width. Light remains the
+  default. Dark uses navy page/panels, pale text and teal accents.
 - Theme choice is browser-local, shared by open tabs on the same app address.
   It does not modify the project file or trigger recalculation. If browser
   storage is unavailable, the control works for the session and says so.

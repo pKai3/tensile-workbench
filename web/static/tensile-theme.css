@@ -1,4 +1,4 @@
-/* TEM Workbench's navy surfaces and teal accent. Light keeps existing fallbacks. */
+/* Navy surfaces and teal accent. Light keeps existing fallbacks. */
 html[data-tw-theme="dark"] {
   --tw-page-bg: #0c121a;
   --tw-panel-bg: #121c28;

@@ -64,7 +64,7 @@ class ThemeAssetsTests(unittest.TestCase):
         self.assertIn(THEME_SCRIPT, ContentWidth._esm)
         self.assertIn(THEME_CSS, ContentWidth._css)
         self.assertIn("'Colour theme'", ContentWidth._esm)
-        self.assertIn("'Dark · TEM'", ContentWidth._esm)
+        self.assertIn("['dark','Dark']", ContentWidth._esm)
         # Appearance must remain browser-local rather than writing analyses or
         # triggering expensive kernel calculations on each theme change.
         self.assertNotIn('model.', THEME_SCRIPT)

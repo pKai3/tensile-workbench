@@ -80,8 +80,8 @@ Group identities include their relative folder path, so different colleagues can
 
 ## 3. Everyday workflow
 
-Use **Theme → Dark · TEM** beside **Page width** for the navy-and-teal interface
-shared with TEM Workbench. Light remains the default. Your choice is remembered
+Use **Theme → Dark** beside **Page width** for the navy-and-teal interface.
+Light remains the default. Your choice is remembered
 in this browser; plot previews and exports keep their publication colours.
 
 1. **Choose an analysis.** Select an existing analysis, duplicate one, or choose **＋ Create new analysis…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
