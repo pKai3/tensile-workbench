@@ -4,19 +4,33 @@
 
 1. Clone the repository, or download the GitHub ZIP and **extract it completely**. Keep the code in a writable folder; do not run inside the ZIP. Data and output folders can be elsewhere and are chosen in the app. GitHub does not include research data.
 2. Install standard **Python 3.13, 64-bit** if it is not already installed:
-   - **Windows x86-64:** use the [Python.org Windows downloads](https://www.python.org/downloads/windows/) and include the Python launcher. Do not use the embeddable or free-threaded build. This setup does not currently target Windows ARM64.
+   - **Windows x86-64:** use the [Python.org Windows downloads](https://www.python.org/downloads/windows/) and include the Python launcher and **Tcl/Tk and IDLE**. Do not use the embeddable or free-threaded build. This setup does not currently target Windows ARM64.
    - **Mac, Apple Silicon or Intel:** use the Python 3.13 **macOS 64-bit universal2 installer** from [Python.org](https://www.python.org/downloads/macos/). An existing standard Homebrew Python 3.13 also works. Finder's launcher checks normal Python.org and Homebrew locations even if its PATH is limited.
 3. Double-click the setup file for your system:
 
    | System | Setup once / install missing dependencies | Open normally |
    | --- | --- | --- |
-   | Windows | `Setup_Tensile_Workbench.bat` | `Launch_Tensile_Workbench.bat` |
+   | Windows | `Install_Tensile_Workbench_App.bat` | **Tensile Workbench** on the desktop or Start menu |
    | Mac | `Setup_Tensile_Workbench.command` | `Tensile Workbench.app` in your user Applications folder, or `Launch_Tensile_Workbench.command` |
 
 4. Wait for **Setup complete**. Internet access is needed for package installation. Setup checks imports and analysis-definition validity but does not load research datasets, create plots, change definitions or start Jupyter.
-5. Open the Dock app on Mac, or the Launch file on either platform. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. With the Terminal/console launcher, leave its window open; Ctrl-C stops the server. With the Dock app, use Stop or Quit. The server listens on this computer only (`127.0.0.1`).
+5. Open the installed app. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. The control window provides **Stop**. The server listens on this computer only (`127.0.0.1`). The existing `Setup_Tensile_Workbench.bat` and `Launch_Tensile_Workbench.bat` still support console-only use on Windows; leave that console open and press Ctrl-C to stop it.
 
 Python itself is installed separately, not silently downloaded by these scripts. On a managed computer, ask IT to approve Python/package access if blocked. The scripts do not require changing PowerShell execution policy or disabling security protections.
+
+## Windows desktop app
+
+Double-click **Install_Tensile_Workbench_App.bat** on Windows 10/11 x86-64. It runs the normal environment setup, checks Tcl/Tk, and adds **Tensile Workbench** to your desktop and Start menu. Installation uses your own account and does not require administrator privileges. The setup console remains visible until finished; the installed shortcuts launch without a console. **Launch_Tensile_Workbench_App.bat** is an alternative entry point.
+
+- The control window starts the server and opens your browser when ready. **Open Workbench** uses the current authenticated address; **Start/Stop** restarts or stops this instance.
+- Keep the window open or minimised. **Stop** and closing the window ask for confirmation, then stop this server and its calculation processes. Closing just the browser or live-log window leaves the server running.
+- **View log** shows recent output, updates live and follows new output unless you scroll back. **Copy log** copies the displayed text. Browser access tokens are hidden. Logs retain up to 2 MB plus one rotated file; the viewer displays the most recent 128 KiB.
+- A second launch from the same code folder points you to the existing control window. The app does not adopt or stop a separately launched console server or another installation. Stop an old console session with Ctrl-C before switching to the app.
+- If **Tcl/Tk** is missing, modify your Python installation to include it, then rerun the app installer. The console launcher remains available without Tcl/Tk.
+
+The shortcuts use the downloaded code folder and existing external Python environment. This is not a standalone bundled executable: keep both folders in place. Close the app before replacing code files. Ordinary code updates take effect on the next launch; rerun the installer after moving the code folder, changing the environment, or updating dependencies. Installation and shortcut updates preserve personal project settings and data.
+
+The source, icon and installer are included in Git; shortcuts contain local paths and are created only on your computer. See [Windows launcher notes](windows/README.md) for implementation and verification details.
 
 ## Mac Dock app
 
@@ -51,17 +65,18 @@ Normal Launch checks installed package versions and saved definitions without im
 | Existing environment reused | Original `%LOCALAPPDATA%\TensileWorkbench\v17-py313-<fingerprint>\venv`, if present and no new default environment exists | Same path as above |
 | Jupyter/configuration caches | Beside the selected environment | Beside the selected environment |
 | Code and analysis definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
-| Dock app (optional) | Not applicable | `~/Applications/Tensile Workbench.app` |
-| Dock app logs | Not applicable | `~/Library/Logs/Tensile Workbench/launcher.log` (one previous launch retained) |
+| Desktop app | Per-user Desktop and Start-menu shortcuts | `~/Applications/Tensile Workbench.app` |
+| Desktop app logs | `%LOCALAPPDATA%\TensileWorkbench\logs\<checkout ID>\launcher.log` and `.log.1` | `~/Library/Logs/Tensile Workbench/launcher.log` (one previous launch retained) |
 | Data and output | Your chosen folders | Your chosen folders |
 
 No environment is created in the repository or OneDrive. Setup also refuses known cloud-storage locations or an environment overlapping the code folder. Do not set a custom environment inside a differently named synced folder; the scripts cannot discover every third-party sync configuration. Environments are local installations, not files to copy between computers. See Python's [virtual-environment documentation](https://docs.python.org/3.13/library/venv.html).
 
-Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. On Mac, when set for Setup or Install_Tensile_Workbench_App.command, it is also recorded in the locally built Dock app so Finder launches use the same environment. Rerun that installer with the new value to change it; omit the variable to return the Dock app to the default environment. Ordinary users do not need this setting.
+Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. The Windows app installer records that environment in its shortcuts; the Mac installer records it in the locally built Dock app. Rerun the appropriate app installer with the new value to change it; omit the variable to return to the default environment. Ordinary users do not need this setting.
 
 ## Troubleshooting
 
 - **Missing Python:** install the supported Python version above, then rerun Setup. Windows first tries `py -3.13`, then a compatible `python` on PATH. The Mac launcher first tries the existing workbench environment, then supported system install locations.
+- **Windows shortcut does not open:** double-click `Launch_Tensile_Workbench_App.bat` for visible startup errors. Check that the code folder and Python environment still exist, then rerun the app installer. If the control window opens but the server stops, use **View log**. A missing Tcl/Tk component requires modifying the Python installation, not installing a pip package.
 - **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag the Setup `.command` file into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
 - **Mac Dock app was not installed:** Python setup can still succeed. Follow the build-tool message above, quit any running Dock app and run Install_Tensile_Workbench_App.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. The installer never launches the server or changes your environment.
 - **Network/package failure:** retry Setup when network access is restored. Packages are installed without a persistent pip download cache; setup uses binary wheels and will report an error instead of starting a lengthy source build. Do not disable certificate verification. For Python.org certificate errors on Mac, follow the Python installer's certificate instructions or ask IT.
@@ -72,7 +87,7 @@ Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment i
 
 ## Web-app operation
 
-Launch serves the existing widgets using [Voilà](https://voila.readthedocs.io/en/latest/using.html). It binds to `127.0.0.1` and enables a generated login token, which is included in the automatically opened browser URL. If a browser asks for a token, use the URL printed by the launcher. Do not turn authentication off or expose the service directly to the internet.
+Launch serves the existing widgets using [Voilà](https://voila.readthedocs.io/en/latest/using.html). It binds to `127.0.0.1` and enables a generated login token, which is included in the automatically opened browser URL. If a browser asks for a token, use **Open Workbench** in the app, or the URL printed by the console launcher. Do not turn authentication off or expose the service directly to the internet.
 
 The small `workbench_server.py` wrapper corrects Voilà 0.5's tokenless browser redirect. It opens the authenticated URL using the actual available port, without changing the installed package or disabling authentication. No setup rerun is needed for this code-only fix. A cleared/expired login-cookie warning can occur after restarting the server; the new token link establishes a fresh login.
 

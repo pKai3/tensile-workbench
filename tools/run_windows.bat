@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 set "PYTHONUTF8=1"
 set "PYTHONDONTWRITEBYTECODE=1"
-if not "%~1"=="setup" if not "%~1"=="launch" exit /b 2
+if not "%~1"=="setup" if not "%~1"=="launch" if not "%~1"=="install-app" if not "%~1"=="desktop" exit /b 2
 where py >nul 2>&1
 if errorlevel 1 goto try_python
 py -3.13 -c "import sys,struct,sysconfig; sys.exit(not (sys.version_info[:2]==(3,13) and struct.calcsize('P')==8 and not sysconfig.get_config_var('Py_GIL_DISABLED')))" >nul 2>&1
@@ -26,6 +26,7 @@ echo Do not choose embeddable or free-threaded Python. See SETUP.md.
 echo On a managed computer, ask IT if installation is blocked.
 set "RESULT=1"
 :finished
+if "%~1"=="desktop" if "%RESULT%"=="0" exit /b 0
 echo.
 if not "%RESULT%"=="0" echo Workbench stopped with an error. See the message above and SETUP.md.
 pause

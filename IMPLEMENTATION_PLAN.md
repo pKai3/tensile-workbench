@@ -1,5 +1,35 @@
 # Implementation record
 
+## Change notes — 2026-11-02
+
+### Windows desktop control window — implemented
+
+- Added a persistent dark launcher following the TEM Workbench interface, with
+  **Start/Stop**, **Open Workbench** and **View log**. The log updates live,
+  follows new output unless scrolled back, and supports copying. Normal launches
+  through the installed shortcuts do not open a console.
+- Added **Install_Tensile_Workbench_App.bat** for setup and per-user Desktop /
+  Start-menu shortcuts, plus **Launch_Tensile_Workbench_App.bat**. Reuse the
+  existing external Python environment, including custom paths. Retain the
+  original console launchers. Package the source and multi-resolution icon in
+  Git; personal settings, data and generated shortcuts remain local.
+- Keep preflight and server startup off the UI thread. Read the authenticated
+  ready address from a private pipe after the server binds an available port.
+  Configure authentication through Voilà's token option and redact tokens from
+  the rotating log. Scope the control-window mutex and logs to each checkout.
+- Own the server and its calculation processes through a Windows Job Object.
+  Request normal kernel cleanup on Stop/Close, with bounded forced cleanup of
+  this job only. The server waits for job assignment before creating children;
+  the browser remains outside the job. Closing the control window stops its
+  server; minimising it keeps the app running.
+- Verification: regression suite completed with 486 passing tests and two
+  native Windows checks skipped on Mac. Focused checks cover shortcut paths,
+  environment reuse, start/stop/restart, delayed shutdown, token handling and
+  installation failure. A real server check using temporary synthetic data
+  verified authentication, occupied-port fallback, page loading and graceful
+  shutdown. Native Windows UI, shortcut and process-job behavior still require
+  a Windows machine; documented the smoke checks in `windows/README.md`.
+
 ## Change notes — 2026-10-29
 
 ### Dark interface — implemented

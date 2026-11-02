@@ -11,19 +11,21 @@ Use **Analysis** for plots and specimen review. Each saved analysis contains its
 You need **standard Python 3.13, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). If Python is not installed, follow the platform-specific links in [SETUP.md](SETUP.md#first-use).
 
 1. Download the repository ZIP and **extract it completely**, or clone the repository. Put the application in a writable folder.
-2. Double-click the **Setup** file for your system. Wait for **Setup complete**.
-3. Open the launcher for your system to start the app in your browser.
+2. Double-click the installation file for your system below and wait for it to finish.
+3. Open **Tensile Workbench** to start the app in your browser.
 
 | System | First installation | Open the app afterwards |
 |---|---|---|
-| Windows | [Setup_Tensile_Workbench.bat](Setup_Tensile_Workbench.bat) | [Launch_Tensile_Workbench.bat](Launch_Tensile_Workbench.bat) |
+| Windows | [Install_Tensile_Workbench_App.bat](Install_Tensile_Workbench_App.bat) | **Tensile Workbench** on the desktop or Start menu |
 | macOS | [Setup_Tensile_Workbench.command](Setup_Tensile_Workbench.command) | **Tensile Workbench.app** in your user Applications folder; or [Launch_Tensile_Workbench.command](Launch_Tensile_Workbench.command) |
 
 Setup creates or reuses a separate local Python environment outside the code and data folders. It installs dependencies but does not analyse data. Launch reuses that environment and does not install packages.
 
+**Windows desktop app:** the installer sets up the environment and adds shortcuts for your user account. The app stays open with **Start/Stop**, **Open Workbench** and **View log** (live updates and copying). Keep it open or minimised while working; closing the control window asks to stop its server and calculations. Daily use opens no terminal. Python must include **Tcl/Tk**, as provided by the full Python.org installer. You can also use [Launch_Tensile_Workbench_App.bat](Launch_Tensile_Workbench_App.bat). The app uses the code folder in place; rerun the installer if you move it.
+
 **Mac Dock app:** on macOS 13 or newer, Setup also builds a small native launcher in **~/Applications/Tensile Workbench.app**. This requires Apple's Command Line Tools (or Xcode); if missing, Setup explains how to install them. Drag the app to your Dock. It stays open, runs the server without Terminal, and offers **Open Workbench**, **Start/Stop** and **View log** (live updates, auto-scroll and copying). Closing its window leaves the server running; **Quit** stops the server it started. It does not stop an existing Terminal-launched server—stop that with Ctrl-C before switching.
 
-**Windows and Mac Terminal launcher:** leave the launcher's terminal window open while working. To stop the app, return to it and press **Ctrl-C**. If the browser does not open, use **Open Workbench** in the Dock app or copy the complete URL printed in the terminal, including its token. There is no notebook to select and no cell to run.
+**Windows and Mac Terminal launcher:** on Windows, [Setup_Tensile_Workbench.bat](Setup_Tensile_Workbench.bat) and [Launch_Tensile_Workbench.bat](Launch_Tensile_Workbench.bat) remain available if you prefer a console. Leave the launcher's terminal window open while working. To stop the app, return to it and press **Ctrl-C**. If the browser does not open, use **Open Workbench** in the desktop app or copy the complete URL printed in the terminal, including its token. There is no notebook to select and no cell to run.
 
 See [SETUP.md](SETUP.md) for detailed installation, environment locations and troubleshooting.
 

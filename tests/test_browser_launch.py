@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import webbrowser
 
 from workbench_server import WorkbenchVoila
+from tools.windows_server import server_arguments
 
 
 class BrowserLaunchTests(unittest.TestCase):
@@ -32,6 +33,15 @@ class BrowserLaunchTests(unittest.TestCase):
         app = self.app(token='')
         self.assertEqual(app.browser_url(), 'http://127.0.0.1:8919/')
         self.assertEqual(app.identity_provider.token, '')
+
+    def test_desktop_arguments_set_the_token_voila_passes_to_its_identity_provider(self):
+        from pathlib import Path
+        app = WorkbenchVoila()
+        app.parse_command_line(server_arguments(Path('/synthetic'), 'desktop-test-token'))
+        self.assertEqual(app.token, 'desktop-test-token')
+        self.assertEqual(app.ip, '127.0.0.1')
+        self.assertEqual(app.base_url, '/')
+        self.assertTrue(app.open_browser)  # Calls our readiness hook after listen().
 
     def test_browser_receives_token_and_runs_in_background(self):
         app = self.app(browser='test-browser', webbrowser_open_new=1)

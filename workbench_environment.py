@@ -225,14 +225,18 @@ def setup(folder, root=ROOT, system=None):
 def main(argv=None, root=None):
     root = Path(root or ROOT).resolve()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('setup', 'launch', 'check'))
+    parser.add_argument('action', choices=('setup', 'launch', 'check', 'install-app', 'desktop'))
     action = parser.parse_args(argv).action
     require_runtime()
     check_project_files(root)
     folder = environment_folder(root)
     validate_environment_location(folder, root)
-    if action == 'setup':
+    if action in ('install-app', 'desktop') and sys.platform != 'win32':
+        raise RuntimeError('Use Install_Tensile_Workbench_App.command for the Mac app.')
+    if action in ('setup', 'install-app'):
         setup(folder, root)
+        if action == 'install-app':
+            run([python_in(folder, 'win32'), root / 'tools/install_windows_app.py'], root, child_environment(folder))
         return 0
     python = python_in(folder, sys.platform)
     if not python.is_file():
@@ -240,6 +244,17 @@ def main(argv=None, root=None):
                            + ('bat' if sys.platform == 'win32' else 'command') + ' first. See SETUP.md.')
     print('Using environment:', folder, flush=True)
     env = child_environment(folder)
+    if action == 'desktop':
+        pythonw = folder / 'Scripts/pythonw.exe'
+        launcher = root / 'tools/windows_app.py'
+        if not pythonw.is_file() or not launcher.is_file():
+            raise RuntimeError('Run Install_Tensile_Workbench_App.bat first.')
+        # The control window performs preflight in its managed child and shows errors.
+        subprocess.Popen([str(pythonw), str(launcher), '--environment', str(folder)],
+                         cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, close_fds=True,
+                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        return 0
     verify(python, root, env, full=action == 'check')
     if action == 'launch':
         print('The web app opens automatically. '

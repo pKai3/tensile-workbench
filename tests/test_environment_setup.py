@@ -207,6 +207,35 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(run.call_count, 1)
         self.assertIn(environment.CHECK, run.call_args.args[0])
 
+    def test_windows_app_installer_reuses_setup_and_selected_environment(self):
+        python = self.fake_python('win32')
+        with patch.object(environment, 'require_runtime'), patch.object(environment.sys, 'platform', 'win32'), \
+             patch.dict(os.environ, {'TENSILE_ENV_DIR': str(self.folder)}), \
+             patch.object(environment, 'setup') as setup, patch.object(environment, 'run') as run:
+            self.assertEqual(environment.main(['install-app'], self.root), 0)
+        setup.assert_called_once_with(self.folder, self.root)
+        self.assertEqual(run.call_args.args[:2], ([python, self.root / 'tools/install_windows_app.py'], self.root))
+        self.assertEqual(run.call_args.args[2]['TENSILE_ENV_DIR'], str(self.folder))
+
+    def test_desktop_launch_is_detached_and_does_not_install_or_wait(self):
+        self.fake_python('win32')
+        pythonw = self.folder / 'Scripts/pythonw.exe'
+        pythonw.touch()
+        launcher = self.root / 'tools/windows_app.py'
+        launcher.parent.mkdir()
+        launcher.touch()
+        with patch.object(environment, 'require_runtime'), patch.object(environment.sys, 'platform', 'win32'), \
+             patch.dict(os.environ, {'TENSILE_ENV_DIR': str(self.folder)}), \
+             patch.object(environment, 'setup') as setup, patch.object(environment, 'verify') as verify, \
+             patch.object(environment.subprocess, 'Popen') as spawn, redirect_stdout(io.StringIO()):
+            self.assertEqual(environment.main(['desktop'], self.root), 0)
+        setup.assert_not_called()
+        verify.assert_not_called()  # The GUI's managed child does preflight.
+        self.assertEqual(spawn.call_args.args[0], [str(pythonw), str(launcher), '--environment', str(self.folder)])
+        self.assertEqual(spawn.call_args.kwargs['stdin'], subprocess.DEVNULL)
+        self.assertEqual(spawn.call_args.kwargs['cwd'], self.root)
+        spawn.return_value.wait.assert_not_called()
+
     def test_quick_check_does_not_import_numerical_ui_or_application_stack(self):
         result = subprocess.run([sys.executable, '-c', LIGHTWEIGHT_GUARD + environment.QUICK_CHECK,
                                  str(self.root), sys.prefix], capture_output=True, text=True)
