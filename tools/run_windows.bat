@@ -13,42 +13,39 @@ set "TW_PYTHON_CHECK=import sys,struct,sysconfig,platform; sys.exit(not (sys.ver
 :discover
 set "PYTHON_BIN="
 set "PYTHON_SELECTOR="
+rem Only exit code zero is success. Python's install manager can return negative
+rem HRESULT errors such as 0xA0000006, which "if not errorlevel 1" accepts.
 for %%P in ("%TW_ENV_DIR%\Scripts\python.exe" "%LOCALAPPDATA%\Programs\Python\Python314\python.exe" "%ProgramFiles%\Python314\python.exe") do (
     if exist "%%~P" (
-        "%%~P" -c "%TW_PYTHON_CHECK%" >nul 2>&1
-        if not errorlevel 1 (
+        "%%~P" -c "%TW_PYTHON_CHECK%" >nul 2>&1 && (
             set "PYTHON_BIN=%%~P"
             goto ready
         )
     )
 )
 for %%P in ("py" "%SystemRoot%\py.exe" "%LOCALAPPDATA%\Programs\Python\Launcher\py.exe") do (
-    "%%~P" -3.14 -c "%TW_PYTHON_CHECK%" >nul 2>&1
-    if not errorlevel 1 (
+    "%%~P" -3.14 -c "%TW_PYTHON_CHECK%" >nul 2>&1 && (
         set "PYTHON_BIN=%%~P"
         set "PYTHON_SELECTOR=-3.14"
         goto ready
     )
 )
 for /f "delims=" %%P in ('where python3.14 python 2^>nul') do (
-    "%%~P" -c "%TW_PYTHON_CHECK%" >nul 2>&1
-    if not errorlevel 1 (
+    "%%~P" -c "%TW_PYTHON_CHECK%" >nul 2>&1 && (
         set "PYTHON_BIN=%%~P"
         goto ready
     )
 )
 if defined TW_BOOTSTRAP_ATTEMPTED goto missing
 set "TW_BOOTSTRAP_ATTEMPTED=1"
-call "%~dp0install_python_windows.bat"
-if errorlevel 1 goto failed
+call "%~dp0install_python_windows.bat" || goto failed
 set "TW_BOOTSTRAPPED=1"
 goto discover
 :ready
 if not defined TW_BOOTSTRAPPED goto run_action
 if "%~1"=="setup" goto run_action
 if "%~1"=="install-app" goto run_action
-"%PYTHON_BIN%" %PYTHON_SELECTOR% "%~dp0..\workbench_environment.py" setup
-if errorlevel 1 goto failed
+"%PYTHON_BIN%" %PYTHON_SELECTOR% "%~dp0..\workbench_environment.py" setup || goto failed
 :run_action
 "%PYTHON_BIN%" %PYTHON_SELECTOR% "%~dp0..\workbench_environment.py" "%~1"
 set "RESULT=%ERRORLEVEL%"

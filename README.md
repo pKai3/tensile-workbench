@@ -221,7 +221,7 @@ For very old installations where personal definitions were tracked by Git, back 
 
 | Problem | What to try |
 |---|---|
-| Missing Python or dependencies | Install standard Python 3.14, then rerun Setup |
+| Missing Python or dependencies | Rerun Setup; it offers the Python 3.14 installer if needed and installs Workbench dependencies |
 | Mac will not execute a .command file | See [Mac permission troubleshooting](SETUP.md#troubleshooting) |
 | No groups appear | Check the Data folder, group subfolders and local file availability; click Reload data |
 | Plots did not change after editing settings | Click Update plots; live preview is normally off |

@@ -1,0 +1,30 @@
+name: Windows installer checks
+
+on:
+  push:
+    paths:
+      - '*.bat'
+      - 'tools/*windows.bat'
+      - 'tools/python_installers.conf'
+      - 'tests/test_python_bootstrap.py'
+      - '.github/workflows/windows-bootstrap.yml'
+  pull_request:
+    paths:
+      - '*.bat'
+      - 'tools/*windows.bat'
+      - 'tools/python_installers.conf'
+      - 'tests/test_python_bootstrap.py'
+      - '.github/workflows/windows-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Exercise Windows startup with synthetic Python executables
+        run: python -m unittest -v tests.test_python_bootstrap

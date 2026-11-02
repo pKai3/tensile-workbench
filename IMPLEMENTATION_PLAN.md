@@ -2,6 +2,21 @@
 
 ## Change notes — 2026-11-02
 
+### Windows missing-runtime installer routing — implemented
+
+- Correct interpreter probes that treated any exit code below 1 as success.
+  Python's Windows install manager reports a missing runtime with `0xA0000006`,
+  seen by `cmd` as `-1610612730`; the old check selected that failed launcher
+  and bypassed the installer offer. Accept only exit code zero at every probe.
+- Apply the same nonzero-failure handling after the installer and first-launch
+  environment setup. A negative failure must stop, not retry or continue.
+- Add native Windows batch regression checks using synthetic executables and
+  temporary folders. Cover missing runtimes with positive and negative codes,
+  existing Python, installer failure, rediscovery and setup-before-launch.
+  Run them automatically in GitHub's Windows installer workflow. They do not
+  install software or use research files; the interactive installer remains a
+  separate manual check.
+
 ### Guided installation when Python is missing — implemented
 
 - Mac and Windows entry points now offer the official Python 3.14 installer

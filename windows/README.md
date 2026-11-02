@@ -11,7 +11,10 @@ it verifies the pinned download checksum and Authenticode signature, opens the
 normal installer, waits, and removes its temporary download. Python's new install
 manager is told not to install runtimes automatically during interpreter probes.
 The wrapper rediscovers Python after installation and never retries a cancelled
-installer automatically. Native Windows verification should also exercise this
+installer automatically. Probes accept only exit code zero: the new Python
+install manager returns a high-bit Windows error when no matching runtime exists,
+which `cmd` exposes as a negative number. This must reach the installer offer.
+Native Windows verification should also exercise this
 first-install path on a machine with no Python 3.14.
 
 The persistent Tk control window follows the TEM Workbench launcher layout:
@@ -55,6 +58,12 @@ only temporary synthetic data. Native job/mutex integration tests run on Windows
 ```text
 python -m unittest tests.test_windows_app tests.test_windows_process
 ```
+
+The **Windows installer checks** GitHub workflow also runs
+`python -m unittest -v tests.test_python_bootstrap` on Windows. It uses temporary
+synthetic executables and a fake installation step to cover missing runtimes,
+positive/negative failures, cancellation, rediscovery and first-launch setup.
+It never downloads or installs Python, or processes research data.
 
 Before distributing as a verified Windows release, check on a Windows machine:
 
