@@ -3,7 +3,7 @@
 ## First use
 
 1. Clone the repository, or download the GitHub ZIP and **extract it completely**. Keep the code in a writable folder; do not run inside the ZIP. Data and output folders can be elsewhere and are chosen in the app. GitHub does not include research data.
-2. Install standard **Python 3.14, 64-bit** if it is not already installed:
+2. The workbench uses standard **Python 3.14, 64-bit**. If it is missing, the next step offers to download and open its official installer. Complete its normal screens and close the installer; Workbench setup continues automatically. To install Python yourself instead:
    - **Windows x86-64:** use the [Python.org Windows downloads](https://www.python.org/downloads/windows/) and include the Python launcher and **Tcl/Tk and IDLE**. Do not use the embeddable or free-threaded build. This setup does not currently target Windows ARM64.
    - **Mac, Apple Silicon or Intel:** use the Python 3.14 **macOS 64-bit universal2 installer** from [Python.org](https://www.python.org/downloads/macos/). An existing standard Homebrew Python 3.14 also works. Finder's launcher checks normal Python.org and Homebrew locations even if its PATH is limited.
 3. Double-click the setup file for your system:
@@ -16,7 +16,17 @@
 4. Wait for **Setup complete**. Internet access is needed for package installation. Setup checks imports and analysis-definition validity but does not load research datasets, create plots, change definitions or start Jupyter.
 5. Open the installed app. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. The control window provides **Stop**. The server listens on this computer only (`127.0.0.1`). The existing `Setup_Tensile_Workbench.bat` and `Launch_Tensile_Workbench.bat` still support console-only use on Windows; leave that console open and press Ctrl-C to stop it.
 
-Python itself is installed separately, not silently downloaded by these scripts. On a managed computer, ask IT to approve Python/package access if blocked. The scripts do not require changing PowerShell execution policy or disabling security protections.
+The Python installer opens only after you accept the offer. macOS asks for administrator approval because the official package installs Python for all users. On Windows, the installer lets you choose a per-user or all-users installation; the latter normally needs administrator approval. Workbench packages still go in their own environment. On a managed computer, ask IT to approve Python/package access if blocked. The scripts do not change PowerShell execution policy or disable security protections.
+
+### Guided Python installation
+
+- Setup and the source-folder Launch files first look for an existing standard 3.14 interpreter. If found, no Python download is offered. If absent, accept **Install Python** on Mac or answer **Y** on Windows.
+- The helper downloads the official **Python 3.14.10** installer from python.org, checks its published SHA-256, and opens the ordinary installer UI. Windows also checks the executable's signature. Licence acceptance, installation scope and administrator prompts stay in the normal OS workflow.
+- On Windows, keep **Tcl/Tk** and the **Python launcher** selected. Setup checks standard install locations again afterwards, so a freshly changed PATH does not require another terminal. On Mac, the helper also runs Python's supplied **Install Certificates.command** to complete HTTPS setup.
+- If the installation succeeds, setup resumes. A first Launch that needed Python also installs Workbench's packages before opening the app. Cancelling, a download/checksum failure, or an unsuccessful installer stops the process; rerun Setup to retry. Temporary installer files are removed after the attempt.
+- Other Python versions and existing workbench environments are preserved. A launch with Python already installed still expects the Workbench environment to have been set up previously. The Mac Dock app can show the installer offer if its Python is missing; a Windows shortcut whose Python executable has been removed must be repaired through **Install_Tensile_Workbench_App.bat**.
+
+Installer URLs and checksums are recorded together in `tools/python_installers.conf`, sourced from the [official release page](https://www.python.org/downloads/release/python-31410/). A future installer update must change both; helpers do not run an unverified replacement download.
 
 ## Windows desktop app
 
@@ -45,11 +55,11 @@ The optional native launcher requires **macOS 13 or newer** and **Apple Command 
 
 The installed app uses your existing checkout and Python environment. It is **not a portable copy of the whole workbench**. Git contains `macos/Launcher.swift`, a generic `macos/Info.plist`, the icon and the installer; installation fills in local paths only in the built app. Build/signing is local (ad-hoc), not an Apple-notarised downloadable binary. Keep normal macOS security protections enabled.
 
-After pulling/unzipping updates, run **Install_Tensile_Workbench_App.command** to update just the launcher; it neither installs packages nor starts the server. Rerunning Setup also updates it. If the checkout moves, rerun the installer from the new location. Apple Silicon and Intel Macs build for their own architecture. Temporary compiler caches are removed after the build, including on failure.
+After pulling/unzipping updates, run **Install_Tensile_Workbench_App.command** to update just the launcher. With Python already available, it neither installs packages nor starts the server. If Python is missing, the guided installation above completes Python and Workbench setup first. Rerunning Setup also updates the launcher. If the checkout moves, rerun the installer from the new location. Apple Silicon and Intel Macs build for their own architecture. Temporary compiler caches are removed after the build, including on failure.
 
 ## Existing installations and updates
 
-**This version uses Python 3.14.** Install standard 64-bit Python 3.14, close the running workbench, then run **Install_Tensile_Workbench_App.bat** on Windows or **Setup_Tensile_Workbench.command** on Mac. Setup creates or reuses the `py314/venv` environment. Windows app installation refreshes shortcuts to use it. Mac launchers select it automatically on the next start.
+**This version uses Python 3.14.** Close the running workbench, then run **Install_Tensile_Workbench_App.bat** on Windows or **Setup_Tensile_Workbench.command** on Mac. Accept the Python installer if offered. Setup creates or reuses the `py314/venv` environment. Windows app installation refreshes shortcuts to use it. Mac launchers select it automatically on the next start.
 
 Older `venv` and Windows `v17-py313-…/venv` environments are left untouched, together with their caches. They are no longer selected automatically. Python environments are not renamed, copied or upgraded in place. The old environment remains available with the older code if rollback is needed. Your project file, overrides, backups and folder preferences remain in their existing locations.
 
@@ -79,7 +89,7 @@ Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment i
 
 ## Troubleshooting
 
-- **Missing Python:** install the supported Python version above, then rerun Setup. Windows first tries `py -3.14`, then a compatible `python` on PATH. The Mac launcher first tries the existing workbench environment, then supported system install locations.
+- **Missing Python:** accept setup's installer offer, or install the supported Python version above manually and rerun Setup. Both systems check the selected environment and standard installation locations. Windows also checks the Python launcher and PATH; Mac also checks Python.org and Homebrew. If installation was cancelled, setup stops without repeatedly prompting.
 - **Windows shortcut does not open:** double-click `Launch_Tensile_Workbench_App.bat` for visible startup errors. Check that the code folder and Python environment still exist, then rerun the app installer. If the control window opens but the server stops, use **View log**. A missing Tcl/Tk component requires modifying the Python installation, not installing a pip package.
 - **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag the Setup `.command` file into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
 - **Mac Dock app was not installed:** Python setup can still succeed. Follow the build-tool message above, quit any running Dock app and run Install_Tensile_Workbench_App.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. The installer never launches the server or changes your environment.

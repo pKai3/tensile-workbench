@@ -4,4 +4,5 @@
 *.command text eol=lf
 *.sh text eol=lf
 *.bat text eol=crlf
+tools/python_installers.conf text eol=lf
 requirements*.txt text eol=lf

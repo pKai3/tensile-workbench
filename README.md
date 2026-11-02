@@ -8,7 +8,7 @@ Use **Analysis** for plots and specimen review. Each saved analysis contains its
 
 ## 1. Install and launch
 
-You need **standard Python 3.14, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). If Python is not installed, follow the platform-specific links in [SETUP.md](SETUP.md#first-use).
+You need **standard Python 3.14, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). **If Python is missing, setup offers to download and open the official installer**, then continues after you finish its screens. Manual installation is also supported; see [SETUP.md](SETUP.md#first-use).
 
 1. Download the repository ZIP and **extract it completely**, or clone the repository. Put the application in a writable folder.
 2. Double-click the installation file for your system below and wait for it to finish.
@@ -21,7 +21,7 @@ You need **standard Python 3.14, 64-bit**, a browser, and internet access during
 
 Setup creates or reuses a separate local Python environment outside the code and data folders. It installs dependencies but does not analyse data. Launch reuses that environment and does not install packages.
 
-**Upgrading from Python 3.13:** install Python 3.14 and rerun the installation file above. Setup creates a separate `py314/venv` environment and preserves the old one. Saved analyses, overrides and folder preferences stay in the code folder. Restart the app after setup; Windows shortcuts must be refreshed by the app installer. See [upgrade instructions](SETUP.md#existing-installations-and-updates).
+**Upgrading from Python 3.13:** rerun the installation file above and accept the Python 3.14 installer if offered. Setup creates a separate `py314/venv` environment and preserves the old one. Saved analyses, overrides and folder preferences stay in the code folder. Restart the app after setup; Windows shortcuts must be refreshed by the app installer. See [upgrade instructions](SETUP.md#existing-installations-and-updates).
 
 **Windows desktop app:** the installer sets up the environment and adds shortcuts for your user account. The app stays open with **Start/Stop**, **Open Workbench** and **View log** (live updates and copying). Keep it open or minimised while working; closing the control window asks to stop its server and calculations. Daily use opens no terminal. Python must include **Tcl/Tk**, as provided by the full Python.org installer. You can also use [Launch_Tensile_Workbench_App.bat](Launch_Tensile_Workbench_App.bat). The app uses the code folder in place; rerun the installer if you move it.
 

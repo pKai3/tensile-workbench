@@ -15,8 +15,10 @@ The icon is intentionally tracked; generated `.app` bundles are not.
 
 ## Build or update
 
-On macOS 13+, install Python 3.14 and Apple Command Line Tools (or Xcode), then
-run `Install_Tensile_Workbench_App.command` from the repository. Setup also calls
+On macOS 13+, use Python 3.14 and Apple Command Line Tools (or Xcode), then
+run `Install_Tensile_Workbench_App.command` from the repository. If Python is
+missing, the wrapper offers the official installer and completes Workbench
+environment setup before building the app. Setup also calls
 the installer after Python setup succeeds. Quit the existing Dock app first.
 See [SETUP.md](../SETUP.md#mac-dock-app) for the end-user workflow.
 
@@ -25,7 +27,7 @@ ad-hoc, verifies it, and installs it to the current user's Applications folder.
 Compilation and module caches use a temporary directory that is cleaned up on
 success or failure. A staged replacement and backup preserve the existing app
 directory (and its Dock reference); the old Contents are restored if replacement
-fails. Installation does not launch Workbench, run pip or process data.
+fails. The bundle-building step does not launch Workbench, run pip or process data.
 
 The generated bundle includes this Swift source and the repository licence for
 inspection/recovery. Git remains the source of truth. Change the template's

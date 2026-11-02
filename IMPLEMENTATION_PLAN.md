@@ -2,6 +2,34 @@
 
 ## Change notes — 2026-11-02
 
+### Guided installation when Python is missing — implemented
+
+- Mac and Windows entry points now offer the official Python 3.14 installer
+  when interpreter discovery fails. Download only after acceptance, validate
+  its published SHA-256, open the normal installer UI and resume discovery.
+  Preserve normal licence, scope and administrator prompts. Windows also checks
+  Authenticode; Mac completes Python's supplied certificate-installation step.
+- Pin Python 3.14.10 installer URLs and checksums together in
+  `tools/python_installers.conf`. Downloads are temporary and removed on success,
+  cancellation or failure. An unverified file is never launched. No execution
+  policy or certificate-verification protections are disabled.
+- Recheck normal Windows installation locations without depending on a refreshed
+  PATH. Disable Python install-manager auto-install during probes so detection
+  cannot start a download before the offer. Do not offer the x86-64 installer on
+  unsupported Windows architectures.
+- After a newly installed interpreter, a first launch completes the isolated
+  Workbench environment before opening the application. Setup failures stop the
+  launch; cancellation is not retried automatically. Existing interpreters skip
+  the guided install. Update installation and upgrade instructions.
+- Verification: 498 tests pass on Python 3.14.7; two native Windows process tests
+  are skipped on Mac. Shell tests cover consent, cancellation, real checksum
+  verification, failed downloads/installers, cleanup, rediscovery and setup-before-
+  launch. Both actual official installer downloads match the pinned checksums;
+  neither installer was executed in these checks. The Windows interactive
+  installation flow still needs a native Windows smoke check. Confirmed the Mac
+  launcher selects the new environment, HTTPS works after completing the existing
+  Python installation's certificate step, and Python 3.13.4 remains available.
+
 ### Python 3.14 runtime migration — implemented
 
 - Move setup, runtime checks and Mac/Windows interpreter discovery to standard

@@ -5,6 +5,15 @@ Run **Install_Tensile_Workbench_App.bat** from a complete checkout/ZIP on Window
 external environment, then creates per-user Desktop and Start-menu shortcuts.
 See [SETUP.md](../SETUP.md#windows-desktop-app) for user instructions.
 
+If Python is absent, the batch wrapper offers its official installer before
+continuing. `tools/install_python_windows.bat` needs only built-in PowerShell:
+it verifies the pinned download checksum and Authenticode signature, opens the
+normal installer, waits, and removes its temporary download. Python's new install
+manager is told not to install runtimes automatically during interpreter probes.
+The wrapper rediscovers Python after installation and never retries a cancelled
+installer automatically. Native Windows verification should also exercise this
+first-install path on a machine with no Python 3.14.
+
 The persistent Tk control window follows the TEM Workbench launcher layout:
 Start/Stop, Open Workbench and a separate live log. The analytical interface
 continues to run in the user's default browser. This does not bundle Python or
