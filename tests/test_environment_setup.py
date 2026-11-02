@@ -62,30 +62,50 @@ class EnvironmentTests(unittest.TestCase):
 
     def test_new_defaults_outside_repository_for_both_systems(self):
         mac = environment.environment_folder(self.root, 'darwin', {}, self.base / 'user')
-        self.assertEqual(mac, self.base / 'user/Library/Application Support/Tensile Workbench/venv')
+        self.assertEqual(mac, self.base / 'user/Library/Application Support/Tensile Workbench/py314/venv')
         win = environment.environment_folder(self.root, 'win32', {'LOCALAPPDATA': str(self.local)})
-        self.assertEqual(win, self.local / 'TensileWorkbench/venv')
+        self.assertEqual(win, self.local / 'TensileWorkbench/py314/venv')
         for folder in (mac, win):
             environment.validate_environment_location(folder, self.root, {})
             self.assertFalse(folder.exists())
 
-    def test_legacy_windows_reuse_for_zip_and_git_line_endings(self):
+    def test_legacy_windows_environments_are_preserved_and_not_reused(self):
         raw = (self.root / 'requirements-windows.txt').read_bytes().replace(b'\r\n', b'\n')
         for legacy_raw, checkout_raw in ((raw, raw.replace(b'\n', b'\r\n')),
                                          (raw.replace(b'\n', b'\r\n'), raw)):
             with self.subTest(legacy_raw=legacy_raw[:40]):
                 key = hashlib.sha256(legacy_raw).hexdigest()[:12]
                 base = self.local / key
-                expected = base / 'TensileWorkbench' / ('v17-py313-' + key) / 'venv'
-                self.fake_python('win32', expected)
+                legacy = base / 'TensileWorkbench' / ('v17-py313-' + key) / 'venv'
+                old_python = self.fake_python('win32', legacy)
+                old_python.write_bytes(b'old Python 3.13 environment')
+                canonical = base / 'TensileWorkbench/venv'
+                self.fake_python('win32', canonical).write_bytes(b'previous default environment')
                 (self.root / 'requirements-windows.txt').write_bytes(checkout_raw)
                 folder = environment.environment_folder(self.root, 'win32', {'LOCALAPPDATA': str(base)})
-                self.assertEqual(folder, expected)
+                self.assertEqual(folder, base / 'TensileWorkbench/py314/venv')
+                self.assertEqual(old_python.read_bytes(), b'old Python 3.13 environment')
+                self.assertEqual((canonical / 'Scripts/python.exe').read_bytes(), b'previous default environment')
+                self.assertFalse(folder.exists())
 
-    def test_canonical_windows_folder_is_preferred_even_when_partial(self):
-        canonical = self.local / 'TensileWorkbench/venv'
+    def test_current_windows_folder_is_reused_even_when_partial(self):
+        canonical = self.local / 'TensileWorkbench/py314/venv'
         canonical.mkdir(parents=True)
         self.assertEqual(environment.environment_folder(self.root, 'win32', {'LOCALAPPDATA': str(self.local)}), canonical)
+
+    def test_mac_upgrade_keeps_old_environment_and_caches_intact(self):
+        user_home = self.base / 'user'
+        base = user_home / 'Library/Application Support/Tensile Workbench'
+        old_python = self.fake_python('darwin', base / 'venv')
+        old_python.write_bytes(b'working Python 3.13')
+        old_cache = base / 'matplotlib'
+        old_cache.mkdir()
+        (old_cache / 'keep').write_text('keep')
+        folder = environment.environment_folder(self.root, 'darwin', {}, user_home)
+        self.assertEqual(folder, base / 'py314/venv')
+        self.assertEqual(old_python.read_bytes(), b'working Python 3.13')
+        self.assertEqual((old_cache / 'keep').read_text(), 'keep')
+        self.assertNotEqual(environment.child_environment(folder)['MPLCONFIGDIR'], str(old_cache))
 
     def test_override_and_unsafe_locations(self):
         for system in ('win32', 'darwin'):
@@ -399,13 +419,22 @@ class EnvironmentTests(unittest.TestCase):
             self.assertIn(str(self.root / 'workbench_environment.py') + '\n' + action, result.stdout)
 
     def test_runtime_rejects_wrong_python_and_free_threaded_build(self):
-        for version, disabled in (((3, 12), False), ((3, 13), True)):
+        for version, disabled in (((3, 12), False), ((3, 13), False), ((3, 15), False), ((3, 14), True)):
             with patch.object(environment.sys, 'platform', 'darwin'), \
                  patch.object(environment.sys, 'version_info', version), \
                  patch.object(environment.platform, 'machine', return_value='arm64'), \
                  patch.object(environment.sysconfig, 'get_config_var', return_value=disabled):
-                with self.assertRaisesRegex(RuntimeError, 'Python 3.13'):
+                with self.assertRaisesRegex(RuntimeError, 'Python 3.14'):
                     environment.require_runtime()
+
+    def test_runtime_accepts_standard_python_314_on_supported_platforms(self):
+        for system, machine in (('win32', 'AMD64'), ('darwin', 'arm64'), ('darwin', 'x86_64')):
+            with patch.object(environment.sys, 'platform', system), \
+                 patch.object(environment.sys, 'version_info', (3, 14, 7)), \
+                 patch.object(environment.platform, 'machine', return_value=machine), \
+                 patch.object(environment.struct, 'calcsize', return_value=8), \
+                 patch.object(environment.sysconfig, 'get_config_var', return_value=False):
+                environment.require_runtime()
 
 
 if __name__ == '__main__':

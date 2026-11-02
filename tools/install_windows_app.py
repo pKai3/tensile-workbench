@@ -85,6 +85,6 @@ if __name__ == '__main__':
         install()
     except Exception as error:
         print('Could not install the Windows app:', error, file=sys.stderr)
-        print('Use the complete Python 3.13 installer with Tcl/Tk. '
+        print('Use the complete Python 3.14 installer with Tcl/Tk. '
               'The existing console launcher remains available; see SETUP.md.', file=sys.stderr)
         raise SystemExit(1)

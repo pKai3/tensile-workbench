@@ -15,7 +15,7 @@ The icon is intentionally tracked; generated `.app` bundles are not.
 
 ## Build or update
 
-On macOS 13+, install Python 3.13 and Apple Command Line Tools (or Xcode), then
+On macOS 13+, install Python 3.14 and Apple Command Line Tools (or Xcode), then
 run `Install_Tensile_Workbench_App.command` from the repository. Setup also calls
 the installer after Python setup succeeds. Quit the existing Dock app first.
 See [SETUP.md](../SETUP.md#mac-dock-app) for the end-user workflow.

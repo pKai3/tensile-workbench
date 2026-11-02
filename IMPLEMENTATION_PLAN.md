@@ -2,6 +2,25 @@
 
 ## Change notes — 2026-11-02
 
+### Python 3.14 runtime migration — implemented
+
+- Move setup, runtime checks and Mac/Windows interpreter discovery to standard
+  64-bit Python 3.14. Continue to reject free-threaded builds. Mac discovery
+  includes Python.org and both Homebrew installation prefixes.
+- Use `py314/venv` below the existing per-user application-support directory.
+  Repeated setup reuses that environment; its configuration and caches are
+  separate from the previous Python 3.13 environment. Preserve old default and
+  legacy Windows environments, project settings, overrides and research data.
+- Keep custom environment paths explicit: an old interpreter is rejected before
+  pip can modify it. Document how to select a fresh custom path and refresh
+  desktop shortcuts. The historical Windows requirements file is no longer
+  used for environment selection.
+- Created the new local environment with the already-installed Python 3.14.7.
+  Package consistency, full import checks and saved-definition validation pass.
+  The regression suite passes 489 tests, with two native Windows checks skipped
+  on Mac. A real server run using synthetic specimens verifies authentication,
+  occupied-port fallback, application loading and graceful shutdown on 3.14.
+
 ### Windows desktop control window — implemented
 
 - Added a persistent dark launcher following the TEM Workbench interface, with

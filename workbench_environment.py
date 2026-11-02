@@ -14,7 +14,8 @@ import sysconfig
 import venv
 
 ROOT = Path(__file__).resolve().parent
-PYTHON_VERSION = (3, 13)
+PYTHON_VERSION = (3, 14)
+ENVIRONMENT_TAG = 'py314'
 
 
 def check_project_files(root):
@@ -48,19 +49,12 @@ def require_runtime():
     if (sys.platform not in supported or sys.version_info[:2] != PYTHON_VERSION
             or struct.calcsize('P') != 8 or sysconfig.get_config_var('Py_GIL_DISABLED')
             or platform.machine().lower() not in supported[sys.platform]):
-        raise RuntimeError('Use standard 64-bit Python 3.13: Windows x86-64, or Mac Apple Silicon/Intel. '
+        raise RuntimeError('Use standard 64-bit Python 3.14: Windows x86-64, or Mac Apple Silicon/Intel. '
                            'See SETUP.md. Free-threaded Python is not supported.')
 
 
 def python_in(folder, system):
     return folder / ('Scripts/python.exe' if system == 'win32' else 'bin/python')
-
-
-def legacy_windows_keys(raw):
-    """Git may change LF/CRLF; both must find the original ZIP's environment."""
-    lf = raw.replace(b'\r\n', b'\n')
-    variants = (raw, lf, lf.replace(b'\n', b'\r\n'))
-    return list(dict.fromkeys(hashlib.sha256(value).hexdigest()[:12] for value in variants))
 
 
 def environment_folder(root=ROOT, system=None, environ=None, user_home=None):
@@ -72,20 +66,14 @@ def environment_folder(root=ROOT, system=None, environ=None, user_home=None):
             raise ValueError('TENSILE_ENV_DIR must be an absolute path outside the project and cloud storage.')
         return folder
     if system == 'darwin':
-        return Path(user_home or Path.home()) / 'Library/Application Support/Tensile Workbench/venv'
-    if system != 'win32' or not environ.get('LOCALAPPDATA'):
+        base = Path(user_home or Path.home()) / 'Library/Application Support/Tensile Workbench'
+    elif system == 'win32' and environ.get('LOCALAPPDATA'):
+        base = Path(environ['LOCALAPPDATA']) / 'TensileWorkbench'
+    else:
         raise RuntimeError('Windows LOCALAPPDATA is missing, or this platform is unsupported. See SETUP.md.')
-    base = Path(environ['LOCALAPPDATA']) / 'TensileWorkbench'
-    canonical = base / 'venv'
-    if canonical.exists():
-        return canonical
-    legacy = root / 'requirements-windows.txt'
-    if legacy.is_file():
-        for key in legacy_windows_keys(legacy.read_bytes()):
-            folder = base / ('v17-py313-' + key) / 'venv'
-            if python_in(folder, system).is_file():
-                return folder
-    return canonical
+    # Python environments cannot be upgraded by moving/copying them. Keep the
+    # previous interpreter and its caches intact and build this version beside it.
+    return base / ENVIRONMENT_TAG / 'venv'
 
 
 def validate_environment_location(folder, root=ROOT, environ=None):

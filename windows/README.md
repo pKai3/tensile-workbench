@@ -1,7 +1,7 @@
 # Windows desktop launcher
 
 Run **Install_Tensile_Workbench_App.bat** from a complete checkout/ZIP on Windows
-10/11 x86-64 with standard Python 3.13, including Tcl/Tk. It sets up or reuses the
+10/11 x86-64 with standard Python 3.14, including Tcl/Tk. It sets up or reuses the
 external environment, then creates per-user Desktop and Start-menu shortcuts.
 See [SETUP.md](../SETUP.md#windows-desktop-app) for user instructions.
 

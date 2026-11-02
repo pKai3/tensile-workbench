@@ -1,5 +1,5 @@
-# Direct application dependencies pinned to the working v17 environment.
-# pip selects their Windows-specific transitive dependencies at setup time.
+# Historical Python 3.13/v17 environment record; not used by current installers.
+# Python 3.14 setup uses the shared requirements.txt on Windows and macOS.
 numpy==2.5.3
 pandas==3.0.5
 matplotlib==3.11.2

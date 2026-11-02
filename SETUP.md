@@ -3,9 +3,9 @@
 ## First use
 
 1. Clone the repository, or download the GitHub ZIP and **extract it completely**. Keep the code in a writable folder; do not run inside the ZIP. Data and output folders can be elsewhere and are chosen in the app. GitHub does not include research data.
-2. Install standard **Python 3.13, 64-bit** if it is not already installed:
+2. Install standard **Python 3.14, 64-bit** if it is not already installed:
    - **Windows x86-64:** use the [Python.org Windows downloads](https://www.python.org/downloads/windows/) and include the Python launcher and **Tcl/Tk and IDLE**. Do not use the embeddable or free-threaded build. This setup does not currently target Windows ARM64.
-   - **Mac, Apple Silicon or Intel:** use the Python 3.13 **macOS 64-bit universal2 installer** from [Python.org](https://www.python.org/downloads/macos/). An existing standard Homebrew Python 3.13 also works. Finder's launcher checks normal Python.org and Homebrew locations even if its PATH is limited.
+   - **Mac, Apple Silicon or Intel:** use the Python 3.14 **macOS 64-bit universal2 installer** from [Python.org](https://www.python.org/downloads/macos/). An existing standard Homebrew Python 3.14 also works. Finder's launcher checks normal Python.org and Homebrew locations even if its PATH is limited.
 3. Double-click the setup file for your system:
 
    | System | Setup once / install missing dependencies | Open normally |
@@ -49,33 +49,37 @@ After pulling/unzipping updates, run **Install_Tensile_Workbench_App.command** t
 
 ## Existing installations and updates
 
-**Existing users upgrading from notebook-only mode should run Setup once to add Voilà, then use Launch normally.** The original Mac environment and the previous Windows v17 package's environment are reused; downloading the code into another folder does not require another environment.
+**This version uses Python 3.14.** Install standard 64-bit Python 3.14, close the running workbench, then run **Install_Tensile_Workbench_App.bat** on Windows or **Setup_Tensile_Workbench.command** on Mac. Setup creates or reuses the `py314/venv` environment. Windows app installation refreshes shortcuts to use it. Mac launchers select it automatically on the next start.
+
+Older `venv` and Windows `v17-py313-…/venv` environments are left untouched, together with their caches. They are no longer selected automatically. Python environments are not renamed, copied or upgraded in place. The old environment remains available with the older code if rollback is needed. Your project file, overrides, backups and folder preferences remain in their existing locations.
+
+If you use **TENSILE_ENV_DIR**, choose a new external folder for the 3.14 environment, then rerun Setup and the app installer with that value. Pointing it at an old 3.13 environment stops before packages are changed. Repeated setup and additional code checkouts reuse the same 3.14 environment by default.
 
 Before running Setup or pulling code updates, close workbench browser tabs/notebooks and stop their launchers. Setup installs from `requirements.txt`, retains already-compatible packages (no blanket upgrade), checks dependency consistency, and registers the **Tensile Workbench** kernel inside that environment. Rerun Setup if Launch reports a missing/incompatible dependency, or an update changes requirements. Launch itself never installs packages.
 
 Normal Launch checks installed package versions and saved definitions without importing the entire numerical/UI stack twice. Setup and the explicit `check` command below retain the full import checks. Opening the app still starts a Python kernel, loads the selected groups' property tables and, if Live preview is enabled, calculates the saved plot views. Wait for that first load; refreshing starts a new session and repeats this work.
 
-`requirements-windows.txt` is retained unchanged solely to recognise the legacy Windows environment's directory fingerprint. Both LF and CRLF copies are recognised so ZIP versus Git line endings do not create duplicate environments. New installations use the shared `requirements.txt` on both systems. Exact installed versions are recorded locally in `installed-packages.txt` beside the environment; dependency ranges are not a fully locked reproducible environment.
+`requirements-windows.txt` is a historical record of the previous Python 3.13 environment and is not used by current installers. Both systems use `requirements.txt`. Exact installed versions are recorded locally in `installed-packages.txt` beside the selected environment; dependency ranges are not a fully locked reproducible environment.
 
 ## Where files go
 
 | Item | Windows | Mac |
 | --- | --- | --- |
-| New environment | `%LOCALAPPDATA%\TensileWorkbench\venv` | `~/Library/Application Support/Tensile Workbench/venv` |
-| Existing environment reused | Original `%LOCALAPPDATA%\TensileWorkbench\v17-py313-<fingerprint>\venv`, if present and no new default environment exists | Same path as above |
+| Python 3.14 environment | `%LOCALAPPDATA%\TensileWorkbench\py314\venv` | `~/Library/Application Support/Tensile Workbench/py314/venv` |
+| Previous environments preserved | Earlier `venv` and `v17-py313-<fingerprint>\venv` folders | Earlier `~/Library/Application Support/Tensile Workbench/venv` |
 | Jupyter/configuration caches | Beside the selected environment | Beside the selected environment |
 | Code and analysis definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
 | Desktop app | Per-user Desktop and Start-menu shortcuts | `~/Applications/Tensile Workbench.app` |
 | Desktop app logs | `%LOCALAPPDATA%\TensileWorkbench\logs\<checkout ID>\launcher.log` and `.log.1` | `~/Library/Logs/Tensile Workbench/launcher.log` (one previous launch retained) |
 | Data and output | Your chosen folders | Your chosen folders |
 
-No environment is created in the repository or OneDrive. Setup also refuses known cloud-storage locations or an environment overlapping the code folder. Do not set a custom environment inside a differently named synced folder; the scripts cannot discover every third-party sync configuration. Environments are local installations, not files to copy between computers. See Python's [virtual-environment documentation](https://docs.python.org/3.13/library/venv.html).
+No environment is created in the repository or OneDrive. Setup also refuses known cloud-storage locations or an environment overlapping the code folder. Do not set a custom environment inside a differently named synced folder; the scripts cannot discover every third-party sync configuration. Environments are local installations, not files to copy between computers. See Python's [virtual-environment documentation](https://docs.python.org/3.14/library/venv.html).
 
 Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. The Windows app installer records that environment in its shortcuts; the Mac installer records it in the locally built Dock app. Rerun the appropriate app installer with the new value to change it; omit the variable to return to the default environment. Ordinary users do not need this setting.
 
 ## Troubleshooting
 
-- **Missing Python:** install the supported Python version above, then rerun Setup. Windows first tries `py -3.13`, then a compatible `python` on PATH. The Mac launcher first tries the existing workbench environment, then supported system install locations.
+- **Missing Python:** install the supported Python version above, then rerun Setup. Windows first tries `py -3.14`, then a compatible `python` on PATH. The Mac launcher first tries the existing workbench environment, then supported system install locations.
 - **Windows shortcut does not open:** double-click `Launch_Tensile_Workbench_App.bat` for visible startup errors. Check that the code folder and Python environment still exist, then rerun the app installer. If the control window opens but the server stops, use **View log**. A missing Tcl/Tk component requires modifying the Python installation, not installing a pip package.
 - **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag the Setup `.command` file into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
 - **Mac Dock app was not installed:** Python setup can still succeed. Follow the build-tool message above, quit any running Dock app and run Install_Tensile_Workbench_App.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. The installer never launches the server or changes your environment.
@@ -95,7 +99,7 @@ Close unused tabs; each page load starts a session. Disconnected idle kernels ar
 
 ## Checks without plots
 
-Using Python 3.13 from any working directory:
+Using Python 3.14 from any working directory:
 
 ```text
 python /path/to/tensile-workbench/workbench_environment.py check
