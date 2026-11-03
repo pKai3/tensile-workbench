@@ -5,14 +5,16 @@ import numpy as np
 from matplotlib.colors import to_hex
 from matplotlib.container import ErrorbarContainer, BarContainer
 from tensile_display import preview_indices
+from tensile_plot_theme import apply_plot_theme
 
 
-def width_probe(on_resize):
-    """Measure the displayed container; resize only the disposable Plotly view."""
+def width_probe(on_resize, *, on_theme=None):
+    """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
     class WidthProbe(anywidget.AnyWidget):
         pixels = traitlets.Int(0).tag(sync=True)
+        theme = traitlets.Enum(['light', 'dark'], default_value='light').tag(sync=True)
         _esm = """
         export default {render({model, el}) {
           el.style.height = '0px'; el.style.overflow = 'hidden';
@@ -31,11 +33,20 @@ def width_probe(on_resize):
           };
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
-          return () => {observer.disconnect(); cancelAnimationFrame(frame);};
+          const appearance = () => {
+            const theme = document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
+            if(theme !== model.get('theme')) {model.set('theme',theme); model.save_changes();}
+          };
+          const themes = new MutationObserver(appearance);
+          themes.observe(document.documentElement,{attributes:true,attributeFilter:['data-tw-theme']});
+          appearance();
+          return () => {observer.disconnect(); themes.disconnect(); cancelAnimationFrame(frame);};
         }};
         """
     probe = WidthProbe()
     probe.observe(lambda change: on_resize(change['new']) if change['new'] > 150 else None, names='pixels')
+    if on_theme is not None:
+        probe.observe(lambda change: on_theme(change['new']), names='theme')
     return probe
 
 
@@ -76,8 +87,9 @@ def resize_chart(chart, width, *, focused=False):
     width = max(200, int(width))
     left, right, top = 85, (85 if 'yaxis2' in chart.layout else 25), 20
     plot_height = 500 if focused else max(260, int(width * 2 / 3) - 85)
-    label_columns = max(12, int((width - left - right - 55) / 6.5))
-    legend_height = 0
+    legend_columns = 2 if width - left - right >= 240 else 1
+    label_columns = max(4, int(((width - left - right) / legend_columns - 55) / 6.5))
+    legend_rows = []
     categories = (chart.layout.meta or {}).get('category_labels')
     axis_footer = 76
     with chart.batch_update():
@@ -89,17 +101,23 @@ def resize_chart(chart, width, *, focused=False):
             labels = [wrapped(label, columns) for label in categories]
             axis_footer = 60 + 14 * max((label.count('<br>') + 1 for label in labels), default=1)
             chart.update_xaxes(ticktext=labels, tickangle=0)
-        for trace in chart.data:
+        for trace in sorted(chart.data, key=lambda trace: trace.legendrank if trace.legendrank is not None else 1000):
             if trace.showlegend:
                 label = trace.meta['legend_label']
                 display_label = wrapped(label, label_columns)
                 trace.name = display_label
                 # FigureWidget batches assignments until the context exits.
-                legend_height += 18 * (display_label.count('<br>') + 1) + 8
+                legend_rows.append(18 * (display_label.count('<br>') + 1) + 8)
+        legend_height = sum(max(legend_rows[start:start + legend_columns])
+                            for start in range(0, len(legend_rows), legend_columns))
         bottom = axis_footer + legend_height + 14
         chart.update_layout(width=width, height=plot_height + top + bottom,
             margin=dict(l=left, r=right, t=top, b=bottom),
-            legend=dict(y=-axis_footer / plot_height))
+            legend=dict(y=-axis_footer / plot_height, orientation='h',
+                        entrywidth=1 / legend_columns, entrywidthmode='fraction',
+                        traceorder='normal', tracegroupgap=0))
+        if hasattr(chart.layout.legend, 'maxheight'):
+            chart.layout.legend.maxheight = max(30, legend_height + 10)
 
 
 def text_block(widgets, text, *, title=False):
@@ -382,7 +400,8 @@ class PlotlyView:
             chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
                              'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
             self._charts[key] = chart
-            probe = width_probe(lambda width: self._resize(key, width))
+            probe = width_probe(lambda width: self._resize(key, width),
+                                on_theme=lambda theme: apply_plot_theme(chart, theme))
             title = text_block(self.w, figure.axes[0].get_title(), title=True)
             notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
             caption = text_block(self.w, notes)

@@ -109,7 +109,9 @@ Group identities include their relative folder path, so different colleagues can
 
 Use **Theme → Dark** beside **Page width** for the navy-and-teal interface.
 Light remains the default. Your choice is remembered
-in this browser; plot previews and exports keep their publication colours.
+in this browser. Interactive plots, the calculation inspector, group curves,
+yield-fit panels and comparison charts follow it. Static publication previews
+and exports retain their original colours and white backgrounds.
 
 1. **Choose an analysis.** Select an existing analysis, duplicate one, or choose **＋ Create new analysis…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
 2. **Review the data.** Expand **Specimen properties · tables and calculation inspector**. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint.

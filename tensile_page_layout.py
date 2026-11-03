@@ -37,7 +37,7 @@ class ContentWidth(anywidget.AnyWidget):
       [['light','Light'],['dark','Dark']].forEach(([value,label])=>{
         const option=document.createElement('option');option.value=value;option.textContent=label;theme.append(option);
       });
-      theme.title='Interface only. Plot previews and exports keep their publication colours.';
+      theme.title='Applies to the interface and interactive plots. Static publication previews and exports stay unchanged.';
       themeLabel.append(themeText,theme);
       const storageNote=document.createElement('span');storageNote.setAttribute('role','status');
       const unsubscribe=window.TensileTheme.subscribe((value,saved)=>{

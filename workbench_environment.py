@@ -48,6 +48,7 @@ def check_project_files(root):
         raise RuntimeError('An update is in progress or needs recovery. Open Check for updates '
                            'in the desktop launcher to restore the previous version before starting.')
     required = ('tensile_workbench.ipynb', 'tensile_workbench.py', 'tensile_core.py',
+                'tensile_display.py', 'tensile_plot_theme.py',
                 'tensile_plot_view.py', 'tensile_group_picker.py', 'tensile_moves.py', 'tensile_move_review.py', 'tensile_overrides.py', 'tensile_override_view.py', 'tensile_plotly.py', 'tensile_group_plot.py', 'tensile_group_review.py', 'tensile_comparison.py', 'tensile_colors.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_instron_pdf.py', 'tensile_columns.py', 'tensile_tables.py', 'tensile_gauge.py', 'tensile_fracture.py', 'tensile_exports.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_inspector.py', 'tensile_fit.py', 'tensile_startup.py',
                 'workbench_project.py', 'workbench_backups.py', 'tensile_backup_ui.py', 'migrate_tensile_project.py', 'launch_workbench.py',

@@ -9,6 +9,7 @@ from tensile_properties import specimen_properties
 from tensile_fracture import fracture_endpoint, endpoint_available, prepared_points
 from tensile_activity import busy
 from tensile_display import preview_indices
+from tensile_plot_theme import apply_plot_theme, swatch_style
 
 
 # Short labels belong in the view's key; the exact saved policy stays in hover.
@@ -120,7 +121,7 @@ class GroupCurveReview:
                          'The Measured view does not require fracture detection or reconstruction.</p>'
                          '<p>Landmark-aligned shows synthetic shape contributions using the current analysis’s settings. '
                          'Each section is mapped to the group’s landmark strains and receives the same stress adjustment '
-                         'as the mean shape. The coloured curves average to the black line; individual curves do not '
+                         'as the mean shape. The coloured curves average to the thick line; individual curves do not '
                          'have to pass through the group-mean stresses. Stage boundaries are not bridged if that adjustment '
                          'creates a discontinuity in an individual contribution. Group-mean markers default to on. '
                          'Property-only and fully excluded specimens remain listed without an aligned curve. '
@@ -243,8 +244,9 @@ class GroupCurveReview:
                          '.tw-review-highlighted{font-weight:600;background:var(--tw-selected-bg,#e8f0f8);'
                          'border-color:var(--tw-control-border,#b9cede);}</style>',
                          layout=self.w.Layout(height='0px', width='0px', overflow='hidden'))
-        swatch = self.w.HTML(('<svg width="30" height="16" aria-hidden="true" style="background:white;border-radius:2px"><line x1="0" x2="30" y1="8" y2="8" '
-            f'stroke="{color}" stroke-width="3" stroke-dasharray="{DASH_PIXELS[dash]}"/></svg>') if has_curve else '',
+        swatch = self.w.HTML(('<svg class="tw-plot-swatch" width="30" height="16" aria-hidden="true" '
+            f'style="{swatch_style(color)};background:var(--tw-panel-bg,#fff);border-radius:2px"><line x1="0" x2="30" y1="8" y2="8" '
+            f'stroke="currentColor" stroke-width="3" stroke-dasharray="{DASH_PIXELS[dash]}"/></svg>') if has_curve else '',
             layout=self.w.Layout(width='32px', flex='0 0 32px'))
         def clicked(_):
             if token == self.generation:
@@ -308,6 +310,7 @@ class GroupCurveReview:
                 self.figure.add_trace(trace)
                 if trace.meta.get('id'):
                     self._bind_click(self.figure.data[-1], trace.meta['id'], self.generation)
+        apply_plot_theme(self.figure, getattr(self.figure, '_tw_theme', 'light'))
 
     def _mount_figure(self, figure, legend, token, x_title, y_title):
         import plotly.graph_objects as go
@@ -325,7 +328,7 @@ class GroupCurveReview:
         def resize(width):
             if token == self.generation and self.figure is figure:
                 figure.update_layout(width=max(200, int(width)), autosize=False)
-        probe = width_probe(resize)
+        probe = width_probe(resize, on_theme=lambda theme: apply_plot_theme(figure, theme))
         self._owned.append(probe)
         self.legend.children = tuple(legend)
         self.plot.children = (probe, figure)
@@ -368,7 +371,7 @@ class GroupCurveReview:
             line={'color': 'black', 'width': 4}, showlegend=False, meta={'kind': 'mean'},
             hovertemplate='Landmark average<br>Aligned strain: %{x:.3f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
         counts = model['property_counts']
-        self.notice.value = ('<b>Black line: landmark average.</b> Coloured lines: synthetic shape contributions, not measured curves. '
+        self.notice.value = ('<b>Thick line: landmark average.</b> Coloured lines: synthetic shape contributions, not measured curves. '
             f"<b>{model['shape_n']} shapes</b> · YS n={counts['Yield (MPa)']} · UTS n={counts['UTS (MPa)']} · "
             f"EL n={counts['Failure elongation (%)']}. Basis: " + escape(payload.get('basis', 'Calc')) + '.')
         self._mount_figure(figure, legend, token, 'Landmark-aligned engineering strain (%)', 'Aligned engineering stress (MPa)')

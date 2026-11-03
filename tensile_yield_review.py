@@ -9,6 +9,7 @@ from tensile_activity import busy
 from tensile_inspector import inspection_figure, inspection_ranges, layer_swatch
 from tensile_properties import DEFAULT_FIT_FRACTIONS, specimen_calculation
 from tensile_selection import DATA_MODES, specimen_id
+from tensile_plot_theme import apply_plot_theme
 
 
 FIT_LAYERS = {'measured', 'fit_points', 'elastic_fit', 'offset', 'yield_calc', 'yield_instron'}
@@ -83,7 +84,7 @@ class GroupYieldReview:
             w.HBox([self.group, self.show_excluded], layout=w.Layout(flex_flow='row wrap', align_items='center')),
             w.HBox([self.shared_axes, self.columns, self.reset],
                    layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
-            w.HTML('<div style="background:white;color:#334155;padding:4px 6px;border-radius:3px">'
+            w.HTML('<div class="tw-plot-key-surface" style="padding:4px 6px;border-radius:3px">'
                    + legend + '</div>'), self.status, self.plot,
         ], layout=w.Layout(width='100%', min_width='0'))
         self.group.observe(self._changed, names='value')
@@ -230,7 +231,8 @@ class GroupYieldReview:
                           overflow='hidden', padding='10px', border='1px solid var(--tw-border,#cbd5e1)'))
             self._owned.extend([heading, *content, button, card])
             cards.append(card)
-        probe = width_probe(self._resize)
+        probe = width_probe(self._resize, on_theme=lambda theme:
+            [apply_plot_theme(entry['figure'], theme) for entry in self.entries])
         self._owned.append(probe)
         self.grid.children = tuple(cards)
         self.plot.children = (probe, self.grid)

@@ -2,6 +2,26 @@
 
 ## Change notes — 2026-11-04
 
+### Interactive dark theme and compact legends — implemented
+
+- Follow the existing browser-local Light/Dark selector across interactive
+  galleries, the calculation inspector (including manual fit/EL previews),
+  measured/aligned group curves, group yield fits and comparison charts.
+  Restyle existing figures without recalculating, changing saved state, or
+  resetting zoom, layer choices and edit handles. Newly mounted charts pick up
+  the browser's active theme. Static/publication figures are unchanged.
+- Match navy backgrounds, light axes/text, grids, tooltips and modebar colours.
+  Lift dark trace/marker colours for contrast and restore exact original colours
+  in Light. Keep external inspector/group keys consistent with the canvas.
+- Use two-column Plotly gallery legends, wrapping labels and reserving height
+  by rows beneath the x-axis. Preserve group order and legend click behaviour;
+  very narrow panels use one column.
+- Verification: full synthetic suite passed (566 tests, 7 skipped). Browser
+  checks covered remembered Dark on startup, newly mounted gallery charts,
+  two-column legends, inspector/manual-preview styling, group curves, yield-fit
+  grids and comparison charts. Theme checks preserve zoom, layer visibility,
+  draft edits and saved project bytes; static/export colours remain unchanged.
+
 ### Large datasets: CSV import, previews and incremental updates — implemented
 
 - Parse ordinary numeric CSV tokens directly and apply whitespace/decimal-comma

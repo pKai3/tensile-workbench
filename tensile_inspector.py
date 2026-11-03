@@ -12,6 +12,7 @@ from tensile_fracture import (endpoint_available, automatic_fracture_endpoint, f
                               RAPID_RATE_CONTRAST)
 from tensile_gauge import gauge_record
 from tensile_activity import busy
+from tensile_plot_theme import apply_plot_theme, source_color, swatch_style
 
 # Stable display-layer IDs: visibility never changes measurements/calculations.
 INSPECTOR_LAYERS = {
@@ -45,13 +46,13 @@ def shape_layer(shape):
 
 def layer_swatch(color, symbol=None, dash=None):
     """Small text/CSS key outside the Plotly canvas; no image assets needed."""
-    color = escape(str(color or '#334155'), quote=True)
+    colors = swatch_style(color)
     if symbol:
         glyph = {'diamond-open': '◇', 'diamond': '◆', 'triangle-up-open': '△',
                  'circle-open': '○', 'circle': '●', 'x': '×'}.get(str(symbol), '●')
-        return f'<span aria-hidden="true" style="color:{color};font:22px/24px Arial">{glyph}</span>'
+        return f'<span class="tw-plot-swatch" aria-hidden="true" style="{colors};font:22px/24px Arial">{glyph}</span>'
     style = 'dotted' if dash == 'dot' else 'dashed' if dash and dash != 'solid' else 'solid'
-    return f'<span aria-hidden="true" style="display:inline-block;width:25px;border-top:2px {style} {color}"></span>'
+    return f'<span class="tw-plot-swatch" aria-hidden="true" style="{colors};display:inline-block;width:25px;border-top:2px {style} currentColor"></span>'
 
 
 def instron_ys_strain(calculation, reported):
@@ -731,19 +732,13 @@ class SpecimenInspector:
         layer_heading = w.HTML('<style>.tw-inspector-layer.widget-checkbox {height:auto;min-height:28px}'
                                '.tw-inspector-layer.widget-checkbox label {white-space:normal;line-height:1.3;'
                                'height:auto;min-width:0}'
-                               '.tw-plot-key-surface{background:#fff;color:#24354a;'
-                               '--tw-text:#24354a;--tw-label:#24354a;--tw-muted:#526170;'
-                               '--tw-control-bg:#fff;--tw-control-text:#24354a;--tw-border:#dce3e9;'
-                               '--tw-control-border:#bdc8d3;--tw-accent:#1767a5;--tw-selected-bg:#e8f0f8;'
-                               '--jp-content-font-color1:#24354a;--jp-ui-font-color1:#24354a;'
-                               '--jp-widgets-color:#24354a;--jp-widgets-label-color:#24354a;'
-                               '--jp-widgets-readout-color:#24354a;color-scheme:light}</style>'
+                               '</style>'
                                '<b>Show on plot</b> · display only; tick items to show or hide them.')
         self.layers_panel = w.VBox([
             w.HBox([layer_heading, self.reset_layers], layout=w.Layout(flex_flow='row wrap', grid_gap='12px', align_items='center')),
             self.layer_groups,
         ], layout=w.Layout(width='100%', min_width='0', display='none', padding='8px 0 16px 0'))
-        # Scientific swatches retain the white plotting surface in either UI theme.
+        # The legend follows the same display theme as the inspection canvas.
         self.layers_panel.add_class('tw-plot-key-surface')
         self.mode = w.Dropdown(description='Fit:', options=[('Inspect saved fit', 'inspect'),
             ('Manual range', 'range'), ('Manual line', 'line')], value='inspect', layout=w.Layout(width='300px'))
@@ -882,7 +877,7 @@ class SpecimenInspector:
             if key not in INSPECTOR_LAYERS or key in entries:
                 continue
             marker = 'markers' in (trace.mode or '')
-            swatch = layer_swatch(trace.marker.color if marker else trace.line.color,
+            swatch = layer_swatch(source_color(trace.marker if marker else trace.line),
                                   trace.marker.symbol if marker else None,
                                   trace.line.dash if not marker else None)
             entries[key] = (trace.name, swatch)
@@ -890,7 +885,7 @@ class SpecimenInspector:
             key = shape_layer(shape)
             if key in INSPECTOR_LAYERS and key not in entries:
                 name = 'Fit edit handles' if key == 'manual_fit' else 'Calc EL vertical guide'
-                entries[key] = (name, layer_swatch(shape.line.color, dash=shape.line.dash))
+                entries[key] = (name, layer_swatch(source_color(shape.line), dash=shape.line.dash))
 
         groups = {}
         w = self.w
@@ -1253,6 +1248,16 @@ class SpecimenInspector:
                 self._painting = False
         self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
 
+    def _apply_theme(self, theme):
+        # Shape colour updates must not be interpreted as manual-fit dragging.
+        painting = self._painting
+        self._painting = True
+        try:
+            if self.chart is not None:
+                apply_plot_theme(self.chart, theme)
+        finally:
+            self._painting = painting
+
     @busy('Drawing specimen inspector…')
     def _paint(self, payload, edit=None, keep_zoom=False):
         import plotly.graph_objects as go
@@ -1263,7 +1268,7 @@ class SpecimenInspector:
             if self.chart is None:
                 self.chart = go.FigureWidget(fig)
                 self.chart.layout.on_change(self._dragged, 'shapes')
-                self._probe = width_probe(self._resize)
+                self._probe = width_probe(self._resize, on_theme=self._apply_theme)
                 self.chart_box.children = (self._probe, self.chart)
             else:
                 if keep_zoom:
@@ -1281,6 +1286,7 @@ class SpecimenInspector:
                 if (trace.meta or {}).get('inspector_layer') in ('measured', 'fit_points'):
                     trace.on_click(self._pick_curve_point)
             self._sync_layers()
+            self._apply_theme(self._probe.theme)
             self.summary.value = inspection_summary(payload)
             self.checks.value = inspection_checks(payload, preview=bool(edit or self._failure_draft))
             self.checks.layout.display = '' if self.checks.value else 'none'

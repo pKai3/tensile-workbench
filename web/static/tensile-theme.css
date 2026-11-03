@@ -137,6 +137,9 @@ html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .jupyter-b
   background: var(--tw-warning-bg); border-color: var(--tw-warning-border); color: var(--tw-warning-text);
 }
 
-/* Figures are publication previews. Never recolour SVG strokes, raster images,
-   trace colours or exported figures when changing the surrounding interface. */
-html[data-tw-theme="dark"] :is(.js-plotly-plot,.tw-plot-key-surface) {color-scheme: light;}
+/* Interactive figure styles are applied through Plotly; static/export artwork
+   retains publication colours. External plot keys use the same colour mapping. */
+.tw-plot-key-surface {background:var(--tw-panel-bg,#fff);color:var(--tw-text,#24354a);}
+.tw-plot-swatch {color:var(--tw-swatch-light);}
+html[data-tw-theme="dark"] .tw-plot-swatch {color:var(--tw-swatch-dark);}
+html[data-tw-theme="dark"] .js-plotly-plot {color-scheme:dark;}

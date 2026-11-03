@@ -219,6 +219,7 @@ class ComparisonView:
         try:
             import plotly.graph_objects as go
             from tensile_plotly import width_probe
+            from tensile_plot_theme import apply_plot_theme
             groups = self.summary['Group'].drop_duplicates().tolist()
             cards = []
             for prop in properties:
@@ -232,7 +233,8 @@ class ComparisonView:
                 self.charts[prop] = chart
                 cards.append(card)
             self.grid.children = tuple(cards)
-            self.probe = width_probe(self._resize)
+            self.probe = width_probe(self._resize, on_theme=lambda theme:
+                [apply_plot_theme(chart, theme) for chart in self.charts.values()])
             self._owned.append(self.probe)
             self.box.children = (self.probe, self.grid)
             self._resize(1200)
