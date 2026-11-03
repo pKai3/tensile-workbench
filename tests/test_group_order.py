@@ -49,7 +49,8 @@ class GroupOrderTests(unittest.TestCase):
         app = self.app
         children = list(app.analysis_ui.children)
         panel = app.display_order_panel
-        self.assertEqual(children.index(panel), children.index(app.group_picker.ui) + 2)
+        self.assertEqual(children.index(panel), children.index(app.group_picker.ui) + 3)
+        self.assertIs(children[children.index(panel) - 1], app.move_review.ui)
         self.assertLess(children.index(panel), children.index(app.properties_panel))
         self.assertIsNone(panel.selected_index)
         self.assertEqual(panel.get_title(0), 'Sample group order · tables and plots')

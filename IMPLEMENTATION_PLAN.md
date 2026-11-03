@@ -2,6 +2,13 @@
 
 ## Change notes — 2026-11-04
 
+### Move-protection placement — implemented
+
+- Place move protection immediately above Sample group order, beneath the
+  sample-group selector. Move review and approval behaviour are unchanged.
+- Updated the layout regression check; included in the passing full synthetic
+  suite (566 tests, 7 skipped).
+
 ### Interactive dark theme and compact legends — implemented
 
 - Follow the existing browser-local Light/Dark selector across interactive

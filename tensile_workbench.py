@@ -1267,9 +1267,9 @@ class TensileWorkbench:
             self.save_status, self.group_picker.ui,
             w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
                    "A mixed tick means only some groups are selected. Groups are still analysed separately."),
+            self.move_review.ui,
             self.display_order_panel,
             self.custom_variables_panel,
-            self.move_review.ui,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
