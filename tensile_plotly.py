@@ -4,6 +4,7 @@ import textwrap
 import numpy as np
 from matplotlib.colors import to_hex
 from matplotlib.container import ErrorbarContainer, BarContainer
+from tensile_display import preview_indices
 
 
 def width_probe(on_resize):
@@ -35,6 +36,29 @@ def width_probe(on_resize):
         """
     probe = WidthProbe()
     probe.observe(lambda change: on_resize(change['new']) if change['new'] > 150 else None, names='pixels')
+    return probe
+
+
+def visibility_probe(on_visible):
+    """Create a chart only when its gallery card approaches the viewport."""
+    import anywidget
+    import traitlets
+    class VisibilityProbe(anywidget.AnyWidget):
+        visible = traitlets.Bool(False).tag(sync=True)
+        _esm = """
+        export default {render({model, el}) {
+          el.style.height='1px'; el.style.minHeight='1px'; el.style.margin='0';
+          const observer=new IntersectionObserver(entries => {
+            if(entries.some(entry => entry.isIntersecting)) {
+              observer.disconnect(); model.set('visible',true); model.save_changes();
+            }
+          }, {rootMargin:'300px'});
+          observer.observe(el);
+          return () => observer.disconnect();
+        }};
+        """
+    probe = VisibilityProbe()
+    probe.observe(lambda change: on_visible() if change['new'] else None, names='visible')
     return probe
 
 
@@ -91,7 +115,7 @@ def text_block(widgets, text, *, title=False):
 
 
 def figure_to_plotly(figure, *, width=640):
-    """Translate the known 2D line/landmark plots, retaining every data point.
+    """Translate calculated artists, using a simple subset for dense lines.
 
     Conversion is intentionally one-way: view zoom, legend clicks and resizing
     never modify the canonical figure, analysis settings or exported data.
@@ -219,6 +243,13 @@ def _axis_to_plotly(ax, *, width=640, allow_empty=False):
         if point_labels is not None:
             kind = escape(getattr(line, '_tensile_point_kind', 'Sample group'))
             x_hover = kind + ': %{customdata[0]}' + ('<br>' + x_hover if categories is None else '')
+        # Dense lines only: individual property dots, landmarks and error bars
+        # keep their exact values. The source artists/export arrays stay intact.
+        if has_line and not has_marker and id(line) not in error_by_line:
+            ids = preview_indices(x, y)
+            x, y = x[ids], y[ids]
+            if custom is not None:
+                custom = [custom[i] for i in ids]
         trace = go.Scatter(x=x.tolist(), y=y.tolist(), mode=mode, name=plain(name),
             customdata=custom,
             meta=dict(legend_label=plain(name)),
@@ -270,7 +301,8 @@ class PlotlyView:
         self._focused_key = None
         self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', gap='12px'))
         self.hint = w.HTML('Drag to zoom; use the plot toolbar to pan or reset. Click legend entries to hide/show groups. '
-                          'View changes do not change averages or publication exports.')
+                          'Dense lines show every Nth reading; use the specimen inspector for full detail. '
+                          'Calculations and publication exports use the full data.')
         self.empty = w.HTML('Choose plots and click Update plots.')
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
         self.board.add_class('tw-plot-board')
@@ -298,7 +330,6 @@ class PlotlyView:
         self.empty.layout.display = ''
 
     def set_items(self, items):
-        import plotly.graph_objects as go
         self.clear()
         self._items = list(items)
         cards = []
@@ -306,27 +337,16 @@ class PlotlyView:
             heading = self.w.HTML('<b>' + escape(item['label']) + '</b>')
             self._owned.append(heading)
             if item.get('result') is not None:
-                try:
-                    chart = go.FigureWidget(figure_to_plotly(item['result']['figure'], width=self.plot_width.value))
-                    chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
-                                     'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
-                    self._charts[item['key']] = chart
-                    probe = width_probe(lambda width, key=item['key']: self._resize(key, width))
-                    figure = item['result']['figure']
-                    title = text_block(self.w, figure.axes[0].get_title(), title=True)
-                    notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
-                    caption = text_block(self.w, notes)
-                    caption.layout.display = '' if notes else 'none'
-                    frame = self.w.VBox([probe, title, chart, caption], layout=self.w.Layout(width='100%', min_width='0'))
-                    self._frames[item['key']] = frame
-                    button = self.w.Button(description='Enlarge plot', icon='expand', layout=self.w.Layout(width='auto'))
-                    button.on_click(lambda _, key=item['key']: self.open_focus(key))
-                    body = [heading, button, frame]
-                    self._owned += [button, chart, probe, title, caption, frame]
-                except Exception as error:
-                    message = self.w.HTML('<b>Plotly unavailable:</b> ' + escape(str(error)) + '. Switch to Static plots.')
-                    self._owned.append(message)
-                    body = [heading, message]
+                frame = self.w.VBox(layout=self.w.Layout(width='100%', min_width='0'))
+                self._frames[item['key']] = frame
+                probe = visibility_probe(lambda key=item['key'], owner=frame: self._ensure_chart(key, owner))
+                placeholder = self.w.HTML('Plot loads when visible.', layout=self.w.Layout(
+                    height=f'{max(300, int(self.plot_width.value * 2 / 3))}px'))
+                frame.children = (probe, placeholder)
+                button = self.w.Button(description='Enlarge plot', icon='expand', layout=self.w.Layout(width='auto'))
+                button.on_click(lambda _, key=item['key']: self.open_focus(key))
+                body = [heading, button, frame]
+                self._owned += [button, probe, placeholder, frame]
             else:
                 message = self.w.HTML('Unavailable: ' + escape(item.get('error', 'No valid curves.')))
                 self._owned.append(message)
@@ -342,10 +362,42 @@ class PlotlyView:
             cards.append(card)
         self.board.children = tuple(cards)
         self._selecting = True
-        self.choice.options = [(item['label'], item['key']) for item in items if item['key'] in self._charts]
+        self.choice.options = [(item['label'], item['key']) for item in items if item['key'] in self._frames]
         self._selecting = False
         self.empty.layout.display = 'none' if items else ''
         self.apply_layout()
+
+    def _ensure_chart(self, key, owner=None):
+        frame = self._frames.get(key)
+        if frame is None or (owner is not None and frame is not owner):
+            return False  # Ignore a visibility message from a replaced gallery.
+        if key in self._charts:
+            return True
+        import plotly.graph_objects as go
+        item = next(item for item in self._items if item['key'] == key)
+        old = frame.children
+        try:
+            figure = item['result']['figure']
+            chart = go.FigureWidget(figure_to_plotly(figure, width=self.plot_width.value))
+            chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
+                             'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
+            self._charts[key] = chart
+            probe = width_probe(lambda width: self._resize(key, width))
+            title = text_block(self.w, figure.axes[0].get_title(), title=True)
+            notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
+            caption = text_block(self.w, notes)
+            caption.layout.display = '' if notes else 'none'
+            frame.children = (probe, title, chart, caption)
+            self._owned += [chart, probe, title, caption]
+            return True
+        except Exception as error:
+            message = self.w.HTML('<b>Plotly unavailable:</b> ' + escape(str(error)) + '. Switch to Static plots.')
+            frame.children = (message,)
+            self._owned.append(message)
+            return False
+        finally:
+            for widget in old:
+                widget.close()
 
     def apply_layout(self):
         columns, width = self.columns.value, self.plot_width.value
@@ -362,7 +414,7 @@ class PlotlyView:
             resize_chart(self._charts[key], width, focused=key == self._focused_key)
 
     def open_focus(self, key):
-        if key not in self._charts:
+        if not self._ensure_chart(key):
             return
         self._focused_key = key
         self._selecting = True

@@ -232,28 +232,63 @@ class PreviewSession:
         self.project = deepcopy(project)
         self.graphs = [{**g["definition"], "name": g["name"]} for g in project["graphs"]]
         self.engine.NAME_LOOKUP = deepcopy(project.get("display_names", {}))
-        if previous_policy != fit_policy(project) and hasattr(self, '_records'):
-            for records in self._records.values():
+        policy = fit_policy(project)
+        if previous_policy != policy and hasattr(self, '_records'):
+            affected = set()
+            threshold_changed = previous_policy['yield_r2_warning'] != policy['yield_r2_warning']
+            for group, records in self._records.items():
                 for record in records:
-                    self._bind_fit_context(record)
-                    record.pop('_property_cache', None)
-            self._property_frames.clear()
-            self._models.clear()
-            self._previews.clear()
+                    ident = specimen_id(record)
+                    if threshold_changed or any(previous_policy[key].get(ident) != policy[key].get(ident)
+                            for key in ('specimen_fit_overrides', 'specimen_failure_overrides')):
+                        self._bind_fit_context(record)
+                        record.pop('_property_cache', None)
+                        affected.add(group)
+            self._invalidate_groups(affected)
         if previous_selections != self.selection_signature() and hasattr(self, '_records'):
             self._property_frames.clear()
             self._models.clear()
             self._previews.clear()
+
+    def _invalidate_groups(self, groups):
+        """Drop derived results that use changed groups; retain unrelated work."""
+        for cache in (self._property_frames, self._models, self._previews):
+            for key in list(cache):
+                try:
+                    scope = json.loads(key)
+                    scope = scope[0] if isinstance(scope, list) else scope
+                    touched = set(scope['groups']) & groups
+                except (ValueError, TypeError, KeyError, IndexError):
+                    touched = True  # Unknown/legacy cache entry: rebuild safely.
+                if touched:
+                    del cache[key]
 
     def _bind_fit_context(self, record):
         record['_fit_override'] = deepcopy(self.project.get('specimen_fit_overrides', {}).get(specimen_id(record)))
         record['_failure_override'] = deepcopy(self.project.get('specimen_failure_overrides', {}).get(specimen_id(record)))
         record['_fit_r2_threshold'] = self.project.get('yield_r2_warning', .98)
 
-    def fit_signature(self):
-        return json.dumps(fit_policy(self.project), sort_keys=True)
+    def _group_specimen_ids(self, groups):
+        return {((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
+                 + source.relative_to(self.source_roots[group]).as_posix())
+                for group in groups for source in self.files.get(group, [])}
 
-    def selection_signature(self):
+    def fit_signature(self, groups=None):
+        policy = fit_policy(self.project)
+        if groups is not None:
+            ids = self._group_specimen_ids(groups)
+            policy = {**policy, **{key: {ident: value for ident, value in policy[key].items() if ident in ids}
+                      for key in ('specimen_fit_overrides', 'specimen_failure_overrides')}}
+        return json.dumps(policy, sort_keys=True)
+
+    def selection_signature(self, groups=None, spec=None):
+        if groups is not None:
+            ids = self._group_specimen_ids(groups)
+            return json.dumps([{ident: value for ident, value in mapping.items() if ident in ids}
+                for mapping in (self.project.get('specimen_exclusions', {}),
+                                self.project.get('specimen_data_modes', {}),
+                                (spec or {}).get('specimen_inclusion_overrides', {}),
+                                (spec or {}).get('specimen_exclusions', {}))], sort_keys=True)
         return json.dumps([self.project.get('specimen_exclusions', {}),
             self.project.get('specimen_data_modes', {}),
             {g['id']: g['definition'].get('specimen_inclusion_overrides', {})
@@ -375,8 +410,10 @@ class PreviewSession:
         """Only the selected group's diagnostic arrays; no figures or exports."""
         if group not in self.visible_groups(state['groups']):
             raise ValueError('This group is not selected in the current analysis.')
-        key = json.dumps(['group-review-landmark', group, spec, state['landmark_points'],
-                          group_policy(state, spec, group), self.selection_signature(), self.fit_signature()], sort_keys=True)
+        key = json.dumps({'groups': [group], 'kind': 'group-review-landmark',
+            'fractions': spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
+            'points': state['landmark_points'], 'gauge': group_policy(state, spec, group),
+            'selection': self.selection_signature([group], spec), 'fit': self.fit_signature([group])}, sort_keys=True)
         if key not in self._models:
             stream = io.StringIO()
             with redirect_stdout(stream):
@@ -409,13 +446,22 @@ class PreviewSession:
                 '. Eligible strength results still contribute to the group statistics and landmark anchors. '
                 + explanation)
 
+    def property_table_key(self, state, spec):
+        """Only inputs to table values/checks; plot presentation is independent."""
+        groups = state['groups']
+        ids = self._group_specimen_ids(groups)
+        locations = self.project.get('specimen_variables', {}).get(LOCATION, {}).get('values', {})
+        counts = self.project.get('group_variables', {}).get(SPECIMEN_COUNT, {}).get('values', {})
+        return json.dumps({'groups': groups,
+            'fractions': spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
+            'selection': self.selection_signature(groups, spec), 'fit': self.fit_signature(groups),
+            'gauge': {g: group_policy(state, spec, g) for g in groups},
+            'locations': {ident: value for ident, value in locations.items() if ident in ids},
+            'counts': {g: counts.get(g) for g in groups}}, sort_keys=True)
+
     def property_tables(self, state, spec):
         """Available without selecting, rendering or successfully fitting a plot."""
-        key = json.dumps([state['groups'], spec.get('landmark_yield_fit_fractions', self.engine.LANDMARK_YIELD_FIT_FRACTIONS),
-                          self.project.get('specimen_data_modes', {}),
-                          self.project.get('specimen_exclusions', {}), spec.get('specimen_inclusion_overrides', {}),
-                          spec.get('specimen_exclusions', {}),
-                          {g: group_policy(state, spec, g) for g in state['groups']}], sort_keys=True)
+        key = self.property_table_key(state, spec)
         if key not in self._property_frames:
             records = self.analysis_records(state, spec, include_excluded=True)
             self._property_frames[key] = property_tables(records, spec, self.engine, self.instron, self.project)
@@ -642,7 +688,8 @@ class PreviewSession:
             if family == "work_hardening":
                 key_state.pop("landmark_points", None)
         key = json.dumps([key_state, self.graphs[state["graph_index"]], self.project.get("display_names", {}),
-                          self.selection_signature(), self.variable_signature(state)], sort_keys=True)
+                          self.selection_signature(state['groups'], self.graphs[state['graph_index']]),
+                          self.variable_signature(state)], sort_keys=True)
         if key not in self._previews:
             self._previews[key] = self._render_uncached(state)
             if len(self._previews) > 12:
@@ -701,9 +748,15 @@ class PreviewSession:
                     ylim = state['wh_ylim'] if is_wh else state['tensile_ylim'] or auto_y
                 models = None
                 if family not in ("work_hardening", "representative", *PROPERTY_FAMILIES, GROUP_FAMILY, SPECIMEN_FAMILY):
-                    key = json.dumps([spec, {g: [specimen_id(r) for r in rows] for g, rows in records.items()},
-                        state["landmark_points"], state["pointwise_points"],
-                        family.startswith('work_hardening')], sort_keys=True)
+                    key = json.dumps({'groups': list(records),
+                        'specimens': {g: [specimen_id(r) for r in rows] for g, rows in records.items()},
+                        'fractions': spec.get('landmark_yield_fit_fractions', e.LANDMARK_YIELD_FIT_FRACTIONS),
+                        'tail': spec['tensile_mean_tail'],
+                        'gauge': {g: group_policy(state, spec, g) for g in records},
+                        'selection': self.selection_signature(list(records), spec),
+                        'fit': self.fit_signature(list(records)),
+                        'landmark_points': state['landmark_points'], 'pointwise_points': state['pointwise_points'],
+                        'prepeak': family.startswith('work_hardening')}, sort_keys=True)
                     if key not in self._models:
                         model_log = io.StringIO()
                         with redirect_stdout(model_log):
@@ -2249,20 +2302,27 @@ class TensileWorkbench:
 
     @busy('Calculating specimen properties and tables…')
     def _refresh_properties(self):
+        state, spec = self.state(), self._current()['definition']
+        colors = self.session.color_map(state, spec)
+        table_key = self.session.property_table_key(state, spec)
+        signature = json.dumps([table_key, state.get('group_order', []), colors,
+                                state['landmark_points']], sort_keys=True)
+        if (self.tables.frames and table_key in self.session._property_frames
+                and signature == getattr(self, '_table_view_signature', None)):
+            return
         self.table_export_button.disabled = True
         self.tables.set_threshold(self.store.data.get('yield_r2_warning', .98))
         self._update_fit_warning()
-        state = self.state()
         if not state['groups']:
             self.tables.clear()
             return
         self.tables_update_button.disabled = True
         try:
             with redirect_stdout(io.StringIO()):
-                frames = self.session.property_tables(state, self._current()['definition'])
-            spec = self._current()['definition']
-            self.tables.set_frames(frames, color_map=self.session.color_map(state, spec),
+                frames = self.session.property_tables(state, spec)
+            self.tables.set_frames(frames, color_map=colors,
                                    group_order=state.get('group_order', []))
+            self._table_view_signature = signature
             self._update_fit_warning(frames)
             self.table_export_button.disabled = frames['tensile_samples'].empty and frames['import_diagnostics'].empty
         except Exception as error:

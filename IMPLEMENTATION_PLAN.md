@@ -1,5 +1,44 @@
 # Implementation record
 
+## Change notes — 2026-11-04
+
+### Large datasets: CSV import, previews and incremental updates — implemented
+
+- Parse ordinary numeric CSV tokens directly and apply whitespace/decimal-comma
+  cleanup only to values that need it. Convert only the measurement channels
+  used by the analysis, keeping the original text for units/precision checks.
+  Defer persistent on-disk caching as requested.
+- Dense interactive gallery lines and measured group-review curves use every
+  Nth reading (about 4,000 points), plus endpoints and missing-data boundaries.
+  No new smoothing or feature-selection algorithm. Keep property dots/error
+  bars exact and retain full-resolution measurements in the inspector,
+  calculations, source artists and exports. Overview zoom uses the same subset.
+- Create interactive gallery charts near the viewport, or on explicit enlarge;
+  discard late visibility events from replaced galleries.
+- Fit/EL edits invalidate the changed specimen and affected group results.
+  Preserve unrelated in-session properties/models/figures. Keep presentation
+  settings out of numeric model keys and skip unchanged table rebuilds, including
+  redundant table refreshes with live preview. Include Location/count edits in
+  table dependencies so their review messages cannot stay stale.
+- Synthetic comparison: 30 tests × 200,000 rows, 16.2 MB per file, 487 MB total.
+  Profiled initial properties/tables: 35.39 → 8.13 s. Interactive individual-curve
+  conversion: 9.23 → 0.33 s; serialized chart: 157.3 → 3.3 MB. One fit edit:
+  31 → 2 specimen-calculation calls (the edited fit and its automatic comparison),
+  with no refits of the other 29 specimens. These are local synthetic timings,
+  not guarantees for other hardware or all curve shapes.
+- Direct import comparison without profiling: one 200,000-row, 15.88 MB,
+  six-column CSV, five alternating runs per version. Median 0.651 → 0.355 s
+  (1.84× faster); measurement arrays, retained indices and printed-precision
+  checks match exactly. The profiled 35.39 → 8.13 s comparison above includes
+  profiler overhead and should not be interpreted as a wall-clock speedup.
+- Verification: 562 tests pass (seven platform skips), including numeric-token
+  compatibility, full-resolution preservation, sampled gaps/endpoints, lazy
+  gallery lifecycle and targeted invalidation. An isolated browser gallery
+  confirmed viewport loading, explicit enlargement of an unloaded chart and
+  return to the gallery. Landmark-resolution changes and explicit result
+  invalidation still refresh the review views. Research data/settings were not
+  changed or exported; all large fixtures were temporary and synthetic.
+
 ## Change notes — 2026-11-03
 
 ### Release updates without Git on colleagues' PCs — implemented

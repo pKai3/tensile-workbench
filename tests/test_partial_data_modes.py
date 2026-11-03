@@ -16,6 +16,7 @@ from tensile_selection import selection_state, property_allowed, curve_allowed, 
 from tensile_tables import specimen_table_data, specimen_export_frame
 from tensile_comparison import relative_comparison
 from tensile_group_review import GroupCurveReview, review_marker_points
+from tensile_display import PREVIEW_POINTS, preview_indices
 from tensile_specimens import SpecimenTable
 from tensile_exports import export_curves
 from workbench_project import validate_project
@@ -256,7 +257,7 @@ class PartialDataTests(unittest.TestCase):
         review.select(rows[2]['id'])
         self.assertEqual(review.figure.layout.margin.to_plotly_json(), margin)
 
-    def test_review_dense_curves_use_svg_and_keep_every_point_gap_and_dash_on_selection(self):
+    def test_review_dense_curves_use_svg_subset_and_keep_gaps_endpoints_and_dash_on_selection(self):
         self.mode(2, 'after_uts')
         frames = self.frames()
         _, _, rows = specimen_table_data(frames['tensile_samples'], frames['instron_comparison'])
@@ -265,7 +266,7 @@ class PartialDataTests(unittest.TestCase):
         y = 800. * (1. - np.exp(-x * 4.)) - np.maximum(x - 8., 0.) ** 2
         x[20000:20005] = np.nan  # missing AVE readings must remain a gap
         x[35000:35010] = x[35000:35010][::-1]  # retain strain reversals
-        y[41000] += 30.  # isolated spike is not filtered from stored plot data
+        y[41000] += 30.  # raw readings are untouched, including unsampled spikes
         y[-1] = 200.  # preserve the sparse, near-vertical fracture drop
         records[1] = {**records[1], '_acquisition': {'strain': x, 'stress': y, 'time': np.arange(len(x))}}
         review = GroupCurveReview(w, loader=lambda group: records)
@@ -277,8 +278,13 @@ class PartialDataTests(unittest.TestCase):
         self.assertTrue(trace.line.simplify)
         self.assertEqual(trace.line.shape, 'linear')
         self.assertFalse(trace.connectgaps)
-        np.testing.assert_array_equal(trace.x, x)
-        np.testing.assert_array_equal(trace.y, np.where(np.isfinite(x), y, np.nan))
+        ids = preview_indices(x, y)
+        self.assertLessEqual(len(trace.x), PREVIEW_POINTS + 6)
+        np.testing.assert_array_equal(trace.x, x[ids])
+        np.testing.assert_array_equal(trace.y, np.where(np.isfinite(x), y, np.nan)[ids])
+        self.assertTrue({0, 19999, 20000, 20004, 20005, len(x) - 1} <= set(ids))
+        np.testing.assert_array_equal(records[1]['_acquisition']['strain'], x)
+        np.testing.assert_array_equal(records[1]['_acquisition']['stress'], y)
         dash = trace.line.dash
         review.select(rows[1]['id'])
         self.assertEqual(trace.line.width, 3.5)

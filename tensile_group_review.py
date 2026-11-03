@@ -8,6 +8,7 @@ from tensile_specimens import SpecimenTable
 from tensile_properties import specimen_properties
 from tensile_fracture import fracture_endpoint, endpoint_available, prepared_points
 from tensile_activity import busy
+from tensile_display import preview_indices
 
 
 # Short labels belong in the view's key; the exact saved policy stays in hover.
@@ -110,6 +111,8 @@ class GroupCurveReview:
                          'Use <b>Data use</b> in the table below to change analysis contributions. '
                          'Line styles and labels show exclusions.</p>'
                          '<details><summary>About this view and markers</summary><p>'
+                         'Dense curves show every Nth reading, retaining endpoints and missing-data gaps. '
+                         'Open the specimen inspector for full-resolution detail. '
                          'Curves include AVE glitches and unloading; fully excluded curves are faint. '
                          'Markers show measured Calc values (including manual overrides), not reconstruction or Instron. '
                          'Hollow markers identify excluded properties; hover for the mode. Unavailable markers are omitted. '
@@ -418,12 +421,10 @@ class GroupCurveReview:
                 color = qualitative.Dark24[index % len(qualitative.Dark24)]
                 mode = row.get('mode', 'all' if row['included'] else 'exclude')
                 _, dash, opacity = MODE_STYLES[mode]
-                # SVG strokes keep dash spacing stable along densely sampled
-                # curves; WebGL can stipple the dense sections while rendering
-                # the sparse fracture drop correctly. Keep every raw point and
-                # gap. Plotly simplifies only the display path at the current
-                # zoom, not the measurements or analysis arrays.
-                figure.add_trace(go.Scatter(x=x, y=y, mode='lines', name=row['sample'], connectgaps=False,
+                # Use a simple display subset; markers and analysis still use
+                # the complete record. SVG strokes keep dash spacing stable.
+                ids = preview_indices(x, y)
+                figure.add_trace(go.Scatter(x=x[ids], y=y[ids], mode='lines', name=row['sample'], connectgaps=False,
                     opacity=opacity, visible=True, showlegend=False,
                     line={'color': color, 'width': 3.5 if row['id'] == self.selected else 1.3,
                           'dash': DASH_PIXELS[dash] or 'solid', 'simplify': True, 'shape': 'linear'},
