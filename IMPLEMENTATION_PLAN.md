@@ -18,6 +18,7 @@
   consistency. Native Windows/Mac checks and the full suite gate publication.
 - Run the full release suite on macOS, a supported desktop runtime; Linux
   intentionally fails the app's platform gate and is used only for packaging.
+  Use the supported Intel Mac runner pool to avoid the ARM capacity queue.
 
 ### Plot loading and initial theme — implemented
 
