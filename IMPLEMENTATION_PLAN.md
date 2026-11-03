@@ -32,8 +32,12 @@
   including synthetic installation, rollback, collision/hash/path protection,
   settings/data preservation, separate dependency preparation, Git recovery and
   an actual update-window button workflow. Native Mac launcher compiled and
-  codesign verification passed. Native Windows/Mac CI and published-asset
-  verification are recorded after release validation below.
+  codesign verification passed. The final 60 focused checks passed locally.
+  Native Windows and Mac CI each completed 74 checks (nine Mac-only skips on
+  Windows; five Windows-only skips on Mac), including the actual update-window
+  button workflow and native process inspection. Run: [Desktop update checks](https://github.com/pKai3/tensile-workbench/actions/runs/41589198155).
+  The built release contains only 168 tracked files; unpacking/hash verification
+  passed, with no personal project file or research data directory included.
 
 ### Reusable analysis colours and ten-colour palettes — implemented
 
