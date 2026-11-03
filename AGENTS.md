@@ -9,5 +9,6 @@
 - Keep notebook outputs clear before committing. Do not publish research data, generated results, credentials, or personal machine paths.
 - Use stable filenames. Version history belongs in Git commits and tags, not `_vX` filenames or duplicate source copies.
 - Commit completed changes at notable milestones without waiting for a separate commit request. Keep distinct improvements in separate, descriptive commits. Push completed, verified commits by default unless the user asks to keep changes local.
+- Pushing `main` automatically publishes an updater release after CI passes. Keep unfinished work on another branch, write user-facing release notes, and fetch/fast-forward the generated version commit after publication. See `docs/RELEASING.md`; do not wait for a separate release request.
 - Data/output paths belong in ignored `.tensile-paths.json`, not in shared analysis definitions. First-run defaults are `./data` and `./output`, resolved relative to the workbench folder, never the terminal's current directory.
 - Bundled examples are a separate hidden source (`sample_data_directory`) with a persistent `show_sample_data` toggle in that same local settings file. Never change the user's data path to show examples; keep sample group/specimen identities separate from research data.

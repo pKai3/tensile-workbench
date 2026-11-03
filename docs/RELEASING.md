@@ -1,18 +1,35 @@
 # Publishing an app update
 
-Normal commits/pushes remain development work. Desktop users receive **published
-numbered releases**, not every commit on `main`.
+Pushing completed changes to `main` automatically starts **Publish Workbench
+release**. No separate request, manual tag or release upload is needed.
 
-1. Complete the change and run the relevant checks, including the full test suite
-   for a release. Check the Windows and Mac **Desktop update checks** workflow.
-2. Increment the three-part number in `VERSION` and update `RELEASE_NOTES.md`.
-   Do not reuse a published version. Commit and push these files with the change.
-3. Tag that commit `vX.Y.Z` and push the tag. The **Publish Workbench release**
-   workflow runs the synthetic update/launcher checks on both systems, verifies
-   that the tag matches `VERSION`, and publishes the versioned ZIP plus SHA-256.
-4. Confirm the release asset exists, GitHub reports its SHA-256 digest, and the
-   launcher can find the release. Keep earlier release assets available: source
-   ZIP installations use them to verify their existing code before updating.
+1. Commit distinct changes and update `RELEASE_NOTES.md` with useful user-facing
+   notes. If the notes are unchanged since the previous version, the workflow
+   generates a list from the intervening commit subjects.
+2. Push to `main`. The full synthetic suite and the Windows/Mac desktop-update
+   checks must pass before anything is published. Work in a feature branch when
+   changes are not ready to offer to colleagues.
+3. The workflow advances the patch version automatically (for example, 1.0.2 →
+   1.0.3), commits only `VERSION` and release notes, and atomically pushes that
+   commit plus its tag. An explicit larger version in `VERSION` is respected
+   for a deliberate minor/major release. Existing versions are never reused for
+   different code. A newer source push supersedes an older pending release.
+4. The ZIP and checksum are uploaded to a draft release and their GitHub sizes
+   and SHA-256 digests checked before making it the latest published release.
+   Only then does the desktop updater offer it to colleagues. Existing published
+   assets are never overwritten. An interrupted draft can be completed by
+   rerunning the workflow or choosing **Run workflow → main**.
+5. Fetch/fast-forward the checkout after publication to receive the generated
+   version commit before starting the next change. The workflow uses GitHub's
+   built-in token; its version commit does not trigger a release loop.
+
+The workflow serializes release runs and does not cancel a publication halfway
+through. A stale source commit is skipped; an atomic push refuses to overwrite
+concurrent changes. If a check fails, the previous published release stays
+available. Inspect the failing Actions run, fix the issue, and push again.
+
+Keep earlier release assets available: source-ZIP installations use them to
+verify their existing code before updating.
 
 `tools/build_release.py --output <folder>` packages committed Git blobs, never
 the working directory. Only tracked application/documentation/synthetic fixture

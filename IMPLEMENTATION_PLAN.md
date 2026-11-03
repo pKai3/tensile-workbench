@@ -2,6 +2,33 @@
 
 ## Change notes — 2026-11-04
 
+### Automatic updater releases — implemented
+
+- Each completed push to main runs the full synthetic suite and native
+  Windows/Mac update checks, then advances the patch version and publishes the
+  updater ZIP/checksum. Explicit larger versions and curated notes are retained.
+- Package the committed revision; publish only after uploaded digests match.
+  Serialize releases, skip superseded runs, atomically push version/tag without
+  overwriting concurrent work, and resume interrupted publication without reusing
+  a version for different code. Published releases are left unchanged on retry.
+- Document the workflow and automatically generated version commit for future
+  maintenance. The desktop user's install/restart choice remains unchanged.
+- Local verification: 575 tests passed (7 platform skips), including synthetic
+  release repositories for version ordering, stale runs, retries and archive
+  consistency. Native Windows/Mac checks and the full suite gate publication.
+
+### Plot loading and initial theme — implemented
+
+- Keep a chart's space reserved while its colours are applied; reveal it after
+  the matching colours are rendered. A five-second browser timeout reveals the available
+  plot even if theme communication fails; a later theme update still applies.
+- Observe the entire reserved chart area, not a one-pixel sentinel, and preload
+  1,000 pixels ahead. A throttled viewport check handles nested scrolling
+  containers that clip the observer's margin, plus jumps into a tall card.
+- Browser verification: Dark charts reveal without invoking the fallback,
+  Light/Dark switches complete, and below-screen cards are already loaded before
+  scrolling. Synthetic browser-event checks exercise timeout and late-theme cases.
+
 ### Move-protection placement — implemented
 
 - Place move protection immediately above Sample group order, beneath the

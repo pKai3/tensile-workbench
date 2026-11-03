@@ -33,6 +33,7 @@ See [SETUP.md](SETUP.md) for detailed installation, environment locations and tr
 
 ### Update from the app
 
+New updater releases are published automatically after the release checks pass.
 The Windows control window and Mac Dock app check for published updates in the
 background. Click **Check for updates** to read the release notes, then
 **Install update and restart**. Save pending edits first. The update downloads
