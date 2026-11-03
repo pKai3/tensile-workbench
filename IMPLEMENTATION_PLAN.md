@@ -19,6 +19,9 @@
 - Run the full release suite on macOS, a supported desktop runtime; Linux
   intentionally fails the app's platform gate and is used only for packaging.
   Use the supported Intel Mac runner pool to avoid the ARM capacity queue.
+- Match installed-app isolation in CI with a temporary virtual environment
+  outside the checkout. Check the supported runtime and isolation up front so
+  setup mistakes fail before dependency installation and the full test run.
 
 ### Plot loading and initial theme — implemented
 
