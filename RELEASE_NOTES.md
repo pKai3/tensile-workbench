@@ -1,4 +1,4 @@
-# Next Workbench release
+# Tensile Workbench 1.0.4
 
 - Fix repeated Traitlets layout warnings when building or refreshing controls.
   Control spacing now uses a supported widget property.
