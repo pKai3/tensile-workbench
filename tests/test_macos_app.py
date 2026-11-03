@@ -159,29 +159,59 @@ class MacAppTests(unittest.TestCase):
         self.assertFalse((self.base / 'user/Applications').exists())
 
     @unittest.skipUnless(sys.platform == 'darwin', 'Mac wrapper check')
-    def test_shell_setup_and_app_only_flow(self):
-        for name in ('Setup_Tensile_Workbench.command', 'Install_Tensile_Workbench_App.command',
+    def test_installer_preflight_setup_and_app_flow(self):
+        for name in ('Install_Tensile_Workbench_App.command',
                      'Launch_Tensile_Workbench.command', 'tools/run_macos.sh'):
             subprocess.run(['/bin/zsh', '-n', str(ROOT / name)], check=True)
-        for name in ('Setup_Tensile_Workbench.command', 'Install_Tensile_Workbench_App.command'):
+        for name in ('Install_Tensile_Workbench_App.command',):
             shutil.copyfile(ROOT / name, self.root / name)
         environment = self.base / 'venv'
         fake = environment / 'bin/python'
         fake.parent.mkdir(parents=True)
         fake.write_text('#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\n'
                         'printf "%s\\n" "$@"\n'
-                        'case "$1" in *install_macos_app.py) exit 9;; esac\nexit 0\n')
+                        'case "$1" in *install_macos_app.py) [ "$2" = --check ] && exit 0; exit 9;; esac\nexit 0\n')
         fake.chmod(0o755)
         env = dict(os.environ, TENSILE_ENV_DIR=str(environment))
-        result = subprocess.run(['/bin/zsh', str(self.root / 'Setup_Tensile_Workbench.command')],
-                                env=env, input='\n', text=True, capture_output=True, cwd=self.base)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('Python setup succeeded', result.stdout)
-        self.assertIn(str(self.root / 'tools/install_macos_app.py'), result.stdout)
         result = subprocess.run(['/bin/zsh', str(self.root / 'Install_Tensile_Workbench_App.command')],
                                 env=env, input='\n', text=True, capture_output=True, cwd=self.base)
         self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertLess(result.stdout.index('--check'), result.stdout.index('workbench_environment.py'))
+        self.assertIn('workbench_environment.py\nsetup', result.stdout)
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'Mac installer shell workflow')
+    def test_failed_app_preflight_prevents_package_changes(self):
+        shutil.copyfile(ROOT / 'Install_Tensile_Workbench_App.command', self.root / 'Install_Tensile_Workbench_App.command')
+        environment = self.base / 'venv'
+        fake = environment / 'bin/python'
+        fake.parent.mkdir(parents=True)
+        fake.write_text('#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\nprintf "%s\\n" "$@"\nexit 8\n')
+        fake.chmod(0o755)
+        result = subprocess.run(['/bin/zsh', str(self.root / 'Install_Tensile_Workbench_App.command')],
+                                env=dict(os.environ, TENSILE_ENV_DIR=str(environment)),
+                                input='\n', text=True, capture_output=True, cwd=self.base)
+        self.assertEqual(result.returncode, 8)
+        self.assertIn('--check', result.stdout)
         self.assertNotIn('workbench_environment.py', result.stdout)
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'Mac app launch routing')
+    def test_public_launch_opens_app_without_runtime_setup(self):
+        script = 'source "$1"\nopen_installed_app() { print OPEN_APP; return 0; }\nensure_python() { print UNEXPECTED_SETUP; return 9; }\nrun_macos_main desktop\n'
+        result = subprocess.run(['/bin/zsh', '-c', script, 'test', str(ROOT / 'tools/run_macos.sh')],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'OPEN_APP')
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'Mac app launch routing')
+    def test_launch_refuses_an_app_installed_from_another_checkout(self):
+        app = self.base / 'unrelated.app/Contents'
+        app.mkdir(parents=True)
+        (app / 'Info.plist').write_bytes(plistlib.dumps({'WorkbenchLauncherPath': '/different/Launch_Tensile_Workbench.command'}))
+        script = 'source "$1"\nopen_installed_app "$2"\n'
+        result = subprocess.run(['/bin/zsh', '-c', script, 'test', str(ROOT / 'tools/run_macos.sh'), str(app.parent)],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Install_Tensile_Workbench_App.command', result.stderr)
 
 
 if __name__ == '__main__':

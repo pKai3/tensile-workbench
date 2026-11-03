@@ -152,11 +152,11 @@ exit /b 0
     def test_launch_builds_environment_after_install_and_stops_on_setup_failure(self):
         for code in (0, 1, -1610612730):
             with self.subTest(exit_code=code):
-                result, events = self.launch(-1610612730, 'Launch_Tensile_Workbench.bat',
+                result, events = self.launch(-1610612730, 'Launch_Tensile_Workbench_App.bat',
                                              TW_TEST_SETUP_EXIT=str(code))
                 self.assertEqual(result.returncode & 0xffffffff, code & 0xffffffff)
                 self.assertEqual(events, ['installer', 'action:setup'] +
-                                 (['action:launch'] if code == 0 else []))
+                                 (['action:desktop'] if code == 0 else []))
 
 
 @unittest.skipUnless(sys.platform == 'darwin', 'macOS shell workflow')

@@ -20,7 +20,9 @@ first-install path on a machine with no Python 3.14.
 The persistent Tk control window follows the TEM Workbench launcher layout:
 Start/Stop, Open Workbench and a separate live log. The analytical interface
 continues to run in the user's default browser. This does not bundle Python or
-duplicate the saved project. The existing console launcher still works.
+duplicate the saved project. **Launch_Tensile_Workbench_App.bat** opens this same
+desktop interface. Console-only setup/launch are internal `tools/run_windows.bat`
+actions; see the advanced console workflow in SETUP.md.
 
 ## Files and lifecycle
 

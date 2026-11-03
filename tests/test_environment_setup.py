@@ -214,7 +214,7 @@ class EnvironmentTests(unittest.TestCase):
         with patch.object(environment, 'require_runtime'), \
              patch.dict(os.environ, {'TENSILE_ENV_DIR': str(self.folder)}), \
              patch.object(environment.subprocess, 'run') as run:
-            with self.assertRaisesRegex(RuntimeError, 'Run Setup_Tensile_Workbench'):
+            with self.assertRaisesRegex(RuntimeError, 'Run Install_Tensile_Workbench_App'):
                 environment.main(['launch'], self.root)
         run.assert_not_called()
 
@@ -354,7 +354,7 @@ class EnvironmentTests(unittest.TestCase):
         (self.root / 'requirements.txt').write_text('numpy>=999\n')
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('run Setup again', result.stderr)
+        self.assertIn('rerun the app installer', result.stderr)
 
     def test_preflight_reports_missing_and_cloud_only_files(self):
         environment.check_project_files(self.root)
@@ -394,29 +394,44 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_wrapper_targets_and_mac_shell_syntax(self):
-        for name, action in (('Setup_Tensile_Workbench', 'setup'), ('Launch_Tensile_Workbench', 'launch')):
+        for name, action in (('Install_Tensile_Workbench_App', 'install-app'), ('Launch_Tensile_Workbench_App', 'desktop')):
             self.assertIn('run_windows.bat" ' + action, (ROOT / (name + '.bat')).read_text())
-            self.assertIn('run_macos.sh" ' + action, (ROOT / (name + '.command')).read_text())
+        self.assertIn('run_macos.sh" install-app', (ROOT / 'Install_Tensile_Workbench_App.command').read_text())
+        self.assertIn('run_macos.sh" desktop', (ROOT / 'Launch_Tensile_Workbench.command').read_text())
+        for name in ('Setup_Tensile_Workbench.bat', 'Setup_Tensile_Workbench.command', 'Launch_Tensile_Workbench.bat'):
+            self.assertFalse((ROOT / name).exists())
         if sys.platform == 'darwin':
-            for name in ('Setup_Tensile_Workbench.command', 'Launch_Tensile_Workbench.command', 'tools/run_macos.sh'):
+            for name in ('Install_Tensile_Workbench_App.command', 'Launch_Tensile_Workbench.command', 'tools/run_macos.sh'):
                 subprocess.run(['/bin/zsh', '-n', str(ROOT / name)], check=True)
 
     @unittest.skipUnless(sys.platform == 'darwin', 'Mac wrapper smoke test')
     def test_mac_double_click_wrappers_preserve_spaces_and_failure_codes(self):
         tools = self.root / 'tools'
         tools.mkdir()
-        shutil.copy2(ROOT / 'tools/run_macos.sh', tools / 'run_macos.sh')
-        fake = self.fake_python('darwin')
-        fake.write_text('#!/bin/sh\nif [ "$1" = "-c" ]; then exit 0; fi\nprintf "%s\\n" "$@"\nexit 7\n')
-        fake.chmod(0o755)
-        for name, action in (('Setup_Tensile_Workbench.command', 'setup'),
-                             ('Launch_Tensile_Workbench.command', 'launch')):
+        (tools / 'run_macos.sh').write_text('#!/bin/sh\nprintf "%s\\n" "$@"\nexit 7\n')
+        for name, action, desktop in (('Install_Tensile_Workbench_App.command', 'install-app', ''),
+                                      ('Launch_Tensile_Workbench.command', 'desktop', ''),
+                                      ('Launch_Tensile_Workbench.command', 'launch', '1')):
             shutil.copy2(ROOT / name, self.root / name)
-            env = dict(os.environ, TENSILE_ENV_DIR=str(self.folder))
+            env = dict(os.environ, TENSILE_DESKTOP_APP=desktop)
             result = subprocess.run(['/bin/zsh', str(self.root / name)], cwd=self.base,
                                     env=env, input='\n', capture_output=True, text=True)
             self.assertEqual(result.returncode, 7, result.stderr)
-            self.assertIn(str(self.root / 'workbench_environment.py') + '\n' + action, result.stdout)
+            self.assertEqual(result.stdout.strip(), action)
+
+    def test_retire_only_stock_legacy_wrappers_with_backup(self):
+        import workbench_updates
+        stock = b'@echo off\r\nsetlocal EnableExtensions DisableDelayedExpansion\r\ncall "%~dp0tools\\run_windows.bat" setup\r\nexit /b %ERRORLEVEL%\r\n'
+        (self.root / 'Setup_Tensile_Workbench.bat').write_bytes(stock)
+        custom = self.root / 'Launch_Tensile_Workbench.bat'
+        custom.write_bytes(b'custom launch instructions')
+        with patch.object(workbench_updates, 'update_directory', return_value=self.base / 'update-storage'), redirect_stdout(io.StringIO()):
+            environment.retire_legacy_entrypoints(self.root)
+        self.assertFalse((self.root / 'Setup_Tensile_Workbench.bat').exists())
+        self.assertEqual(custom.read_bytes(), b'custom launch instructions')
+        backups = list((self.base / 'update-storage/legacy-launchers').iterdir())
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), stock)
 
     def test_runtime_rejects_wrong_python_and_free_threaded_build(self):
         for version, disabled in (((3, 12), False), ((3, 13), False), ((3, 15), False), ((3, 14), True)):

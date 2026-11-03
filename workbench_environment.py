@@ -18,6 +18,31 @@ PYTHON_VERSION = (3, 14)
 ENVIRONMENT_TAG = 'py314'
 
 
+def retire_legacy_entrypoints(root):
+    """Clear stock duplicate wrappers left by copying an old ZIP in place.
+
+    Preserve modified scripts and symlinks. Keep exact originals in local update
+    storage, so this installer cleanup remains reversible.
+    """
+    batch = '@echo off\nsetlocal EnableExtensions DisableDelayedExpansion\ncall "%~dp0tools\\run_windows.bat" {action}\nexit /b %ERRORLEVEL%\n'
+    known = {'Setup_Tensile_Workbench.bat': batch.format(action='setup'),
+             'Launch_Tensile_Workbench.bat': batch.format(action='launch'),
+             'Setup_Tensile_Workbench.command': '#!/bin/zsh\nexec /bin/zsh "${0:A:h}/tools/run_macos.sh" setup\n'}
+    for name, expected in known.items():
+        path = Path(root) / name
+        if not path.is_file() or path.is_symlink():
+            continue
+        raw = path.read_bytes()
+        if raw.replace(b'\r\n', b'\n') != expected.encode('utf-8'):
+            print('Kept modified legacy launcher: ' + name, flush=True)
+            continue
+        from workbench_updates import update_directory, atomic_write
+        backup = update_directory(root) / 'legacy-launchers' / (hashlib.sha256(raw).hexdigest()[:12] + '-' + name)
+        atomic_write(backup, raw)
+        if path.read_bytes() == raw:
+            path.unlink()
+
+
 def check_project_files(root):
     if (root / '.tensile-update.lock').exists():
         raise RuntimeError('An update is in progress or needs recovery. Open Check for updates '
@@ -77,7 +102,7 @@ def environment_folder(root=ROOT, system=None, environ=None, user_home=None):
                 raise ValueError('invalid environment path')
             validate_environment_location(folder, Path(root), environ)
         except (ValueError, KeyError, TypeError) as error:
-            raise RuntimeError('The saved update environment is invalid. Use update recovery or rerun Setup.') from error
+            raise RuntimeError('The saved update environment is invalid. Use update recovery or rerun the app installer.') from error
         return folder
     if system == 'darwin':
         base = Path(user_home or Path.home()) / 'Library/Application Support/Tensile Workbench'
@@ -145,7 +170,7 @@ for line in (root / 'requirements.txt').read_text(encoding='utf-8').splitlines()
         continue
     actual = importlib.metadata.version(requirement.name)
     if actual not in requirement.specifier:
-        raise RuntimeError(f'{requirement.name} {actual} does not satisfy {requirement}; run Setup again.')
+        raise RuntimeError(f'{requirement.name} {actual} does not satisfy {requirement}; rerun the app installer.')
 from workbench_project import validate_project, decode_project
 personal_recovery = False
 for name in ('tensile_workbench_defaults.json', 'tensile_workbench.project.json'):
@@ -220,8 +245,7 @@ def setup(folder, root=ROOT, system=None):
         'requirements_sha256': hashlib.sha256((root / 'requirements.txt').read_bytes()).hexdigest(),
         'environment': str(folder),
     }, indent=2) + '\n', encoding='utf-8')
-    print('\nSetup complete. Open Launch_Tensile_Workbench.'
-          + ('bat' if system == 'win32' else 'command') + '.', flush=True)
+    print('\nEnvironment ready. The app installer creates the desktop launcher.', flush=True)
 
 
 def main(argv=None, root=None):
@@ -242,7 +266,7 @@ def main(argv=None, root=None):
         return 0
     python = python_in(folder, sys.platform)
     if not python.is_file():
-        raise RuntimeError('The workbench environment was not found. Run Setup_Tensile_Workbench.'
+        raise RuntimeError('The workbench environment was not found. Run Install_Tensile_Workbench_App.'
                            + ('bat' if sys.platform == 'win32' else 'command') + ' first. See SETUP.md.')
     print('Using environment:', folder, flush=True)
     env = child_environment(folder)

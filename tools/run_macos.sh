@@ -34,7 +34,17 @@ ensure_python() {
     find_python && return 0
     bootstrap_python || return 1
     PYTHON_INSTALLED=1
-    find_python || { print -u2 -r -- 'Python 3.14 was not found after installation. Rerun Setup, or see SETUP.md.'; return 1; }
+    find_python || { print -u2 -r -- 'Python 3.14 was not found after installation. Rerun Install_Tensile_Workbench_App.command, or see SETUP.md.'; return 1; }
+}
+
+open_installed_app() {
+    local app_path="${1:-$HOME/Applications/Tensile Workbench.app}" installed_launcher
+    installed_launcher="$(/usr/libexec/PlistBuddy -c 'Print :WorkbenchLauncherPath' "$app_path/Contents/Info.plist" 2>/dev/null)" || installed_launcher=""
+    if [[ -z "$installed_launcher" || "${installed_launcher:A}" != "$PROJECT_DIR/Launch_Tensile_Workbench.command" ]]; then
+        print -u2 -r -- 'Run Install_Tensile_Workbench_App.command from this folder first.'
+        return 1
+    fi
+    /usr/bin/open "$app_path"
 }
 
 run_macos_main() {
@@ -48,37 +58,40 @@ run_macos_main() {
             exec "$PYTHON_BIN" "$PROJECT_DIR/tools/update_workbench.py" dialog "$@"
         fi
     fi
-    [[ "$action" == setup || "$action" == launch || "$action" == app ]] || return 2
+    if [[ "$action" == desktop ]]; then
+        open_installed_app && return 0
+        result=$?
+        read -r 'reply?Press Return to close. '
+        return "$result"
+    fi
+    [[ "$action" == setup || "$action" == launch || "$action" == app || "$action" == install-app ]] || return 2
     export PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1
     if ensure_python; then
-        # A first launch with no Python also needs the isolated Workbench packages.
-        if [[ "$PYTHON_INSTALLED" == 1 && "$action" != setup ]]; then
+        # Check a running app/build tools before an installer can change packages.
+        if [[ "$action" == install-app ]]; then
+            "$PYTHON_BIN" "$PROJECT_DIR/tools/install_macos_app.py" --check
+            result=$?
+        fi
+        if (( result == 0 )) && [[ "$PYTHON_INSTALLED" == 1 || "$action" == setup || "$action" == install-app ]]; then
             "$PYTHON_BIN" "$PROJECT_DIR/workbench_environment.py" setup
             result=$?
         fi
         if (( result == 0 )); then
-            if [[ "$action" == app ]]; then
+            if [[ "$action" == app || "$action" == install-app ]]; then
                 "$PYTHON_BIN" "$PROJECT_DIR/tools/install_macos_app.py"
                 result=$?
-            else
+            elif [[ "$action" == launch ]]; then
                 "$PYTHON_BIN" "$PROJECT_DIR/workbench_environment.py" "$action"
                 result=$?
-                if [[ "$action" == setup && "$result" == 0 ]]; then
-                    if ! "$PYTHON_BIN" "$PROJECT_DIR/tools/install_macos_app.py"; then
-                        print -r -- 'Python setup succeeded, but the Dock app was not installed/updated.'
-                        print -r -- 'Follow the message above, then run Install_Tensile_Workbench_App.command.'
-                        print -r -- 'Launch_Tensile_Workbench.command remains available.'
-                    fi
-                fi
             fi
         fi
     else
         result=1
     fi
     if (( result != 0 )); then
-        print -r -- 'Setup/launch stopped. Read the message above and SETUP.md.'
+        print -r -- 'Installation/launch stopped. Read the message above and SETUP.md.'
     fi
-    if [[ "$action" == setup || "$action" == app || "$result" != 0 ]]; then
+    if [[ "$action" == setup || "$action" == app || "$action" == install-app || "$result" != 0 ]]; then
         read -r 'reply?Press Return to close. '
     fi
     return "$result"

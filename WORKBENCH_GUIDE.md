@@ -2,9 +2,9 @@
 
 ## Open or update the workbench
 
-1. Clone the repository, or close the app and stop its launcher before pulling an update into an existing checkout. Back up your personal analysis-definition file before the one-time transition from tracked to ignored definitions (see README).
-2. First-time users: run **Setup_Tensile_Workbench.bat** (Windows) or **Setup_Tensile_Workbench.command** (Mac). Then open **Launch_Tensile_Workbench.bat** or **Launch_Tensile_Workbench.command**. Existing users can launch directly; rerun Setup only when dependencies need installing/updating. See [setup instructions](SETUP.md).
-3. The web app opens in your browser and starts automatically. No notebook or kernel commands are needed. Existing users upgrading from notebook-only mode should run Setup once to add Voilà.
+1. Download and extract the latest release, or clone the repository. Existing desktop users can choose **Check for updates → Install update and restart** in the control window.
+2. First-time users: run **Install_Tensile_Workbench_App.bat** (Windows) or **Install_Tensile_Workbench_App.command** (Mac). Then open **Tensile Workbench** using its installed shortcut or Dock icon. Use the installer again for repairs or after a manual Git update. See [installation instructions](SETUP.md).
+3. The web app opens in your browser and starts automatically. No notebook or kernel commands are needed.
 4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 
 The current analysis definitions live in ignored `tensile_workbench.project.json`; machine-specific folder choices live in ignored `.tensile-paths.json`. Generic defaults and three synthetic example groups are bundled, but no research data or generated outputs. Personal definitions are not uploaded: back them up or share them separately if desired. Existing environments can be reused. Use Git commits and tags for code history, not version suffixes on filenames.

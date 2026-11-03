@@ -1,21 +1,17 @@
-# Tensile Workbench 1.0.0
+# Tensile Workbench 1.0.1
 
-This is the first numbered release for the built-in updater. It includes the
-existing analysis tools and saved settings support, plus desktop updates for
-Windows and macOS.
+- One installer and one desktop-app launch file per platform. Removed the
+  duplicate Setup files and Windows console launch file from the main folder.
+- The Mac installer now prepares Python packages and the desktop launcher
+  together, matching Windows. It checks that the app is closed before changing
+  packages. The Mac Launch file opens the installed app.
+- Normal updates use **Check for updates → Install update and restart** in the
+  desktop control window. Console commands remain under `tools` for troubleshooting.
+- Installing over an older ZIP retires unchanged duplicate launch scripts and
+  backs them up. Customised scripts are preserved. Saved settings and data stay
+  in place.
 
-- Both desktop launchers check for published updates in the background.
-- **Check for updates** shows release notes and **Install update and restart**.
-- Windows ZIP installations update without Git or a GitHub account. Clean Git
-  checkouts can advance to the release without overwriting local code changes.
-- Updates preserve saved analyses, specimen overrides, variables, folder
-  preferences, research data and output. Previous code and settings snapshots
-  are retained for recovery. Changed dependencies are prepared in a separate
-  environment; the current environment is kept.
-- Downloads and package files are checked against SHA-256 hashes before use.
-
-**One-time upgrade:** close Workbench, download and extract the
-**Tensile-Workbench-1.0.0.zip** release asset into your existing application
-folder, and rerun the app installer. Git users can pull and rerun the app
-installer. Keep personal settings, data and output folders in place.
-Subsequent numbered releases can be installed from the launcher.
+**Already on 1.0.0?** Install this release from the app's **Check for updates**
+button. For a first installation, download **Tensile-Workbench-1.0.1.zip**, extract
+it and run **Install_Tensile_Workbench_App.bat** (Windows) or
+**Install_Tensile_Workbench_App.command** (Mac).

@@ -9,8 +9,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 APP_NAME = 'Tensile Workbench.app'
 BUNDLE_ID = 'local.tensileworkbench.launcher'
 
@@ -21,9 +24,9 @@ def run(command, **kwargs):
 
 def require_build_tools():
     if sys.platform != 'darwin':
-        raise RuntimeError('This installer is for macOS. Use the Windows Setup/Launch files on Windows.')
+        raise RuntimeError('This installer is for macOS. Use Install_Tensile_Workbench_App.bat on Windows.')
     if int(platform.mac_ver()[0].split('.')[0]) < 13:
-        raise RuntimeError('The Dock app requires macOS 13 or newer. Use Launch_Tensile_Workbench.command instead.')
+        raise RuntimeError('The Dock app requires macOS 13 or newer. See the console workflow in SETUP.md for older systems.')
     try:
         run(['/usr/bin/xcode-select', '-p'], capture_output=True)
         run(['/usr/bin/xcrun', '--find', 'swiftc'], capture_output=True)
@@ -31,7 +34,7 @@ def require_build_tools():
         raise RuntimeError(
             'The Dock app needs Apple Command Line Tools (or Xcode). In Terminal, run '
             'xcode-select --install and finish Apple’s installation, then double-click '
-            'Install_Tensile_Workbench_App.command. The Terminal launcher remains available.'
+            'Install_Tensile_Workbench_App.command. See SETUP.md for the console workflow.'
         ) from error
 
 
@@ -165,12 +168,21 @@ def main():
         print(f'Previous app contents kept at: {backup}', flush=True)
     print('Open the app in Finder and drag it to the Dock. View log opens a live log window.\n'
           'Closing the launcher window leaves it running; Quit stops its server.\n'
-          'The app has not been launched. Data, Python packages and personal settings are unchanged.', flush=True)
+          'The app has not been launched. Data and personal settings are unchanged.', flush=True)
+    from workbench_environment import retire_legacy_entrypoints
+    retire_legacy_entrypoints(ROOT)
     return 0
 
 
 if __name__ == '__main__':
     try:
+        parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument('--check', action='store_true', help='Check prerequisites without installing anything')
+        if parser.parse_args().check:
+            require_build_tools()
+            check_app_stopped()
+            validate_destination(Path.home() / 'Applications' / APP_NAME)
+            raise SystemExit(0)
         raise SystemExit(main())
     except KeyboardInterrupt:
         print('\nApp installation cancelled.', file=sys.stderr)
@@ -179,5 +191,5 @@ if __name__ == '__main__':
         print(f'\nCould not install the Dock app: {error}', file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.stderr:
             print(error.stderr, file=sys.stderr)
-        print('Use Launch_Tensile_Workbench.command in the meantime. See SETUP.md.', file=sys.stderr)
+        print('See SETUP.md for installation help and the console workflow.', file=sys.stderr)
         raise SystemExit(1)

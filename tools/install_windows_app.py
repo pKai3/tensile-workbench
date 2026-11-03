@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from workbench_environment import (child_environment, environment_folder, require_runtime,
-                                   validate_environment_location)
+                                   validate_environment_location, retire_legacy_entrypoints)
 from workbench_updates import POINTER, write_json
 
 APP_FILES = ('tools/windows_app.py', 'tools/windows_server.py', 'tools/windows_process.py',
@@ -55,7 +55,7 @@ def shortcut_environment(root, folder, environ=None):
             raise RuntimeError('Missing ' + name + '. Extract the complete repository before installing.')
     python = folder / 'Scripts/pythonw.exe'
     if not python.is_file():
-        raise RuntimeError('The windowed Python launcher is missing. Run Setup_Tensile_Workbench.bat first.')
+        raise RuntimeError('The windowed Python launcher is missing. Run Install_Tensile_Workbench_App.bat first.')
     env = dict(os.environ if environ is None else environ)
     env.update(TW_SHORTCUT_ROOT=str(root), TW_SHORTCUT_PYTHON=str(python),
                TW_SHORTCUT_ICON=str(root / 'windows/TensileWorkbench.ico'),
@@ -81,6 +81,7 @@ def install(root=ROOT, folder=None):
     # older pinned shortcuts. They may still carry the previous --environment.
     if (Path(root) / POINTER).exists():
         write_json(Path(root) / POINTER, {'schema_version': 1, 'environment': str(Path(folder).resolve())})
+    retire_legacy_entrypoints(root)
     print('Ready. Open Tensile Workbench from your desktop or Start menu.\n'
           'The control window has Start/Stop, Open Workbench and a live View log.\n'
           'Keep the code folder in place; rerun this installer if you move it.', flush=True)
@@ -91,6 +92,5 @@ if __name__ == '__main__':
         install()
     except Exception as error:
         print('Could not install the Windows app:', error, file=sys.stderr)
-        print('Use the complete Python 3.14 installer with Tcl/Tk. '
-              'The existing console launcher remains available; see SETUP.md.', file=sys.stderr)
+        print('Use the complete Python 3.14 installer with Tcl/Tk. See SETUP.md for help.', file=sys.stderr)
         raise SystemExit(1)

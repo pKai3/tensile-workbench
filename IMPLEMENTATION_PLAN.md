@@ -2,6 +2,26 @@
 
 ## Change notes — 2026-11-03
 
+### One install / launch workflow per platform — implemented
+
+- Remove duplicate root Setup wrappers and the Windows console launch wrapper.
+  Keep one **Install_Tensile_Workbench_App** file and one desktop-app launch file
+  per system. Normal updates use **Check for updates** in the app control window.
+  Console setup/server launch remain internal `tools` commands for troubleshooting.
+- Make the Mac installer perform prerequisite checks, Python package setup and
+  app installation in one flow, matching Windows. Check for a running Dock app
+  before changing packages. Make the public Mac Launch file open the installed
+  app for this checkout; preserve the existing owned-server path used by older
+  Dock launchers through `TENSILE_DESKTOP_APP=1` to avoid recursive app launches.
+- For old ZIP installations, retire only exact stock copies of the obsolete
+  wrappers after successful installation. Keep backups outside the checkout;
+  preserve customised scripts and symlinks. Release-based updates already remove
+  obsolete managed files through their normal backup/recovery transaction.
+- Update all user-facing installation/repair guidance and publish version 1.0.1
+  through the built-in updater. Local installer/environment/update checks: 106 tests,
+  five Windows-only skips. Full release suite: 548 tests, seven platform skips;
+  native Windows/Mac release checks gate publication.
+
 ### Desktop release updates — implemented
 
 - Add background stable-release checks, release notes, and **Install update and

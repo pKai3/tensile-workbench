@@ -17,7 +17,7 @@ You need **standard Python 3.14, 64-bit**, a browser, and internet access during
 | System | First installation | Open the app afterwards |
 |---|---|---|
 | Windows | [Install_Tensile_Workbench_App.bat](Install_Tensile_Workbench_App.bat) | **Tensile Workbench** on the desktop or Start menu |
-| macOS | [Setup_Tensile_Workbench.command](Setup_Tensile_Workbench.command) | **Tensile Workbench.app** in your user Applications folder; or [Launch_Tensile_Workbench.command](Launch_Tensile_Workbench.command) |
+| macOS | [Install_Tensile_Workbench_App.command](Install_Tensile_Workbench_App.command) | **Tensile Workbench.app** in your user Applications folder; or [Launch_Tensile_Workbench.command](Launch_Tensile_Workbench.command) |
 
 Setup creates or reuses a separate local Python environment outside the code and data folders. It installs dependencies but does not analyse data. Launch reuses that environment and does not install packages.
 
@@ -25,9 +25,9 @@ Setup creates or reuses a separate local Python environment outside the code and
 
 **Windows desktop app:** the installer sets up the environment and adds shortcuts for your user account. The app stays open with **Start/Stop**, **Open Workbench** and **View log** (live updates and copying). Keep it open or minimised while working; closing the control window asks to stop its server and calculations. Daily use opens no terminal. Python must include **Tcl/Tk**, as provided by the full Python.org installer. You can also use [Launch_Tensile_Workbench_App.bat](Launch_Tensile_Workbench_App.bat). The app uses the code folder in place; rerun the installer if you move it.
 
-**Mac Dock app:** on macOS 13 or newer, Setup also builds a small native launcher in **~/Applications/Tensile Workbench.app**. This requires Apple's Command Line Tools (or Xcode); if missing, Setup explains how to install them. Drag the app to your Dock. It stays open, runs the server without Terminal, and offers **Open Workbench**, **Start/Stop** and **View log** (live updates, auto-scroll and copying). Closing its window leaves the server running; **Quit** stops the server it started. It does not stop an existing Terminal-launched server—stop that with Ctrl-C before switching.
+**Mac Dock app:** on macOS 13 or newer, the installer prepares Python and its packages and builds the native launcher in **~/Applications/Tensile Workbench.app**. This requires Apple's Command Line Tools (or Xcode); the installer explains how to add them if needed. Drag the app to your Dock. It stays open, runs the server without Terminal, and offers **Open Workbench**, **Start/Stop** and **View log** (live updates and copying). Closing its window leaves the server running; **Quit** stops the server it started. The source-folder **Launch_Tensile_Workbench.command** opens this same app.
 
-**Windows and Mac Terminal launcher:** on Windows, [Setup_Tensile_Workbench.bat](Setup_Tensile_Workbench.bat) and [Launch_Tensile_Workbench.bat](Launch_Tensile_Workbench.bat) remain available if you prefer a console. Leave the launcher's terminal window open while working. To stop the app, return to it and press **Ctrl-C**. If the browser does not open, use **Open Workbench** in the desktop app or copy the complete URL printed in the terminal, including its token. There is no notebook to select and no cell to run.
+There is one installer and one app-launch file per system. Install once, open the app for daily work, and use **Check for updates** in its control window for updates. The console workflow is under `tools` for troubleshooting; see [advanced console use](SETUP.md#advanced-console-use). If the browser does not open, use **Open Workbench** in the desktop app.
 
 See [SETUP.md](SETUP.md) for detailed installation, environment locations and troubleshooting.
 
@@ -236,7 +236,7 @@ manually updating a development checkout:
 
 1. Use **Back up now**, then close the app and stop its launcher. Keep an additional off-device copy of important settings.
 2. Pull the new code, or copy the extracted ZIP contents over the existing application folder. **Do not delete the old folder first**; preserve local settings, data and outputs.
-3. Rerun Setup if dependencies changed or Launch reports missing packages. On Mac, run [Install_Tensile_Workbench_App.command](Install_Tensile_Workbench_App.command) to rebuild/update the Dock app without reinstalling packages; Setup also does this. Then launch again.
+3. Rerun your system's **Install_Tensile_Workbench_App** file to check dependencies and refresh the desktop launcher, then open the app again. Routine updates through **Check for updates** handle these steps automatically.
 
 The Mac app points to the checkout/downloaded folder it was built from; it does not contain another copy of the workbench or Python. If you move that folder, rerun **Install_Tensile_Workbench_App.command** from its new location. The launcher source and icon are shared in Git, but installed app bundles, logs, environments and machine-specific paths are not.
 
@@ -246,7 +246,7 @@ For very old installations where personal definitions were tracked by Git, back 
 
 | Problem | What to try |
 |---|---|
-| Missing Python or dependencies | Rerun Setup; it offers the Python 3.14 installer if needed and installs Workbench dependencies |
+| Missing Python or dependencies | Rerun **Install_Tensile_Workbench_App**; it offers Python 3.14 if needed and installs Workbench dependencies |
 | Mac will not execute a .command file | See [Mac permission troubleshooting](SETUP.md#troubleshooting) |
 | No groups appear | Check the Data folder, group subfolders and local file availability; click Reload data |
 | Plots did not change after editing settings | Click Update plots; live preview is normally off |
