@@ -85,9 +85,7 @@ public class Probe {
         shutil.copy2(self.stub, self.bin / 'py.exe')
         shutil.copy2(self.stub, self.bin / 'python.exe')
         shutil.copy2(TOOLS / 'run_windows.bat', self.tools / 'run_windows.bat')
-        for name in ('Install', 'Setup', 'Launch'):
-            suffix = '_App' if name == 'Install' else ''
-            filename = f'{name}_Tensile_Workbench{suffix}.bat'
+        for filename in ('Install_Tensile_Workbench_App.bat', 'Launch_Tensile_Workbench_App.bat'):
             shutil.copy2(ROOT / filename, self.root / filename)
         self.log = self.base / 'events.txt'
         self.installed = self.base / 'installed'
