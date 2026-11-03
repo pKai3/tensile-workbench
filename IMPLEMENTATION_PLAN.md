@@ -16,6 +16,8 @@
 - Local verification: 575 tests passed (7 platform skips), including synthetic
   release repositories for version ordering, stale runs, retries and archive
   consistency. Native Windows/Mac checks and the full suite gate publication.
+- Run the full release suite on macOS, a supported desktop runtime; Linux
+  intentionally fails the app's platform gate and is used only for packaging.
 
 ### Plot loading and initial theme — implemented
 
