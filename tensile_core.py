@@ -130,12 +130,20 @@ def coerce_numeric(df, skip_first_row=False):
     if skip_first_row and df.shape[0] > 0:
         df = df.iloc[1:].reset_index(drop=True)
     for c in df.columns:
-        # Quoted or semicolon-delimited decimal commas are a decimal convention,
-        # not thousands separators. Never strip arbitrary punctuation.
-        values = df[c].astype(str).str.strip()
-        decimal = values.str.fullmatch(r'[+-]?\d+,\d+(?:[eE][+-]?\d+)?')
-        values = values.where(~decimal, values.str.replace(',', '.', regex=False))
-        df[c] = pd.to_numeric(values, errors="coerce")
+        # Ordinary exports already contain valid numeric tokens. Parse those
+        # directly; string cleanup across every reading dominates large imports.
+        values = df[c]
+        numbers = pd.to_numeric(values, errors="coerce")
+        needs_cleanup = numbers.isna() & values.notna()
+        if needs_cleanup.any():
+            text = values.loc[needs_cleanup].astype(str).str.strip()
+            # Preserve decimal commas and unusual whitespace, without stripping
+            # arbitrary punctuation or interpreting thousands separators.
+            decimal = text.str.fullmatch(r'[+-]?\d+,\d+(?:[eE][+-]?\d+)?')
+            if decimal.any():
+                text.loc[decimal] = text.loc[decimal].str.replace(',', '.', regex=False)
+            numbers.loc[needs_cleanup] = pd.to_numeric(text, errors="coerce")
+        df[c] = numbers
     return df
 
 def as_float_series(s):
@@ -646,7 +654,11 @@ def load_and_prepare_curve(csv_path, return_metadata=False, *, strict=False):
         return None
 
     has_units, units_map = detect_units_row(df_raw)
-    df = coerce_numeric(df_raw.copy(), skip_first_row=has_units)
+    # Only these channels enter the analysis. Keep the original text frame for
+    # units and printed-precision checks, but do not convert unused CSV columns.
+    columns = list(dict.fromkeys(column for kind in ('strain', 'stress', 'force', 'time')
+                                 if (column := measurement_column(df_raw, kind)) is not None))
+    df = coerce_numeric(df_raw.loc[:, columns].copy(), skip_first_row=has_units)
 
     try:
         stress = compute_stress_mpa(df, units_map if has_units else {})

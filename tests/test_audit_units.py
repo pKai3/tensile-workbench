@@ -3,11 +3,54 @@ from pathlib import Path
 import unittest
 import numpy as np
 import pandas as pd
-from tensile_core import compute_strain_percent, compute_stress_mpa, load_and_prepare_curve
+from tensile_core import compute_strain_percent, compute_stress_mpa, load_and_prepare_curve, coerce_numeric
 from tensile_units import CurveImportError
 
 
 class AcquisitionUnitsTests(unittest.TestCase):
+    def test_numeric_tokens_keep_locale_whitespace_and_missing_readings(self):
+        tokens = ['0', ' 2.50 ', '\u00a03.5\u00a0', '-1,25', ' +2,5e2 ', '1.25e-3',
+                  '', None, '-----', '1,2,3', '2 MPa', 'NaN', '-inf', 'Infinity']
+        actual = coerce_numeric(pd.DataFrame({'reading': tokens}))['reading'].to_numpy(float)
+        expected = [0., 2.5, 3.5, -1.25, 250., .00125, np.nan, np.nan, np.nan,
+                    np.nan, np.nan, np.nan, -np.inf, np.inf]
+        np.testing.assert_equal(actual, expected)
+
+    def test_import_preserves_all_channels_rows_and_printed_precision(self):
+        import csv
+        import io
+        header = ['Time', 'True Stress (MPa)', 'Engineering Stress (GPa)',
+                  'Strain (mm/mm)', 'Force (N)', 'Unused auxiliary']
+        units = ['(ms)', '(MPa)', '(GPa)', '(mm/mm)', '(N)', '(mm)']
+        stress = ['0.000', '0.100', '0.200', '0.50000', '-----', '0.450', '0.300', '0.050']
+        strain = ['0.000', '0.001', '\u00a00.002\u00a0', '0.003', '0.004', '0.005', '0.006', '0.00700']
+        with tempfile.TemporaryDirectory() as directory:
+            for separator, decimal_comma in [(',', False), (';', True), ('\t', False)]:
+                with self.subTest(separator=separator):
+                    text = io.StringIO(newline='')
+                    writer = csv.writer(text, delimiter=separator)
+                    writer.writerow(['Operator comment', 'Preamble with a\nquoted newline'])
+                    writer.writerow(header)
+                    writer.writerow(units)
+                    for i, (s, e) in enumerate(zip(stress, strain)):
+                        if decimal_comma:
+                            s, e = s.replace('.', ','), e.replace('.', ',')
+                        writer.writerow([i * 20, 999, s, e, i * 30, 'unused text'])
+                    path = Path(directory) / 'sample.csv'
+                    original = text.getvalue().encode('utf-8')
+                    path.write_bytes(original)
+                    x, y, metadata, ids = load_and_prepare_curve(path, return_metadata=True, strict=True)
+                    np.testing.assert_allclose(metadata['time'], np.arange(8) * .02)
+                    np.testing.assert_equal(metadata['force'], np.arange(8) * 30)
+                    np.testing.assert_allclose(metadata['strain'], np.arange(8) * .1)
+                    np.testing.assert_allclose(metadata['stress'], [0, 100, 200, 500, np.nan, 450, 300, 50])
+                    np.testing.assert_equal(ids, [0, 1, 2, 3, 5, 6, 7])
+                    np.testing.assert_allclose(x, metadata['strain'][ids])
+                    np.testing.assert_allclose(y, metadata['stress'][ids])
+                    self.assertAlmostEqual(metadata['check_resolution']['uts'], .01)
+                    self.assertAlmostEqual(metadata['check_resolution']['el'], .001)
+                    self.assertEqual(path.read_bytes(), original)
+
     def test_percent_header_does_not_depend_on_ductility(self):
         for end in (.3, 3., 30.):
             result = compute_strain_percent(pd.DataFrame({'Strain (%)': [0., end]}), {})
