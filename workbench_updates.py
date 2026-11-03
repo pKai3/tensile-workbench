@@ -176,6 +176,8 @@ def validate_manifest(value):
     version(value.get('version'))
     if value.get('python') != '3.14' or not re.fullmatch(r'[a-f0-9]{40}', value.get('commit', '')):
         raise UpdateError('This update requires a different runtime or has no source revision. Use the new installer.')
+    if value.get('update_method') not in (None, 'release', 'git'):
+        raise UpdateError('Unrecognised installed update method.')
     files = value.get('files')
     if not isinstance(files, dict) or not files or len(files) > 5000:
         raise UpdateError('Invalid release file list.')
@@ -241,13 +243,51 @@ def local_path(root, name):
     return path
 
 
+def find_git(system=None, environ=None):
+    """Find Git without requiring a Windows desktop app to inherit a fresh PATH."""
+    system = sys.platform if system is None else system
+    environ = os.environ if environ is None else environ
+    found = shutil.which('git', path=environ.get('PATH', os.defpath))
+    if found:
+        return found
+    if system == 'win32':
+        candidates = []
+        for key in ('ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)'):
+            if environ.get(key):
+                candidates.append(Path(environ[key]) / 'Git/cmd/git.exe')
+        if environ.get('LOCALAPPDATA'):
+            local = Path(environ['LOCALAPPDATA'])
+            candidates.append(local / 'Programs/Git/cmd/git.exe')
+            desktop = local / 'GitHubDesktop'
+            # Desktop keeps versioned bundles; 3.10 must sort after 3.9.
+            bundles = [path for path in desktop.glob('app-*')
+                       if re.fullmatch(r'app-\d+(?:\.\d+)+', path.name)]
+            bundles.sort(key=lambda path: tuple(map(int, path.name[4:].split('.'))), reverse=True)
+            candidates.extend(path / 'resources/app/git/cmd/git.exe' for path in bundles)
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def missing_git_message():
+    return ('Git became unavailable during this checkout update. Close and reopen the '
+            'update window to retry using the release package. Git history will be kept; '
+            'installing Git is not required.')
+
+
 def git(root, *args):
+    executable = find_git()
+    if executable is None:
+        raise UpdateError(missing_git_message())
     try:
-        result = subprocess.run(['git', '-C', str(root), *args], check=True,
+        result = subprocess.run([executable, '-C', str(root), *args], check=True,
                                 capture_output=True, text=True, encoding='utf-8', timeout=120,
                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
                                 env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'})
         return result.stdout.strip()
+    except FileNotFoundError as error:
+        raise UpdateError(missing_git_message()) from error
     except (OSError, subprocess.SubprocessError) as error:
         detail = getattr(error, 'stderr', '') or str(error)
         raise UpdateError('Git could not safely update this checkout. ' + detail.strip()) from error
@@ -275,11 +315,33 @@ def validate_baseline(root, baseline, incoming):
     for name, entry in baseline['files'].items():
         path = local_path(root, name)
         if not path.is_file() or sha256(path.read_bytes()) != entry['sha256']:
-            raise UpdateError('Local code has changed: ' + name + '. Keep a copy or use Git before updating.')
+            raise UpdateError('Local code has changed: ' + name + '. Keep a copy and resolve these edits before updating.')
     for name in incoming['files'].keys() - baseline['files'].keys():
         path = local_path(root, name)
         if path.exists():
             raise UpdateError('A local file occupies a new release path: ' + name + '. It was not overwritten.')
+
+
+def release_baseline(root, baseline):
+    """Recognise Windows text checkout endings, retaining exact local backup hashes.
+
+    Only CRLF-to-LF equivalence with a verified release is accepted. Changes to
+    code, missing files and linked paths still fail the normal baseline check.
+    """
+    files = {name: dict(entry) for name, entry in baseline['files'].items()}
+    for name, entry in files.items():
+        path = local_path(root, name)
+        if not path.is_file():
+            continue
+        raw = path.read_bytes()
+        if sha256(raw) != entry['sha256'] and b'\r\n' in raw and b'\0' not in raw:
+            try:
+                raw.decode('utf-8')
+            except UnicodeDecodeError:
+                continue
+            if sha256(raw.replace(b'\r\n', b'\n')) == entry['sha256']:
+                entry['sha256'] = sha256(raw)
+    return {**baseline, 'files': files}
 
 
 def prepare_update(root, release, folder, progress=lambda text: None):
@@ -287,6 +349,13 @@ def prepare_update(root, release, folder, progress=lambda text: None):
     root, folder = Path(root).resolve(), Path(folder).resolve()
     if (root / LOCK).exists():
         raise UpdateError('A previous update needs recovery. Restore it before updating again.')
+    installed = (validate_manifest(json.loads((root / MANIFEST).read_bytes()))
+                 if (root / MANIFEST).is_file() else None)
+    # A copied .git folder must not impose a Git installation on end users.
+    # Once adopted, release updates stay independent of later PATH/Git changes.
+    is_git = ((root / '.git').exists() and (installed or {}).get('update_method') != 'release'
+              and find_git() is not None)
+    baseline = git_baseline(root) if is_git else installed
     progress('Downloading and verifying the update…')
     directory = update_directory(root) / (release['version'] + '-' + uuid.uuid4().hex[:10])
     directory.mkdir(parents=True, mode=0o700)
@@ -294,9 +363,7 @@ def prepare_update(root, release, folder, progress=lambda text: None):
     download_release(release, archive)
     stage = directory / 'source'
     incoming = unpack_release(archive, stage, release['version'])
-    is_git = (root / '.git').exists()
     if is_git:
-        baseline = git_baseline(root)
         progress('Checking that the release safely advances this Git checkout…')
         git(root, 'fetch', '--no-tags', 'https://github.com/' + REPOSITORY + '.git',
             'refs/tags/' + release['tag'])
@@ -304,9 +371,7 @@ def prepare_update(root, release, folder, progress=lambda text: None):
         if target != incoming['commit']:
             raise UpdateError('The release package does not match its Git tag.')
         git(root, 'merge-base', '--is-ancestor', baseline['commit'], target)
-    elif (root / MANIFEST).is_file():
-        baseline = validate_manifest(json.loads((root / MANIFEST).read_bytes()))
-    else:
+    elif baseline is None:
         # A GitHub source ZIP has no generated inventory. Verify its existing
         # files against its own official release before adopting that inventory.
         progress('Verifying this installation against its original release…')
@@ -314,11 +379,13 @@ def prepare_update(root, release, folder, progress=lambda text: None):
         previous = release_info(fetch_json(API + '/releases/tags/v' + current))
         download_release(previous, directory / 'previous.zip')
         baseline = unpack_release(directory / 'previous.zip', directory / 'previous-source', current)
+    if not is_git:
+        baseline = release_baseline(root, baseline)
     validate_baseline(root, baseline, incoming)
     progress('Checking the updated app and its dependencies…')
     from workbench_environment import child_environment, python_in, validate_environment_location
     candidate = folder
-    if (root / 'requirements.txt').read_bytes() != (stage / 'requirements.txt').read_bytes():
+    if (root / 'requirements.txt').read_text(encoding='utf-8') != (stage / 'requirements.txt').read_text(encoding='utf-8'):
         candidate = directory / 'runtime' / 'venv'
         validate_environment_location(candidate, root)
         progress('Preparing new dependencies; the current environment is being kept…')
@@ -396,7 +463,7 @@ def apply_update(plan, activate=lambda plan: None, restore_launcher=lambda plan:
                 target.chmod(entry['mode'])
             for name in plan['baseline']['files'].keys() - plan['incoming']['files'].keys():
                 local_path(root, name).unlink()
-        write_json(root / MANIFEST, plan['incoming'])
+        write_json(root / MANIFEST, {**plan['incoming'], 'update_method': 'git' if plan['git'] else 'release'})
         write_json(root / POINTER, {'schema_version': 1, 'environment': plan['environment']})
         update_state(plan, 'activating')
         activate(plan)

@@ -345,6 +345,85 @@ class UpdateTests(UpdateFixture):
         self.assertTrue(fetch.call_args.args[0].endswith('/tags/v1.0.0'))
         self.assertFalse((self.root / updates.MANIFEST).exists())
 
+    def test_copied_git_folder_updates_without_git_and_keeps_history_and_settings(self):
+        history = self.root / '.git/objects/example'
+        history.parent.mkdir(parents=True)
+        history.write_bytes(b'synthetic Git history - never replaced')
+        personal = self.root / 'tensile_workbench.project.json'
+        personal.write_bytes(b'{"synthetic": "personal settings"}')
+        path = self.base / 'update.zip'
+        archive(path, self.incoming)
+        with patch.object(updates, 'find_git', return_value=None), \
+             patch.object(updates, 'git', side_effect=AssertionError('Git must not run')), \
+             patch.object(updates, 'update_directory', return_value=self.base / 'prepared'), \
+             patch.object(updates, 'download_release', side_effect=lambda release, target: shutil.copyfile(path, target)), \
+             patch.object(updates, 'run_logged'):
+            plan = updates.prepare_update(self.root, {'version': '1.1.0'}, self.folder)
+            self.assertFalse(plan['git'])
+            updates.apply_update(plan)
+            self.assertEqual(updates.installed_version(self.root), '1.1.0')
+            self.assertEqual(json.loads((self.root / updates.MANIFEST).read_bytes())['update_method'], 'release')
+            self.assertEqual(history.read_bytes(), b'synthetic Git history - never replaced')
+            self.assertEqual(personal.read_bytes(), b'{"synthetic": "personal settings"}')
+            # Installing Git later must not silently switch this copy's updater.
+            newer = {**self.incoming, 'VERSION': b'1.2.0\n'}
+            archive(path, newer, '1.2.0')
+            with patch.object(updates, 'find_git', side_effect=AssertionError('Release mode needs no Git discovery')):
+                next_plan = updates.prepare_update(self.root, {'version': '1.2.0'}, self.folder)
+            self.assertFalse(next_plan['git'])
+            updates.rollback_update(plan)
+        self.assertEqual(updates.installed_version(self.root), '1.0.0')
+        self.assertEqual(history.read_bytes(), b'synthetic Git history - never replaced')
+        self.assertEqual(personal.read_bytes(), b'{"synthetic": "personal settings"}')
+
+    def test_copied_checkout_without_inventory_verifies_release_without_git(self):
+        (self.root / updates.MANIFEST).unlink()
+        pointer = self.root / '.git'
+        pointer.write_bytes(b'gitdir: /unavailable/original/checkout\n')
+        new_zip, old_zip = self.base / 'new.zip', self.base / 'old.zip'
+        archive(new_zip, self.incoming)
+        archive(old_zip, self.old, '1.0.0')
+        def download(release, target):
+            shutil.copyfile(old_zip if release['version'] == '1.0.0' else new_zip, target)
+        with patch.object(updates, 'find_git', return_value=None), \
+             patch.object(updates, 'git', side_effect=AssertionError('Git must not run')), \
+             patch.object(updates, 'update_directory', return_value=self.base / 'prepared'), \
+             patch.object(updates, 'download_release', side_effect=download), \
+             patch.object(updates, 'fetch_json'), \
+             patch.object(updates, 'release_info', return_value={'version': '1.0.0'}), \
+             patch.object(updates, 'run_logged'):
+            plan = updates.prepare_update(self.root, {'version': '1.1.0'}, self.folder)
+            updates.apply_update(plan)
+        self.assertFalse(plan['git'])
+        self.assertEqual(updates.installed_version(self.root), '1.1.0')
+        self.assertEqual(pointer.read_bytes(), b'gitdir: /unavailable/original/checkout\n')
+
+    def test_windows_line_endings_adopt_safely_but_code_edits_still_block(self):
+        (self.root / '.git').mkdir()
+        for name in ('app.py', 'requirements.txt'):
+            target = self.root / name
+            target.write_bytes(target.read_bytes().replace(b'\n', b'\r\n'))
+        original = (self.root / 'app.py').read_bytes()
+        path = self.base / 'update.zip'
+        archive(path, self.incoming)
+        with patch.object(updates, 'find_git', return_value=None), \
+             patch.object(updates, 'git', side_effect=AssertionError('Git must not run')), \
+             patch.object(updates, 'update_directory', return_value=self.base / 'prepared'), \
+             patch.object(updates, 'download_release', side_effect=lambda release, target: shutil.copyfile(path, target)), \
+             patch.object(updates, 'run_logged') as run:
+            plan = updates.prepare_update(self.root, {'version': '1.1.0'}, self.folder)
+            self.assertEqual(plan['environment'], str(self.folder))
+            self.assertEqual(len(run.call_args_list), 1)  # No dependency reinstall for line endings.
+            self.assertEqual(plan['baseline']['files']['app.py']['sha256'], updates.sha256(original))
+            updates.apply_update(plan)
+            updates.rollback_update(plan)
+            self.assertEqual((self.root / 'app.py').read_bytes(), original)
+            (self.root / 'app.py').write_bytes(original + b'# local edit\r\n')
+            with self.assertRaisesRegex(updates.UpdateError, 'Local code has changed: app.py'):
+                updates.prepare_update(self.root, {'version': '1.1.0'}, self.folder)
+        self.assertEqual(updates.installed_version(self.root), '1.0.0')
+        self.assertTrue((self.root / 'app.py').read_bytes().endswith(b'# local edit\r\n'))
+
     def test_reopening_update_window_clears_stale_shutdown_request(self):
         from unittest.mock import Mock
         with patch.object(update_bridge, 'update_directory', return_value=self.base / 'sessions'):
@@ -468,6 +547,34 @@ class UpdateTests(UpdateFixture):
         wait.assert_called_once_with(session)
         restart.assert_called_once()
         self.assertEqual(updates.installed_version(self.root), '1.1.0')
+
+
+class GitDiscoveryTests(unittest.TestCase):
+    def test_existing_path_is_preferred(self):
+        with patch.object(updates.shutil, 'which', return_value='/existing/git'):
+            self.assertEqual(updates.find_git('win32', {}), '/existing/git')
+
+    def test_optional_windows_git_locations_and_numeric_desktop_versions(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(updates.shutil, 'which', return_value=None):
+            base = Path(temporary)
+            local = base / 'Local App Data'
+            older = local / 'GitHubDesktop/app-3.9.0/resources/app/git/cmd/git.exe'
+            newer = local / 'GitHubDesktop/app-3.10.0/resources/app/git/cmd/git.exe'
+            for path in (older, newer):
+                path.parent.mkdir(parents=True)
+                path.write_bytes(b'synthetic discovery fixture')
+            (local / 'GitHubDesktop/app-3.11.0').mkdir()  # Incomplete bundle is skipped.
+            env = {'LOCALAPPDATA': str(local), 'ProgramFiles': str(base / 'Program Files')}
+            self.assertEqual(updates.find_git('win32', env), str(newer))
+            normal = base / 'Program Files/Git/cmd/git.exe'
+            normal.parent.mkdir(parents=True)
+            normal.write_bytes(b'synthetic discovery fixture')
+            self.assertEqual(updates.find_git('win32', env), str(normal))
+            self.assertIsNone(updates.find_git('darwin', env))
+            normal.unlink()
+            older.unlink()
+            newer.unlink()
+            self.assertIsNone(updates.find_git('win32', env))
 
 
 @unittest.skipUnless(shutil.which('git'), 'Git needed for checkout/update regression fixtures')

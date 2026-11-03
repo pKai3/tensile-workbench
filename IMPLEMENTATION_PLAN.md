@@ -2,6 +2,27 @@
 
 ## Change notes — 2026-11-03
 
+### Release updates without Git on colleagues' PCs — implemented
+
+- A copied `.git` directory/file must not require colleagues to install Git.
+  When Git is unavailable, verify the application against its release manifest
+  (or download its original published release) and use the existing file-update
+  transaction. Keep Git metadata, personal settings and research files intact.
+- Record the release-update method in the installed manifest, so later Git/PATH
+  changes cannot silently switch that installation back to checkout updates.
+  Available Git checkouts retain clean/fast-forward checks; discover optional
+  Windows/GitHub Desktop installations outside PATH.
+- Accept only verified CRLF/LF equivalence for UTF-8 text during adoption; keep
+  exact original hashes for backup and rollback. Code edits, missing files,
+  unsafe paths and conflicting new files still block replacement. Line endings
+  alone do not rebuild the dependency environment.
+- Publish 1.0.2 and document the one-time manual repair needed by already blocked
+  older updaters. No Git installation or Git-history deletion is required.
+- Verification: 38 focused updater checks pass, including no-Git adoption with
+  and without a manifest, update/rollback preservation, Windows line endings,
+  edit rejection and persistence of release mode. Full suite: 553 tests,
+  seven platform skips. Native Windows/Mac checks gate the release.
+
 ### One install / launch workflow per platform — implemented
 
 - Remove duplicate root Setup wrappers and the Windows console launch wrapper.

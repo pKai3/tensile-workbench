@@ -100,11 +100,20 @@ beyond Python 3.14 require the new installer instead of an automatic update.
   is needed when the application folder is writable. Use the named
   **Tensile-Workbench-x.y.z.zip** release asset. A GitHub-generated source ZIP can
   also update once its files are verified against its original numbered release.
+- **Copied folders without Git installed:** a leftover `.git` folder does not
+  require installing Git. The updater verifies the existing files against the
+  installed manifest or original published release and installs the new release
+  directly. It retains Git metadata unchanged, together with personal settings
+  and data. That installation keeps using release updates if Git is installed
+  later. Windows text line-ending differences are accepted; code edits are not.
 - **Git checkouts on either system:** updates advance to the official release
   commit only when it is a fast-forward and tracked files have no local changes.
   Untracked files that collide with new release files also stop the update.
   A development branch ahead of/diverged from the release needs manual Git
   handling. The updater never runs a destructive reset or discards local edits.
+  This route is used when Git is available and the installation has not adopted
+  release updates. Git retained by a copied installation is a historical copy;
+  release updates do not advance its branch or commits.
 - **Mac:** the updater rebuilds the native launcher using the same Command Line
   Tools needed for its initial installation. It compiles before stopping the app.
 - **Preserved:** personal project settings, overrides, variables, folder choices,
@@ -139,6 +148,11 @@ These update backups are separate from the automatic settings-history vault.
 release's source into the existing code folder and rerun the app installer.
 Preserve personal project/path settings, data and output; do not delete the whole
 folder. Subsequent numbered releases can be installed from the launcher.
+
+**Older updater reports WinError 2:** this is fixed in version 1.0.2. Close the app,
+copy that release ZIP into the existing application folder and rerun the app
+installer once. Preserve personal settings, data and output. Do not install Git
+just to repair this error.
 
 ### Manual setup and Python upgrades
 
