@@ -35,11 +35,11 @@ class PlotView:
                               max_height='78vh', overflow='auto'))
         self.focus = w.VBox([
             w.HBox([self.back, self.choice, self.zoom, self.fit],
-                   layout=w.Layout(flex_flow='row wrap', gap='8px', align_items='center')),
+                   layout=w.Layout(flex_flow='row wrap', grid_gap='8px', align_items='center')),
             w.HTML('Zoom enlarges the image only; scroll to inspect it. Axes and exports are unchanged.'),
             self.viewport,
         ], layout=w.Layout(display='none', width='100%'))
-        self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', gap='12px'))
+        self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', grid_gap='12px'))
         self.hint = w.HTML('Click a plot to enlarge it. Vector previews stay sharp at any size.')
         self.ui = w.VBox([self.toolbar, self.hint, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
         self.ui.add_class(self._scope)

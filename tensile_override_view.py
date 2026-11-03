@@ -123,7 +123,7 @@ class SavedOverridesView:
         self.count, self.message, self.confirm_message = w.HTML(), w.HTML(), w.HTML()
         self.confirm_remove = w.Button(description='Confirm remove', button_style='danger', layout=compact())
         self.cancel = w.Button(description='Cancel', layout=compact())
-        row = lambda items: w.HBox(items, layout=w.Layout(flex_flow='row wrap', gap='8px', align_items='center'))
+        row = lambda items: w.HBox(items, layout=w.Layout(flex_flow='row wrap', grid_gap='8px', align_items='center'))
         self.confirmation = w.VBox([self.confirm_message, row([self.confirm_remove, self.cancel])],
                                    layout=w.Layout(display='none'))
         self.ui = w.VBox([

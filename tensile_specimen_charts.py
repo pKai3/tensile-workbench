@@ -16,7 +16,7 @@ class SpecimenChartsView:
         self.groups, self.group_boxes, self._selected_groups = [], {}, None
         self.all_groups = w.Checkbox(description='All sample groups', value=True, indent=False,
                                     layout=w.Layout(width='auto'))
-        self.group_rows = w.VBox(layout=w.Layout(width='100%', gap='2px'))
+        self.group_rows = w.VBox(layout=w.Layout(width='100%', grid_gap='2px'))
         self.group_note = w.HTML()
         self.group_ui = w.VBox([self.all_groups, self.group_rows, self.group_note])
         self.all_groups.observe(self._all_groups_changed, names='value')

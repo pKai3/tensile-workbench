@@ -1257,7 +1257,7 @@ class TensileWorkbench:
             settings.set_title(0, "Settings")
             self.plot_settings[family] = settings
             self.plot_selectors[family] = w.VBox([self.family_boxes[family], settings], layout=w.Layout(width="100%", min_width="0"))
-        self.plot_options = w.VBox(list(self.plot_selectors.values()), layout=w.Layout(width="100%", max_width="980px", gap="8px"))
+        self.plot_options = w.VBox(list(self.plot_selectors.values()), layout=w.Layout(width="100%", max_width="980px", grid_gap="8px"))
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.analysis_ui = w.VBox([
@@ -1344,7 +1344,7 @@ class TensileWorkbench:
             self.status.value = "Saved definitions restored. Click <b>Update plots</b> when ready."
 
     def _row(self, children):
-        return self.w.HBox(children, layout=self.w.Layout(flex_flow="row wrap", gap="6px"))
+        return self.w.HBox(children, layout=self.w.Layout(flex_flow="row wrap", grid_gap="6px"))
 
     def _check(self, key, label):
         self.controls[key] = self.w.Checkbox(description=label, indent=False, layout=self.w.Layout(width="auto"))

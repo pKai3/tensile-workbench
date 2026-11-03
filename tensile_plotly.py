@@ -378,7 +378,7 @@ class PlotlyView:
         w = widgets
         self._items, self._owned, self._charts, self._frames = [], [], {}, {}
         self._focused_key = None
-        self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', gap='12px'))
+        self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', grid_gap='12px'))
         self.hint = w.HTML('Drag to zoom; use the plot toolbar to pan or reset. Click legend entries to hide/show groups. '
                           'Dense lines show every Nth reading; use the specimen inspector for full detail. '
                           'Calculations and publication exports use the full data.')

@@ -27,7 +27,7 @@ class MoveReview:
             widgets.HBox([self.confirm_forget, self.cancel_forget])], layout=widgets.Layout(display='none'))
         self.ui = widgets.VBox([
             widgets.HBox([self.summary, self.check], layout=widgets.Layout(
-                flex_flow='row wrap', align_items='center', gap='8px')),
+                flex_flow='row wrap', align_items='center', grid_gap='8px')),
             self.message, self.confirmation, self.rows], layout=widgets.Layout(width='100%'))
 
     @busy('Checking for moved sample groups…')

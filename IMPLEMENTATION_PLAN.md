@@ -2,6 +2,16 @@
 
 ## Change notes — 2026-11-04
 
+### Repeated layout warnings — implemented
+
+- Replace unsupported `Layout(gap=...)` arguments with the supported `grid_gap`
+  trait across control rows, group selection/review, overrides and plot galleries.
+  The browser accepts this as the CSS gap alias for flex and grid layouts.
+- Treat Traitlets deprecations as errors in release verification so unsupported
+  widget arguments fail checks instead of producing repeated warning output.
+- Verification: the full 575-test synthetic suite passes with Traitlets
+  deprecations promoted to errors (seven platform skips).
+
 ### Automatic updater releases — implemented
 
 - Each completed push to main runs the full synthetic suite and native
@@ -22,6 +32,8 @@
 - Match installed-app isolation in CI with a temporary virtual environment
   outside the checkout. Check the supported runtime and isolation up front so
   setup mistakes fail before dependency installation and the full test run.
+- Verify draft assets through their release ID/API URL; GitHub's published-tag
+  endpoint returns 404 while a release remains a draft.
 
 ### Plot loading and initial theme — implemented
 

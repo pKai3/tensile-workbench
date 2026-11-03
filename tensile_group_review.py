@@ -129,7 +129,7 @@ class GroupCurveReview:
             self.view,
             widgets.HBox([self.group, self.axis, self.show_excluded], layout=widgets.Layout(flex_flow='row wrap')),
             widgets.HBox([self.marker_heading, *self.markers.values()],
-                         layout=widgets.Layout(flex_flow='row wrap', align_items='center', gap='12px')),
+                         layout=widgets.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
             self.notice, self.status, widgets.HTML('<b>Specimens · click to highlight</b>'),
             self.legend, self.plot, self.inspect, self.table], layout=widgets.Layout(width='100%', min_width='0'))
         for control in (self.group, self.axis, self.show_excluded):

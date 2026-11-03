@@ -83,7 +83,7 @@ class GroupCheckboxes:
         self.ui = widgets.VBox([
             widgets.HTML('<b>Sample groups</b>'), compact, self.grid,
             widgets.HBox([self.summary, self.clear_button], layout=widgets.Layout(
-                width='100%', flex_flow='row wrap', gap='12px', align_items='center')),
+                width='100%', flex_flow='row wrap', grid_gap='12px', align_items='center')),
         ], layout=widgets.Layout(width='100%', min_width='0'))
         selection.observe(self._options_changed, names='options')
         selection.observe(self._value_changed, names='value')
@@ -128,7 +128,7 @@ class GroupCheckboxes:
                 tooltip='Expand/collapse folder', layout=w.Layout(width='22px', min_width='22px',
                                                                   height='24px', margin='0', padding='0'))
             toggle.on_click(lambda button, p=branch_path, b=body: self._toggle_folder(p, b, button))
-            header = w.HBox([toggle, checkbox], layout=w.Layout(align_items='center', min_width='0', gap='4px'))
+            header = w.HBox([toggle, checkbox], layout=w.Layout(align_items='center', min_width='0', grid_gap='4px'))
             branch = w.VBox([header, body], layout=w.Layout(width='100%', min_width='0', margin='3px 0'))
             self.folder_boxes[branch_path] = checkbox
             self.folder_members[branch_path] = tuple(descendants)

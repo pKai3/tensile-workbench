@@ -41,7 +41,7 @@ jobs:
           MPLBACKEND: Agg
           MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
           TENSILE_WORKBENCH_BACKUP_DIR: ${{ runner.temp }}/workbench-backups
-        run: python -m unittest discover -s tests -v
+        run: python -W error::DeprecationWarning:traitlets.traitlets -m unittest discover -s tests -v
   publish:
     needs: [verify, tests]
     runs-on: ubuntu-latest
@@ -84,7 +84,8 @@ jobs:
             gh release create "$RELEASE_TAG" --verify-tag --draft --title "Tensile Workbench $RELEASE_TAG" --notes-file RELEASE_NOTES.md
           fi
           gh release upload "$RELEASE_TAG" dist/*.zip dist/*.sha256 --clobber
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release-assets.json"
+          release_api_url=$(gh release view "$RELEASE_TAG" --json apiUrl --jq .apiUrl)
+          gh api "$release_api_url" > "$RUNNER_TEMP/release-assets.json"
           python - "$RUNNER_TEMP/release-assets.json" <<'PY'
           import hashlib, json, sys
           from pathlib import Path
