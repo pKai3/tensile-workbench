@@ -328,7 +328,8 @@ class GroupCurveReview:
         def resize(width):
             if token == self.generation and self.figure is figure:
                 figure.update_layout(width=max(200, int(width)), autosize=False)
-        probe = width_probe(resize, on_theme=lambda theme: apply_plot_theme(figure, theme))
+        self.plot.add_class('tw-plot-theme-host')
+        probe = width_probe(resize, on_theme=lambda theme: apply_plot_theme(figure, theme), charts=(figure,))
         self._owned.append(probe)
         self.legend.children = tuple(legend)
         self.plot.children = (probe, figure)

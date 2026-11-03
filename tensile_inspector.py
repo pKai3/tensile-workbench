@@ -1268,7 +1268,8 @@ class SpecimenInspector:
             if self.chart is None:
                 self.chart = go.FigureWidget(fig)
                 self.chart.layout.on_change(self._dragged, 'shapes')
-                self._probe = width_probe(self._resize, on_theme=self._apply_theme)
+                self.chart_box.add_class('tw-plot-theme-host')
+                self._probe = width_probe(self._resize, on_theme=self._apply_theme, charts=(self.chart,))
                 self.chart_box.children = (self._probe, self.chart)
             else:
                 if keep_zoom:

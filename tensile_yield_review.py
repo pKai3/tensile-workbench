@@ -231,8 +231,10 @@ class GroupYieldReview:
                           overflow='hidden', padding='10px', border='1px solid var(--tw-border,#cbd5e1)'))
             self._owned.extend([heading, *content, button, card])
             cards.append(card)
+        self.plot.add_class('tw-plot-theme-host')
         probe = width_probe(self._resize, on_theme=lambda theme:
-            [apply_plot_theme(entry['figure'], theme) for entry in self.entries])
+            [apply_plot_theme(entry['figure'], theme) for entry in self.entries],
+            charts=tuple(entry['figure'] for entry in self.entries))
         self._owned.append(probe)
         self.grid.children = tuple(cards)
         self.plot.children = (probe, self.grid)

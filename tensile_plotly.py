@@ -8,10 +8,12 @@ from tensile_display import preview_indices
 from tensile_plot_theme import apply_plot_theme
 
 
-def width_probe(on_resize, *, on_theme=None):
+def width_probe(on_resize, *, on_theme=None, charts=()):
     """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
+    for chart in charts:
+        chart.add_class('tw-themed-plot')
     class WidthProbe(anywidget.AnyWidget):
         pixels = traitlets.Int(0).tag(sync=True)
         theme = traitlets.Enum(['light', 'dark'], default_value='light').tag(sync=True)
@@ -33,14 +35,46 @@ def width_probe(on_resize, *, on_theme=None):
           };
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
+          let fallback, paint, drawing;
+          const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
+          const painted = () => {
+            const theme=document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
+            plots().forEach(plot => {
+              const svg=plot.querySelector('.main-svg');
+              const background=svg && getComputedStyle(svg).backgroundColor;
+              const expected=theme === 'dark' ? 'rgb(18, 28, 40)' : 'rgb(255, 255, 255)';
+              if(background === expected) {
+                plot.classList.remove('tw-theme-light','tw-theme-dark');
+                plot.classList.add('tw-theme-' + theme);
+              }
+            });
+          };
+          const watchPaint = () => {
+            const host=el.closest('.tw-plot-theme-host');
+            if(!el.isConnected || !host) {paint=requestAnimationFrame(watchPaint); return;}
+            drawing=new MutationObserver(() => {
+              cancelAnimationFrame(paint); paint=requestAnimationFrame(painted);
+            });
+            drawing.observe(host,{subtree:true,childList:true,attributes:true,attributeFilter:['style']});
+            painted();
+          };
           const appearance = () => {
             const theme = document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
+            clearTimeout(fallback); cancelAnimationFrame(paint); drawing?.disconnect();
+            plots().forEach(plot => plot.classList.remove('tw-theme-fallback','tw-theme-light','tw-theme-dark'));
+            watchPaint();
+            fallback = setTimeout(() => {
+              cancelAnimationFrame(paint); drawing?.disconnect(); painted();
+              plots().forEach(plot => {
+                if(!plot.classList.contains('tw-theme-' + theme)) plot.classList.add('tw-theme-fallback');
+              });
+            }, 5000);
             if(theme !== model.get('theme')) {model.set('theme',theme); model.save_changes();}
           };
           const themes = new MutationObserver(appearance);
           themes.observe(document.documentElement,{attributes:true,attributeFilter:['data-tw-theme']});
           appearance();
-          return () => {observer.disconnect(); themes.disconnect(); cancelAnimationFrame(frame);};
+          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback);};
         }};
         """
     probe = WidthProbe()
@@ -58,14 +92,41 @@ def visibility_probe(on_visible):
         visible = traitlets.Bool(False).tag(sync=True)
         _esm = """
         export default {render({model, el}) {
-          el.style.height='1px'; el.style.minHeight='1px'; el.style.margin='0';
-          const observer=new IntersectionObserver(entries => {
-            if(entries.some(entry => entry.isIntersecting)) {
-              observer.disconnect(); model.set('visible',true); model.save_changes();
-            }
-          }, {rootMargin:'300px'});
-          observer.observe(el);
-          return () => observer.disconnect();
+          el.style.height='1px'; el.style.minHeight='1px'; el.style.margin='0'; el.style.width='100%';
+          let observer, frame, done=false, target;
+          const stop = () => {
+            observer?.disconnect(); cancelAnimationFrame(frame);
+            window.removeEventListener('scroll', schedule, true);
+            window.removeEventListener('resize', schedule);
+          };
+          const reveal = () => {
+            if(done) return;
+            done=true; stop();
+            model.set('visible',true); model.save_changes();
+          };
+          const nearby = () => {
+            const rect=target.getBoundingClientRect();
+            if(rect.width > 0 && rect.height > 0 && rect.top < window.innerHeight + 1000 && rect.bottom > -1000) reveal();
+          };
+          const schedule = () => {cancelAnimationFrame(frame); frame=requestAnimationFrame(nearby);};
+          const attach = () => {
+            // Observe the entire reserved chart area. A one-pixel sentinel can
+            // be missed when scrolling/jumping into the middle of a tall card.
+            target=el.closest('.tw-lazy-plot');
+            if(!el.isConnected || !target) {frame=requestAnimationFrame(attach); return;}
+            if(typeof IntersectionObserver === 'undefined') {reveal(); return;}
+            observer=new IntersectionObserver(entries => {
+              if(entries.some(entry => entry.isIntersecting)) reveal();
+            }, {rootMargin:'1000px 0px'});
+            observer.observe(target);
+            // Widget scroll containers can clip IntersectionObserver's margin.
+            // This throttled viewport check also covers those nested scrollers.
+            window.addEventListener('scroll', schedule, true);
+            window.addEventListener('resize', schedule);
+            nearby();
+          };
+          attach();
+          return () => {done=true; stop();};
         }};
         """
     probe = VisibilityProbe()
@@ -356,6 +417,8 @@ class PlotlyView:
             self._owned.append(heading)
             if item.get('result') is not None:
                 frame = self.w.VBox(layout=self.w.Layout(width='100%', min_width='0'))
+                frame.add_class('tw-lazy-plot')
+                frame.add_class('tw-plot-theme-host')
                 self._frames[item['key']] = frame
                 probe = visibility_probe(lambda key=item['key'], owner=frame: self._ensure_chart(key, owner))
                 placeholder = self.w.HTML('Plot loads when visible.', layout=self.w.Layout(
@@ -401,7 +464,7 @@ class PlotlyView:
                              'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
             self._charts[key] = chart
             probe = width_probe(lambda width: self._resize(key, width),
-                                on_theme=lambda theme: apply_plot_theme(chart, theme))
+                                on_theme=lambda theme: apply_plot_theme(chart, theme), charts=(chart,))
             title = text_block(self.w, figure.axes[0].get_title(), title=True)
             notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
             caption = text_block(self.w, notes)

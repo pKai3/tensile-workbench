@@ -233,8 +233,9 @@ class ComparisonView:
                 self.charts[prop] = chart
                 cards.append(card)
             self.grid.children = tuple(cards)
+            self.box.add_class('tw-plot-theme-host')
             self.probe = width_probe(self._resize, on_theme=lambda theme:
-                [apply_plot_theme(chart, theme) for chart in self.charts.values()])
+                [apply_plot_theme(chart, theme) for chart in self.charts.values()], charts=tuple(self.charts.values()))
             self._owned.append(self.probe)
             self.box.children = (self.probe, self.grid)
             self._resize(1200)
