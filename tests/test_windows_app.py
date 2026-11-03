@@ -218,6 +218,14 @@ class WindowsInstallerTests(unittest.TestCase):
                 installer.install(self.root, self.folder)
         self.assertEqual(run.call_count, 1)
 
+    def test_custom_reinstall_updates_selection_used_by_old_pinned_shortcuts(self):
+        pointer = self.root / installer.POINTER
+        pointer.write_text(json.dumps({'schema_version': 1, 'environment': str(self.base / 'previous')}))
+        with patch.object(installer, 'require_runtime'), patch.object(installer.sys, 'platform', 'win32'), \
+             patch.object(installer.subprocess, 'run'), redirect_stdout(io.StringIO()):
+            installer.install(self.root, self.folder)
+        self.assertEqual(json.loads(pointer.read_bytes())['environment'], str(self.folder))
+
     def test_missing_app_file_is_actionable_and_icon_contains_multiple_sizes(self):
         (self.root / 'tools/windows_server.py').unlink()
         with self.assertRaisesRegex(RuntimeError, 'windows_server.py'):

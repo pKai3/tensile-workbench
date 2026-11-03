@@ -1,0 +1,47 @@
+name: Desktop update checks
+
+on:
+  push:
+    paths:
+      - 'workbench_updates.py'
+      - 'workbench_environment.py'
+      - 'tools/update*.py'
+      - 'tools/build_release.py'
+      - 'tools/*app.py'
+      - 'macos/Launcher.swift'
+      - 'tests/test_updates.py'
+      - '.github/workflows/updates.yml'
+  pull_request:
+    paths:
+      - 'workbench_updates.py'
+      - 'workbench_environment.py'
+      - 'tools/update*.py'
+      - 'tools/build_release.py'
+      - 'tools/*app.py'
+      - 'macos/Launcher.swift'
+      - 'tests/test_updates.py'
+      - '.github/workflows/updates.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  updates:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - name: Exercise update, recovery and launcher workflows with synthetic files
+        run: python -m unittest -v tests.test_updates tests.test_windows_app tests.test_macos_app tests.test_python_bootstrap
+      - name: Compile the native Mac launcher
+        if: runner.os == 'macOS'
+        run: xcrun swiftc -typecheck -framework AppKit macos/Launcher.swift

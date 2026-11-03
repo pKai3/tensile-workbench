@@ -19,6 +19,9 @@ ENVIRONMENT_TAG = 'py314'
 
 
 def check_project_files(root):
+    if (root / '.tensile-update.lock').exists():
+        raise RuntimeError('An update is in progress or needs recovery. Open Check for updates '
+                           'in the desktop launcher to restore the previous version before starting.')
     required = ('tensile_workbench.ipynb', 'tensile_workbench.py', 'tensile_core.py',
                 'tensile_plot_view.py', 'tensile_group_picker.py', 'tensile_moves.py', 'tensile_move_review.py', 'tensile_overrides.py', 'tensile_override_view.py', 'tensile_plotly.py', 'tensile_group_plot.py', 'tensile_group_review.py', 'tensile_comparison.py', 'tensile_colors.py', 'tensile_properties.py',
                 'tensile_instron.py', 'tensile_instron_pdf.py', 'tensile_columns.py', 'tensile_tables.py', 'tensile_gauge.py', 'tensile_fracture.py', 'tensile_exports.py', 'tensile_selection.py', 'tensile_specimens.py', 'tensile_inspector.py', 'tensile_fit.py', 'tensile_startup.py',
@@ -64,6 +67,17 @@ def environment_folder(root=ROOT, system=None, environ=None, user_home=None):
         folder = Path(environ['TENSILE_ENV_DIR']).expanduser()
         if not folder.is_absolute():
             raise ValueError('TENSILE_ENV_DIR must be an absolute path outside the project and cloud storage.')
+        return folder
+    pointer = Path(root) / '.tensile-environment.json'
+    if pointer.is_file():
+        try:
+            value = json.loads(pointer.read_bytes())
+            folder = Path(value['environment']).expanduser()
+            if value.get('schema_version') != 1 or not folder.is_absolute():
+                raise ValueError('invalid environment path')
+            validate_environment_location(folder, Path(root), environ)
+        except (ValueError, KeyError, TypeError) as error:
+            raise RuntimeError('The saved update environment is invalid. Use update recovery or rerun Setup.') from error
         return folder
     if system == 'darwin':
         base = Path(user_home or Path.home()) / 'Library/Application Support/Tensile Workbench'

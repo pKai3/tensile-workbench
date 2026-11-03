@@ -1,0 +1,30 @@
+name: Publish Workbench release
+
+on:
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/updates.yml
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify the release tag matches VERSION
+        shell: bash
+        run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+      - name: Package committed application files
+        run: python tools/build_release.py --output dist
+      - name: Publish the verified update package and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.sha256 --verify-tag --title "Tensile Workbench $GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md

@@ -62,7 +62,7 @@ def validate_destination(destination):
         raise RuntimeError(f'An unrecognised item already exists at {destination}; it was not overwritten.') from error
 
 
-def build_bundle(root, build_directory, environ=None, architecture=None):
+def build_bundle(root, build_directory, environ=None, architecture=None, launch_root=None):
     """Machine-specific paths are generated only inside this temporary bundle."""
     root = Path(root).resolve()
     build_directory = Path(build_directory)
@@ -77,7 +77,9 @@ def build_bundle(root, build_directory, environ=None, architecture=None):
         if not (root / name).is_file():
             raise RuntimeError(f'Missing {name}. Download/extract the complete repository before installing.')
     metadata = plistlib.loads((root / 'macos/Info.plist').read_bytes())
-    metadata['WorkbenchLauncherPath'] = str(root / 'Launch_Tensile_Workbench.command')
+    if (root / 'VERSION').is_file():
+        metadata['CFBundleShortVersionString'] = (root / 'VERSION').read_text().strip()
+    metadata['WorkbenchLauncherPath'] = str(Path(launch_root or root) / 'Launch_Tensile_Workbench.command')
     if environ.get('TENSILE_ENV_DIR'):
         # Finder does not inherit a Terminal's custom environment setting.
         sys.path.insert(0, str(root))

@@ -10,9 +10,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from workbench_environment import (child_environment, environment_folder, require_runtime,
                                    validate_environment_location)
+from workbench_updates import POINTER, write_json
 
 APP_FILES = ('tools/windows_app.py', 'tools/windows_server.py', 'tools/windows_process.py',
-             'windows/TensileWorkbench.ico')
+             'tools/update_bridge.py', 'tools/update_workbench.py', 'workbench_updates.py',
+             'VERSION', 'windows/TensileWorkbench.ico')
 
 # Paths are passed as environment data, never interpolated into PowerShell code.
 # Inline commands do not require changing the user's script execution policy.
@@ -75,6 +77,10 @@ def install(root=ROOT, folder=None):
     encoded = base64.b64encode(SHORTCUT_SCRIPT.encode('utf-16-le')).decode('ascii')
     subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
                    cwd=root, env=env, check=True)
+    # A refreshed custom installation must also update the selection used by
+    # older pinned shortcuts. They may still carry the previous --environment.
+    if (Path(root) / POINTER).exists():
+        write_json(Path(root) / POINTER, {'schema_version': 1, 'environment': str(Path(folder).resolve())})
     print('Ready. Open Tensile Workbench from your desktop or Start menu.\n'
           'The control window has Start/Stop, Open Workbench and a live View log.\n'
           'Keep the code folder in place; rerun this installer if you move it.', flush=True)

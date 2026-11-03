@@ -57,3 +57,7 @@ Thumbs.db
 # First-run machine-specific folder choices.
 .tensile-paths.json
 .tensile-paths.lock
+# Updater-managed installation metadata; never shared as user configuration.
+/workbench-release.json
+/.tensile-environment.json
+/.tensile-update.lock

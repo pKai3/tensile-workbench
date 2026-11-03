@@ -2,6 +2,39 @@
 
 ## Change notes — 2026-11-03
 
+### Desktop release updates — implemented
+
+- Add background stable-release checks, release notes, and **Install update and
+  restart** to the Windows control window and native Mac launcher. Checks run
+  separately from calculations. Preparation/download finishes before shutdown;
+  a private acknowledgement plus process exit prevents replacement while the
+  launcher is still running. Refuse other active sessions using the checkout.
+- Windows ZIP installations need neither Git nor a GitHub login. Use versioned
+  GitHub assets with SHA-256 verification, a per-file release manifest, safe path
+  validation and protected personal/research paths. Support source ZIPs by first
+  verifying their original release. Git checkouts require clean tracked files
+  and a fast-forward to the verified official release commit; preserve local
+  edits and refuse untracked collisions or branch changes.
+- Preserve the stable application folder, data/output and personal definitions.
+  Keep code/settings snapshots and a durable transaction journal outside the
+  checkout. Restore previous code/environment/launcher on installation failure;
+  offer interrupted-update recovery and retain an independent recovery helper.
+  Validate backups and refuse to overwrite later code edits during recovery.
+- Build changed dependencies in a separate external environment, selected using
+  an ignored `.tensile-environment.json`. Keep the old environment. Check staged
+  dependencies/defaults without calculating research data; compile Mac launcher
+  changes before shutdown, preserving the installed app path and Dock identity.
+- Add a committed `VERSION`, release notes, reproducible tracked-file packaging,
+  release-publishing workflow and native Windows/Mac update checks. Update user
+  installation/recovery instructions and maintainer release guidance. Existing
+  users need one manual code/app-installer update to gain the update button.
+- Verification: full local suite passed (540 tests, seven Windows-only skips),
+  including synthetic installation, rollback, collision/hash/path protection,
+  settings/data preservation, separate dependency preparation, Git recovery and
+  an actual update-window button workflow. Native Mac launcher compiled and
+  codesign verification passed. Native Windows/Mac CI and published-asset
+  verification are recorded after release validation below.
+
 ### Reusable analysis colours and ten-colour palettes — implemented
 
 - Allocate automatic colours only to the analysis's selected, available groups,

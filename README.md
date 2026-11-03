@@ -10,7 +10,7 @@ Use **Analysis** for plots and specimen review. Each saved analysis contains its
 
 You need **standard Python 3.14, 64-bit**, a browser, and internet access during setup. Setup scripts support Windows x86-64 and macOS (Apple Silicon or Intel). **If Python is missing, setup offers to download and open the official installer**, then continues after you finish its screens. Manual installation is also supported; see [SETUP.md](SETUP.md#first-use).
 
-1. Download the repository ZIP and **extract it completely**, or clone the repository. Put the application in a writable folder.
+1. Download the **Tensile-Workbench-x.y.z.zip** asset from the [latest release](https://github.com/pKai3/tensile-workbench/releases/latest) and **extract it completely**, or clone the repository. Put the application in a writable folder.
 2. Double-click the installation file for your system below and wait for it to finish.
 3. Open **Tensile Workbench** to start the app in your browser.
 
@@ -30,6 +30,29 @@ Setup creates or reuses a separate local Python environment outside the code and
 **Windows and Mac Terminal launcher:** on Windows, [Setup_Tensile_Workbench.bat](Setup_Tensile_Workbench.bat) and [Launch_Tensile_Workbench.bat](Launch_Tensile_Workbench.bat) remain available if you prefer a console. Leave the launcher's terminal window open while working. To stop the app, return to it and press **Ctrl-C**. If the browser does not open, use **Open Workbench** in the desktop app or copy the complete URL printed in the terminal, including its token. There is no notebook to select and no cell to run.
 
 See [SETUP.md](SETUP.md) for detailed installation, environment locations and troubleshooting.
+
+### Update from the app
+
+The Windows control window and Mac Dock app check for published updates in the
+background. Click **Check for updates** to read the release notes, then
+**Install update and restart**. Save pending edits first. The update downloads
+and checks the new version before stopping the server and restarting the app.
+Windows users do not need Git or a GitHub account.
+
+Saved analyses, specimen overrides, custom variables, folder preferences, data
+and output remain in place. Updates retain the previous code and a settings
+snapshot. Dependency changes use a separate Python environment, so the working
+one remains available. An installation failure restores the previous version;
+an interrupted update offers recovery. A failed/offline update check does not
+prevent using the app.
+
+**Installing this feature for the first time:** close Workbench, copy the release
+ZIP's contents into your existing application folder and rerun the app installer
+above. Keep your personal settings, data and output. Git users can pull and rerun
+the app installer. After this one-time upgrade, use the launcher for subsequent
+numbered releases. Local Git code edits are protected: commit/set them aside
+before updating, or continue managing that checkout yourself. See
+[update and recovery details](SETUP.md#built-in-updates-and-recovery).
 
 ## 2. Choose folders—or try the examples
 
@@ -207,7 +230,9 @@ The panel shows the exact folder for this installation. History is separated by 
 
 History begins when this version is first launched; it cannot recover older changes that were never backed up. These are local backups, not protection against loss of the computer. Include your settings, backup folder, research data and outputs in your usual off-device backup.
 
-To update:
+Use **Check for updates → Install update and restart** in the desktop launcher
+for numbered releases. For the one-time upgrade that adds this feature, or when
+manually updating a development checkout:
 
 1. Use **Back up now**, then close the app and stop its launcher. Keep an additional off-device copy of important settings.
 2. Pull the new code, or copy the extracted ZIP contents over the existing application folder. **Do not delete the old folder first**; preserve local settings, data and outputs.

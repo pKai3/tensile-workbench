@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from workbench_environment import child_environment, environment_folder, validate_environment_location
 from tools.windows_process import SingleInstance, WindowsJob
+from tools.update_bridge import UpdateBridge
 
 PROTOCOL = 'TENSILE_DESKTOP '
 APP_ID = 'TensileWorkbench.Desktop'
@@ -211,7 +212,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment', type=Path)
     args = parser.parse_args(argv)
-    folder = args.environment or environment_folder(ROOT)
+    folder = (environment_folder(ROOT) if (ROOT / '.tensile-environment.json').is_file()
+              else args.environment or environment_folder(ROOT))
     validate_environment_location(folder, ROOT)
     import ctypes
     import tkinter as tk
@@ -228,8 +230,8 @@ def main(argv=None):
         window = tk.Tk()
         window.title('Tensile Workbench')
         window.iconbitmap(default=str(ROOT / 'windows/TensileWorkbench.ico'))
-        window.geometry('570x270')
-        window.minsize(550, 270)
+        window.geometry('620x345')
+        window.minsize(570, 345)
         window.configure(bg='#121c28')
         style = ttk.Style(window)
         style.theme_use('clam')
@@ -250,6 +252,8 @@ def main(argv=None):
         closing, opened_url = False, None
         log_window = log_text = None
         last_log = None
+        updates = UpdateBridge(ROOT, folder)
+        updating = False
 
         def open_workbench():
             if server.url:
@@ -296,6 +300,17 @@ def main(argv=None):
         open_button = ttk.Button(controls, text='Open Workbench', command=open_workbench)
         open_button.pack(side='left', padx=(0, 8))
         ttk.Button(controls, text='View log', command=view_log).pack(side='left')
+        update_row = ttk.Frame(frame)
+        update_row.pack(fill='x', pady=(16, 0))
+        def show_updates():
+            try:
+                updates.open()
+            except Exception as error:
+                messagebox.showerror('Could not open updates', str(error), parent=window)
+        update_button = ttk.Button(update_row, text='Check for updates', command=show_updates)
+        update_button.pack(side='left')
+        update_status = tk.StringVar(value='Checking for updates…')
+        ttk.Label(update_row, textvariable=update_status, wraplength=300).pack(side='left', padx=12)
         ttk.Label(frame, text='Keep this window open or minimised while working.\nClosing it stops its server.',
                   foreground='#94a5b8').pack(anchor='w', pady=(16, 0))
 
@@ -308,11 +323,23 @@ def main(argv=None):
             server.stop()
 
         def tick():
-            nonlocal opened_url, last_log
+            nonlocal opened_url, last_log, closing, updating
+            if not closing and updates.stop_requested():
+                updating = closing = True
+                server.stop()
             server.poll()
             if closing and server.process is None:
+                if updating:
+                    updates.acknowledge()
                 window.destroy()
                 return
+            if updates.result:
+                result = updates.result
+                update_status.set(('Version ' + result['release']['version'] + ' is available.')
+                                  if result.get('available') else result.get('message', ''))
+            if not closing and (update_error := updates.error()):
+                messagebox.showerror('Could not open updates', update_error, parent=window)
+            update_button.configure(state='disabled' if closing else 'normal')
             status.set('Running · your workbench is open in the browser.' if server.url else server.state)
             start_button.configure(text='Stop' if server.process else 'Start',
                                    state='disabled' if closing or server.state == 'Stopping…' else 'normal')
@@ -338,6 +365,7 @@ def main(argv=None):
 
         window.protocol('WM_DELETE_WINDOW', close)
         server.start()
+        updates.check()
         tick()
         window.mainloop()
         return 0

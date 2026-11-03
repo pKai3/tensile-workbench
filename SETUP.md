@@ -38,7 +38,7 @@ Double-click **Install_Tensile_Workbench_App.bat** on Windows 10/11 x86-64. It r
 - A second launch from the same code folder points you to the existing control window. The app does not adopt or stop a separately launched console server or another installation. Stop an old console session with Ctrl-C before switching to the app.
 - If **Tcl/Tk** is missing, modify your Python installation to include it, then rerun the app installer. The console launcher remains available without Tcl/Tk.
 
-The shortcuts use the downloaded code folder and existing external Python environment. This is not a standalone bundled executable: keep both folders in place. Close the app before replacing code files. Ordinary code updates take effect on the next launch; rerun the installer after moving the code folder, changing the environment, or updating dependencies. Installation and shortcut updates preserve personal project settings and data.
+The shortcuts use the downloaded code folder and external Python environment. Keep both folders in place. Use **Check for updates** for normal updates; it handles the environment and shortcuts. Rerun the installer after moving the code folder or manually changing the environment. Installation and shortcut updates preserve personal project settings and data.
 
 The source, icon and installer are included in Git; shortcuts contain local paths and are created only on your computer. See [Windows launcher notes](windows/README.md) for implementation and verification details.
 
@@ -59,6 +59,67 @@ After pulling/unzipping updates, run **Install_Tensile_Workbench_App.command** t
 
 ## Existing installations and updates
 
+### Built-in updates and recovery
+
+Both desktop launchers offer **Check for updates** and check GitHub's latest
+published release in the background at startup. Checks do not install anything
+or interrupt calculations. Offline checks fail quietly. Use the button to read
+release notes and choose **Install update and restart**; save pending edits first.
+
+The updater downloads the versioned release asset, checks GitHub's SHA-256 digest
+and the package's file hashes, then checks the staged application. If requirements
+changed, it prepares and checks a separate environment before stopping the old
+app. It then stops its own server, backs up the existing code/settings, replaces
+only application files, refreshes the launcher and restarts. Other server or
+notebook sessions using the same folder must be closed first. Runtime changes
+beyond Python 3.14 require the new installer instead of an automatic update.
+
+- **Windows ZIP installations:** no Git, GitHub sign-in or administrator access
+  is needed when the application folder is writable. Use the named
+  **Tensile-Workbench-x.y.z.zip** release asset. A GitHub-generated source ZIP can
+  also update once its files are verified against its original numbered release.
+- **Git checkouts on either system:** updates advance to the official release
+  commit only when it is a fast-forward and tracked files have no local changes.
+  Untracked files that collide with new release files also stop the update.
+  A development branch ahead of/diverged from the release needs manual Git
+  handling. The updater never runs a destructive reset or discards local edits.
+- **Mac:** the updater rebuilds the native launcher using the same Command Line
+  Tools needed for its initial installation. It compiles before stopping the app.
+- **Preserved:** personal project settings, overrides, variables, folder choices,
+  research data/output, unknown local files and previous environments. The code
+  folder stays in place, so relative data paths retain their meaning.
+
+For an installation failure, the updater restores the previous code, environment
+selection and launcher. A crash or power interruption leaves an update lock;
+ordinary startup refuses to run a half-replaced installation. **Check for updates**
+then offers **Restore previous version and restart**. If the launcher itself
+cannot open, use **Recover Tensile Workbench.bat** (Windows) or **Recover Tensile
+Workbench.command** (Mac) in the transaction's backup folder below. Close other
+Workbench sessions first. Recovery checks backup hashes and refuses to overwrite
+subsequent code edits. Settings snapshots are retained separately; code recovery
+does not overwrite personal settings edited afterwards.
+
+Updates keep their logs, previous code and settings snapshots in a per-installation
+folder:
+
+| Windows | Mac |
+| --- | --- |
+| `%LOCALAPPDATA%\TensileWorkbench\updates\<installation ID>\<version-ID>\` | `~/Library/Application Support/Tensile Workbench/updates/<installation ID>/<version-ID>/` |
+
+The transaction folder contains `update.log`, `transaction.json`, `backup/` and
+`saved-settings/`. A changed dependency set lives in `runtime/venv` there; **do not
+delete update folders while their environment is in use**. The ignored
+`.tensile-environment.json` in the code folder records the active environment.
+An explicit `TENSILE_ENV_DIR` still takes priority for command-line launches.
+These update backups are separate from the automatic settings-history vault.
+
+**One-time adoption:** existing users must first close the app, pull/copy this
+release's source into the existing code folder and rerun the app installer.
+Preserve personal project/path settings, data and output; do not delete the whole
+folder. Subsequent numbered releases can be installed from the launcher.
+
+### Manual setup and Python upgrades
+
 **This version uses Python 3.14.** Close the running workbench, then run **Install_Tensile_Workbench_App.bat** on Windows or **Setup_Tensile_Workbench.command** on Mac. Accept the Python installer if offered. Setup creates or reuses the `py314/venv` environment. Windows app installation refreshes shortcuts to use it. Mac launchers select it automatically on the next start.
 
 Older `venv` and Windows `v17-py313-…/venv` environments are left untouched, together with their caches. They are no longer selected automatically. Python environments are not renamed, copied or upgraded in place. The old environment remains available with the older code if rollback is needed. Your project file, overrides, backups and folder preferences remain in their existing locations.
@@ -77,6 +138,7 @@ Normal Launch checks installed package versions and saved definitions without im
 | --- | --- | --- |
 | Python 3.14 environment | `%LOCALAPPDATA%\TensileWorkbench\py314\venv` | `~/Library/Application Support/Tensile Workbench/py314/venv` |
 | Previous environments preserved | Earlier `venv` and `v17-py313-<fingerprint>\venv` folders | Earlier `~/Library/Application Support/Tensile Workbench/venv` |
+| Update backups / changed dependencies | `%LOCALAPPDATA%\TensileWorkbench\updates\<installation ID>\` | `~/Library/Application Support/Tensile Workbench/updates/<installation ID>/` |
 | Jupyter/configuration caches | Beside the selected environment | Beside the selected environment |
 | Code and analysis definitions | Your downloaded/cloned folder | Your downloaded/cloned folder |
 | Desktop app | Per-user Desktop and Start-menu shortcuts | `~/Applications/Tensile Workbench.app` |
@@ -85,7 +147,7 @@ Normal Launch checks installed package versions and saved definitions without im
 
 No environment is created in the repository or OneDrive. Setup also refuses known cloud-storage locations or an environment overlapping the code folder. Do not set a custom environment inside a differently named synced folder; the scripts cannot discover every third-party sync configuration. Environments are local installations, not files to copy between computers. See Python's [virtual-environment documentation](https://docs.python.org/3.14/library/venv.html).
 
-Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. The Windows app installer records that environment in its shortcuts; the Mac installer records it in the locally built Dock app. Rerun the appropriate app installer with the new value to change it; omit the variable to return to the default environment. Ordinary users do not need this setting.
+Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment itself**, not its parent. Set it in the process launching Setup/Launch whenever using a non-default location. The Windows app installer records that environment in its shortcuts; the Mac installer records it in the locally built Dock app. Rerun the appropriate app installer with the new value to change it. Without an explicit override, launches use the updater's saved environment if present, otherwise the default above. Ordinary users do not need this setting.
 
 ## Troubleshooting
 

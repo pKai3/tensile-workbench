@@ -39,6 +39,15 @@ ensure_python() {
 
 run_macos_main() {
     local action="${1:-}" result=0
+    if [[ "$action" == update-check || "$action" == update-dialog ]]; then
+        shift
+        find_python || return 1
+        if [[ "$action" == update-check ]]; then
+            exec "$PYTHON_BIN" "$PROJECT_DIR/tools/update_workbench.py" check "$@"
+        else
+            exec "$PYTHON_BIN" "$PROJECT_DIR/tools/update_workbench.py" dialog "$@"
+        fi
+    fi
     [[ "$action" == setup || "$action" == launch || "$action" == app ]] || return 2
     export PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1
     if ensure_python; then

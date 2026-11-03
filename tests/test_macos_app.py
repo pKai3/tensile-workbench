@@ -70,6 +70,14 @@ class MacAppTests(unittest.TestCase):
         self.assertEqual(metadata['WorkbenchEnvironmentPath'], str(environment))
         self.assertFalse(environment.exists())
 
+    def test_staged_update_embeds_installed_path_not_temporary_source(self):
+        with patch.object(installer, 'run'):
+            app = installer.build_bundle(self.root, self.build_dir, environ={},
+                                         launch_root=self.base / 'stable install', architecture='arm64')
+        metadata = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        self.assertEqual(metadata['WorkbenchLauncherPath'],
+                         str(self.base / 'stable install/Launch_Tensile_Workbench.command'))
+
     def test_invalid_custom_environment_does_not_compile(self):
         for location in ('./relative', str(self.root / '.venv'), str(self.base / 'OneDrive/venv')):
             with self.subTest(location=location), patch.object(installer, 'run') as run:

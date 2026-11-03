@@ -229,6 +229,13 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let browserButton = NSButton(title: "Open Workbench", target: nil, action: nil)
     private let logButton = NSButton(title: "View log", target: nil, action: nil)
     private let powerButton = NSButton(title: "Stop", target: nil, action: nil)
+    private let updateButton = NSButton(title: "Check for updates", target: nil, action: nil)
+    private let updateStatus = NSTextField(labelWithString: "Checking for updates…")
+    private var updateCheck: Process?
+    private var updateHelper: Process?
+    private var updateSession: URL?
+    private let updateNonce = UUID().uuidString
+    private var updating = false
     private var process: Process?
     private var processGroup: pid_t?
     private var rootExited = false
@@ -257,6 +264,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         }
         RunLoop.main.add(timer!, forMode: .common)
         startServer()
+        checkForUpdates()
     }
 
     private func buildMenu() {
@@ -268,7 +276,8 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         for (title, action, key) in [
             ("Show launcher", #selector(showWindow), "l"),
             ("Open Workbench", #selector(openBrowser), "o"),
-            ("View log", #selector(viewLog), "")
+            ("View log", #selector(viewLog), ""),
+            ("Check for updates", #selector(showUpdates), "")
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
             item.target = self
@@ -286,7 +295,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     }
 
     private func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 275),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 325),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "Tensile Workbench"
         window.isReleasedWhenClosed = false
@@ -309,13 +318,14 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         stateRow.alignment = .centerY
         stateRow.spacing = 10
         status.widthAnchor.constraint(equalToConstant: 420).isActive = true
-        for button in [browserButton, logButton, powerButton] {
+        for button in [browserButton, logButton, powerButton, updateButton] {
             button.bezelStyle = .rounded
             button.target = self
         }
         browserButton.action = #selector(openBrowser)
         logButton.action = #selector(viewLog)
         powerButton.action = #selector(toggleServer)
+        updateButton.action = #selector(showUpdates)
         let buttons = NSStackView(views: [browserButton, logButton, powerButton])
         buttons.orientation = .horizontal
         buttons.spacing = 10
@@ -323,7 +333,12 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             "Closing this window leaves Workbench running in the Dock. Quit the app to stop its server.")
         help.font = .systemFont(ofSize: 11)
         help.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [heading, stateRow, buttons, help])
+        updateStatus.font = .systemFont(ofSize: 11)
+        updateStatus.textColor = .secondaryLabelColor
+        let updateRow = NSStackView(views: [updateButton, updateStatus])
+        updateRow.orientation = .horizontal
+        updateRow.spacing = 12
+        let stack = NSStackView(views: [heading, stateRow, buttons, updateRow, help])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 18
@@ -451,6 +466,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
 
     private func poll() {
         defer { liveLog?.refresh() }
+        pollUpdates()
         guard process != nil else { return }
         do {
             // Keep logs bounded; O_APPEND keeps child writers correct after truncation.
@@ -493,7 +509,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
             finishHandles()
             status.stringValue = wasStopping ? "Workbench stopped. Click Start when you need it again." :
                 "Workbench exited (code \(exitCode)). View the log for details."
-            if quitting { NSApp.reply(toApplicationShouldTerminate: true) }
+            if quitting {
+                if updating { acknowledgeUpdate() }
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
         } else if rootExited && !stopping {
             requestStop()
         } else if stopping, let deadline = stopDeadline, Date() > deadline, !forcedStop {
@@ -510,6 +529,119 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         reader = nil
         output = nil
         input = nil
+    }
+
+    private func makeUpdateSession() throws -> URL {
+        if let existing = updateSession { return existing }
+        let root = URL(fileURLWithPath: launcher).deletingLastPathComponent()
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tensile-update-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                               attributes: [.posixPermissions: 0o700])
+        let explicitEnvironment = Bundle.main.object(forInfoDictionaryKey: "WorkbenchEnvironmentPath") as? String
+        var environment = explicitEnvironment ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support/Tensile Workbench/py314/venv").path
+        let pointer = root.appendingPathComponent(".tensile-environment.json")
+        if explicitEnvironment == nil, let data = try? Data(contentsOf: pointer),
+           let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let path = value["environment"] as? String { environment = path }
+        let session = directory.appendingPathComponent("session.json")
+        let value: [String: Any] = ["root": root.path, "environment": environment,
+            "pid": ProcessInfo.processInfo.processIdentifier, "nonce": updateNonce,
+            "app": Bundle.main.bundleURL.path]
+        try JSONSerialization.data(withJSONObject: value).write(to: session, options: .atomic)
+        updateSession = session
+        return session
+    }
+
+    private func updateProcess(_ action: String, arguments: [String]) throws -> Process {
+        let root = URL(fileURLWithPath: launcher).deletingLastPathComponent()
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        child.arguments = [root.appendingPathComponent("tools/run_macos.sh").path, action] + arguments
+        child.standardInput = FileHandle.nullDevice
+        child.standardOutput = FileHandle.nullDevice
+        child.standardError = FileHandle.nullDevice
+        child.currentDirectoryURL = root
+        var env = ProcessInfo.processInfo.environment
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        if let session = updateSession,
+           let data = try? Data(contentsOf: session),
+           let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let path = value["environment"] as? String { env["TENSILE_ENV_DIR"] = path }
+        child.environment = env
+        try child.run()
+        return child
+    }
+
+    private func checkForUpdates() {
+        do {
+            let session = try makeUpdateSession()
+            updateCheck = try updateProcess("update-check", arguments: ["--result",
+                session.deletingLastPathComponent().appendingPathComponent("check.json").path])
+        } catch { updateStatus.stringValue = "Update check unavailable." }
+    }
+
+    @objc private func showUpdates() {
+        guard !updating, updateHelper?.isRunning != true else { return }
+        do {
+            let session = try makeUpdateSession()
+            for name in ["request.json", "stopped.json", "error.json"] {
+                try? FileManager.default.removeItem(at: session.deletingLastPathComponent().appendingPathComponent(name))
+            }
+            updateHelper = try updateProcess("update-dialog", arguments: ["--session", session.path])
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could not open updates"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    private func pollUpdates() {
+        guard let session = updateSession else { return }
+        let directory = session.deletingLastPathComponent()
+        if let helper = updateHelper, !helper.isRunning {
+            updateHelper = nil
+            if helper.terminationStatus != 0 && !updating {
+                let alert = NSAlert()
+                alert.messageText = "Could not open updates"
+                alert.informativeText = "Rerun the app installer and try again."
+                if let data = try? Data(contentsOf: directory.appendingPathComponent("error.json")),
+                   let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let message = value["message"] as? String { alert.informativeText = message }
+                alert.runModal()
+            }
+        }
+        if let check = updateCheck, !check.isRunning {
+            if let data = try? Data(contentsOf: directory.appendingPathComponent("check.json")),
+               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if value["available"] as? Bool == true,
+                   let release = value["release"] as? [String: Any], let number = release["version"] as? String {
+                    updateStatus.stringValue = "Version \(number) is available."
+                } else { updateStatus.stringValue = value["message"] as? String ?? "Up to date." }
+            } else { updateStatus.stringValue = "Update check unavailable." }
+            updateCheck = nil
+        }
+        guard !updating, updateHelper?.isRunning == true,
+              let data = try? Data(contentsOf: directory.appendingPathComponent("request.json")),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              value["nonce"] as? String == updateNonce,
+              value["action"] as? String == "stop-for-update" else { return }
+        updating = true
+        quitting = true
+        updateButton.isEnabled = false
+        if process == nil { acknowledgeUpdate() }
+        else { requestStop() }
+        NSApp.terminate(nil)
+    }
+
+    private func acknowledgeUpdate() {
+        guard let session = updateSession else { return }
+        let value = ["nonce": updateNonce]
+        if let data = try? JSONSerialization.data(withJSONObject: value) {
+            try? data.write(to: session.deletingLastPathComponent().appendingPathComponent("stopped.json"), options: .atomic)
+        }
     }
 
     @objc private func openBrowser() {
