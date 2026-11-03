@@ -1,4 +1,4 @@
-# Next Workbench release
+# Tensile Workbench 1.0.3
 
 - Faster CSV imports and lighter interactive curve previews for large datasets.
   Calculations and exported results retain their original resolution.
