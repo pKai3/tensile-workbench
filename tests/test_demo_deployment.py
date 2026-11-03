@@ -146,7 +146,7 @@ class DemoDeploymentTests(unittest.TestCase):
             app = TensileWorkbench(self.root)
             app.save_current()
         saved = project_path.read_bytes()
-        color = app.session.colors['Alloy A']
+        color = app.session.color_map(app.state(), {})['Alloy A']
         self.assertIn(group, app.state()['groups'])
         self.assertIn(app.sample_data_toggle, app.group_picker.ui.children[1].children)
         self.assertTrue(valid_specimen_id(identity))
@@ -157,7 +157,7 @@ class DemoDeploymentTests(unittest.TestCase):
         self.assertEqual(app.state()['groups'], ['Alloy A'])
         self.assertEqual(app.state()['group_order'], [group, 'Alloy A'])
         self.assertNotIn(group, app.group_picker.boxes)
-        self.assertEqual(app.session.colors['Alloy A'], color)
+        self.assertEqual(app.session.color_map(app.state(), {})['Alloy A'], color)
         self.assertEqual(set(app.tables.frames['tensile_samples']['Group']), {'Alloy A'})
         self.assertEqual(sample_data_settings(self.root)['show_sample_data'], False)
         paths = json.loads((self.root / SETTINGS_NAME).read_text())

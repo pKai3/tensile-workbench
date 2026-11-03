@@ -1,5 +1,28 @@
 # Implementation record
 
+## Change notes — 2026-11-03
+
+### Reusable analysis colours and ten-colour palettes — implemented
+
+- Allocate automatic colours only to the analysis's selected, available groups,
+  rather than every group discovered in the data folder. Save active palette
+  positions with the analysis; removed groups release theirs. Keep retained
+  colours where possible and repair avoidable repeats after an oversized
+  selection shrinks. Table/legend order does not change colour assignment.
+- Keep manual colour overrides, including those for temporarily deselected
+  groups. Reopening/switching analyses preserves each analysis's automatic
+  assignments. Move approval remaps them; Forget group clears them. Hidden
+  examples and unavailable/unselected groups do not consume palette positions.
+- Extend every palette to ten colours, preserving its existing leading colours
+  and identity. Also supplement a shorter custom Classic cycle. Use the same map
+  for plots, previews, comparison charts and exports; retain the separate
+  YS/UTS/EL property colours. Update swatch guidance and usage documentation.
+- Verification: 502 tests passed, with seven native Windows checks skipped on
+  Mac. All 11 focused palette tests also passed after the final swatch-sync
+  adjustment. Covered repeated add/remove cycles, overflow recovery, saved
+  assignments/overrides, analysis switching, group moves, ordering, static and
+  interactive plot colours. Visually reviewed all sixteen expanded palettes.
+
 ## Change notes — 2026-11-02
 
 ### Windows missing-runtime installer routing — implemented

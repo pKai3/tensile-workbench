@@ -13,6 +13,7 @@ import re
 from tensile_selection import SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX, valid_specimen_id
 from tensile_overrides import DISABLED
 from tensile_locations import SPECIMEN_COUNT
+from tensile_colors import COLOR_SLOTS
 
 GROUP_MAPS = ('name_overrides', 'color_overrides', 'youngs_modulus_overrides',
               'representative_overrides', 'gauge_reconstruction')
@@ -299,6 +300,7 @@ def migrate_settings(project, proposal, *, audit=True):
             if key in settings:
                 settings[key] = list(dict.fromkeys(groups.get(g, g) for g in settings[key]))
         remap_keys(settings, 'properties_by_group_labels', groups)
+        remap_keys(settings, COLOR_SLOTS, groups)
         for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             remap_keys(chart['settings'], 'properties_by_group_labels', groups)
             selected = chart['settings'].get('properties_by_specimen_groups')
@@ -368,6 +370,7 @@ def forget_group(project, group, *, live_groups=()):
             if key in settings:
                 settings[key] = [g for g in settings[key] if g != group]
         settings.get('properties_by_group_labels', {}).pop(group, None)
+        settings.get(COLOR_SLOTS, {}).pop(group, None)
         for chart in [*settings.get('properties_by_group_variants', []), *settings.get('properties_by_specimen_variants', [])]:
             chart.get('settings', {}).get('properties_by_group_labels', {}).pop(group, None)
             selected = chart.get('settings', {}).get('properties_by_specimen_groups')

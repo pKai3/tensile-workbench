@@ -495,7 +495,7 @@ The **YS, UTS and elongation by sample & by custom variable** legend still ident
 ## Per-analysis colours
 
 Expand **Labels and colours · this analysis, all plot types** and choose a **Palette**.
-The swatches update immediately. There are 16 palettes, including:
+The swatches update immediately. All 16 palettes have at least ten colours, including:
 
 - **Retro Pop · reference colours**: the original pink, grey, olive-lime
   and cyan combination; **Retro Pop · vivid** adds stronger, contrasting accents.
@@ -512,10 +512,17 @@ overrides and the Classic palette are unchanged.
 
 Palette colours apply consistently to group-coloured tensile, work-hardening and
 strength–EL plots, static and Plotly views, exports, and the summary comparison
-plots. Assignment keeps the existing alphabetical all-loaded-groups order,
-with bundled examples after research groups; selecting fewer groups does not
-reassign colours. Palettes repeat once their colours are exhausted. Adding or
-removing data groups can still shift automatic assignments.
+plots. Only groups selected in this analysis use a colour. Removing a group frees
+its automatic colour for the next group, while retained groups keep their colours
+where possible. New groups use free colours in palette order; reordering the
+table or legend does not recolour them. Assignments are saved with the analysis.
+Unselected groups elsewhere in the data folder do not consume colours.
+
+Colours repeat only when the selected groups outnumber the palette. If you then
+remove groups, avoidable repeats are reassigned to free colours. Existing palette
+colours remain first in each expanded palette. Analyses saved before automatic
+assignments were stored receive colours from their own selected groups on first
+use; manual colour overrides are preserved.
 
 To fix a particular group's colour, select the group, tick **Override colour for
 this analysis**, choose a colour and click **Apply group overrides**. Overrides take

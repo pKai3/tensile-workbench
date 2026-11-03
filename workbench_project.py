@@ -13,7 +13,7 @@ from tensile_property_variants import VARIANTS_KEY, SPECIMEN_VARIANTS_KEY, valid
 from tensile_locations import ensure_required_variables
 from tensile_order import validate_group_order
 from tensile_variables import validate_variables
-from tensile_colors import DEFAULT_PALETTE, validate_palette
+from tensile_colors import DEFAULT_PALETTE, COLOR_SLOTS, validate_color_slots, validate_palette
 from tensile_moves import validate_tracking, graph_blocks
 from tensile_overrides import DISABLED, validate_disabled
 from workbench_backups import (BackupVault, ProjectConflict, RecoveryRequired,
@@ -91,6 +91,7 @@ def validate_project(project):
         settings = graph['settings']
         validate_disabled(graph['definition'], graph=True)
         validate_palette(settings.get('color_palette', DEFAULT_PALETTE))
+        validate_color_slots(settings.get(COLOR_SLOTS, {}))
         validate_group_display(settings)
         for key in (VARIANTS_KEY, SPECIMEN_VARIANTS_KEY):
             if key in settings:

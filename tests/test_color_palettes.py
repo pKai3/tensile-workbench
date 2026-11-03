@@ -14,7 +14,8 @@ import ipywidgets as widgets
 
 from selection_fixture import make_fixture
 from test_relative_comparison import frames
-from tensile_colors import PALETTES, group_color_map, palette_colors, palette_preview
+from tensile_colors import (PALETTES, COLOR_SLOTS, group_color_map, palette_colors,
+                            palette_preview, reconcile_color_slots)
 from tensile_comparison import ComparisonView
 from tensile_plotly import figure_to_plotly
 from tensile_workbench import TensileWorkbench
@@ -24,10 +25,10 @@ from workbench_project import validate_project
 class PaletteTests(unittest.TestCase):
     def test_reference_colours_and_stronger_custom_themes(self):
         self.assertEqual(len(PALETTES), 16)
-        self.assertEqual(palette_colors('retro_reference'),
+        self.assertEqual(palette_colors('retro_reference')[:4],
                          ('#E377C2', '#7F7F7F', '#BCBD22', '#17BECF'))
         self.assertEqual(palette_colors('classic')[-4:],
-                         tuple(color.lower() for color in palette_colors('retro_reference')))
+                         tuple(color.lower() for color in palette_colors('retro_reference')[:4]))
         for name in ('pastel_coastal', 'pastel_orchard', 'pastel_berry',
                      'muted', 'vivid', 'earth', 'ocean'):
             with self.subTest(palette=name):
@@ -35,21 +36,44 @@ class PaletteTests(unittest.TestCase):
                 self.assertGreater(sum(saturation) / len(saturation), .55)
 
     def test_palettes_preview_cycle_legacy_and_override_priority(self):
-        defaults = {f'Group {i:02}': '#123456' for i in range(12)}
-        self.assertEqual(group_color_map(defaults), defaults)
+        groups = [f'Group {i:02}' for i in range(12)]
         for key, (_, colors) in PALETTES.items():
             with self.subTest(palette=key):
                 self.assertTrue(all(is_color_like(color) for color in colors))
+                self.assertGreaterEqual(len(colors), 10)
                 self.assertEqual(len(colors), len(set(colors)))
                 self.assertEqual(palette_preview(key).count('aria-label='), len(colors))
-                result = group_color_map(defaults, key, {'Group 01': '#112233'})
+                result = group_color_map(groups, key, {'Group 01': '#112233', 'Removed': '#445566'})
                 self.assertEqual(result['Group 01'], '#112233')
-                if key != 'classic':
-                    self.assertEqual(result['Group 00'], colors[0].lower())
-                    self.assertEqual(result[f'Group {len(colors):02}'], colors[0].lower())
-        self.assertEqual(palette_colors('classic', ['#010203', '#040506']), ('#010203', '#040506'))
-        self.assertEqual(group_color_map({'A': (1., 0., 0.)}), {'A': '#ff0000'})
+                self.assertNotIn('Removed', result)
+                self.assertEqual(result['Group 00'], colors[0].lower())
+                self.assertEqual(result[f'Group {len(colors):02}'], colors[0].lower())
+                self.assertEqual(len(set(group_color_map(groups[:10], key).values())), 10)
+        custom = palette_colors('classic', ['#010203', '#040506'])
+        self.assertEqual(custom[:2], ('#010203', '#040506'))
+        self.assertEqual(len(custom), 10)
+        self.assertEqual(group_color_map(['A'], classic_colors=[(1., 0., 0.)]), {'A': '#ff0000'})
         self.assertIn('#ff0000', palette_preview('classic', [(1., 0., 0.)]))
+
+    def test_removed_groups_release_slots_without_recolouring_survivors(self):
+        slots = reconcile_color_slots(['A', 'B', 'C'])
+        slots = reconcile_color_slots(['B', 'C'], slots)
+        self.assertEqual(slots, {'B': 1, 'C': 2})
+        for index in range(30):
+            group = f'New {index}'
+            added = reconcile_color_slots(['B', 'C', group], slots)
+            self.assertEqual(added, {'B': 1, 'C': 2, group: 0})
+            slots = reconcile_color_slots(['B', 'C'], added)
+        self.assertEqual(reconcile_color_slots([], slots), {})
+
+    def test_shrinking_overflow_repairs_duplicates_and_reordering_keeps_colours(self):
+        groups = [f'Group {i:02}' for i in range(12)]
+        slots = reconcile_color_slots(groups)
+        selected = groups[:8] + groups[10:]
+        slots = reconcile_color_slots(selected, slots)
+        self.assertEqual(set(slots.values()), set(range(10)))
+        self.assertEqual([slots[group] for group in groups[:8]], list(range(8)))
+        self.assertEqual(reconcile_color_slots(selected[::-1], slots), slots)
 
     def test_bad_palette_rejected(self):
         for value in ('unknown', '', None, [], {}):
@@ -76,6 +100,7 @@ class PaletteWorkbenchTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
         make_fixture(self.root)
+        shutil.copytree(self.root / 'data' / 'Alloy A', self.root / 'data' / 'Alloy M')
         shutil.copytree(self.root / 'data' / 'Alloy A', self.root / 'data' / 'Alloy Z')
         with redirect_stdout(io.StringIO()):
             self.app = TensileWorkbench(self.root)
@@ -133,18 +158,60 @@ class PaletteWorkbenchTests(unittest.TestCase):
                 self.assertTrue(any(trace.opacity < 1 for trace in plotly.data))
         self.assertFalse((self.root / 'output').exists())
 
-    def test_group_selection_does_not_reassign_colours_and_property_colours_unchanged(self):
+    def test_unselected_groups_do_not_reserve_colours_and_property_colours_unchanged(self):
         app = self.app
         app.controls['color_palette'].value = 'pastel_berry'
         app.controls['groups'].value = ('Alloy Z',)
         app.override_group.value = 'Alloy Z'
-        self.assertEqual(app.override_color.value, palette_colors('pastel_berry')[1].lower())
+        self.assertEqual(app.override_color.value, palette_colors('pastel_berry')[0].lower())
         base = {**app.state(), 'graph_index': 0, 'family': 'properties_by_group'}
         for palette in ('classic', 'pastel_berry'):
             result = app.session.render({**base, 'color_palette': palette})
             means = {line.get_label(): to_hex(line.get_color())
                      for ax in result['figure'].axes for line in ax.lines if not line.get_label().startswith('_')}
             self.assertEqual(means, {'0.2% YS': '#1f77b4', 'UTS': '#d95f02', 'EL': '#2ca02c'})
+
+    def test_reclaimed_colours_survive_reopen_analysis_switch_and_saved_overrides(self):
+        app = self.app
+        with redirect_stdout(io.StringIO()):
+            app.controls['color_palette'].value = 'retro_reference'
+            app.controls['groups'].value = ('Alloy A', 'Alloy Z')
+            before = app.session.color_map(app.state(), {})
+            app.controls['groups'].value = ('Alloy Z',)
+            app.controls['groups'].value = ('Alloy M', 'Alloy Z')
+        after = app.session.color_map(app.state(), {})
+        self.assertEqual(after, {'Alloy M': before['Alloy A'], 'Alloy Z': before['Alloy Z']})
+        app.override_group.value = 'Alloy Z'
+        app.override_color_enabled.value = True
+        app.override_color.value = '#112233'
+        with redirect_stdout(io.StringIO()):
+            app._apply_overrides()
+            app.controls['groups'].value = ('Alloy M',)
+            app.controls['groups'].value = ('Alloy A', 'Alloy M')
+        saved = app._current()
+        self.assertEqual(saved['settings'][COLOR_SLOTS], {'Alloy A': 1, 'Alloy M': 0})
+        self.assertEqual(saved['definition']['color_overrides'], {'Alloy Z': '#112233'})
+        expected = app.session.color_map(app.state(), saved['definition'])
+        self.assertEqual(set(expected), {'Alloy A', 'Alloy M'})
+        with redirect_stdout(io.StringIO()):
+            reopened = TensileWorkbench(self.root)
+        self.addCleanup(reopened.tables.inspector.clear)
+        self.addCleanup(reopened.tables.comparison.clear)
+        self.assertEqual(reopened.session.color_map(reopened.state(), reopened._current()['definition']), expected)
+        reopened._apply_graph('1')
+        self.assertEqual(reopened.state()[COLOR_SLOTS], {'Alloy A': 0})
+        reopened._apply_graph('0')
+        self.assertEqual(reopened.state()[COLOR_SLOTS], {'Alloy A': 1, 'Alloy M': 0})
+        with redirect_stdout(io.StringIO()):
+            reopened.controls['groups'].value = ('Alloy A', 'Alloy M', 'Alloy Z')
+        self.assertEqual(reopened.session.color_map(reopened.state(), reopened._current()['definition'])['Alloy Z'], '#112233')
+
+    def test_invalid_saved_automatic_assignments_are_rejected(self):
+        for invalid in ([], None, {'A': -1}, {'A': True}, {'A': '1'}, {'': 0}):
+            project = deepcopy(self.app.store.data)
+            project['graphs'][0]['settings'][COLOR_SLOTS] = invalid
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate_project(project)
 
 
 if __name__ == '__main__':

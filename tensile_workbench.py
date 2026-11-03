@@ -34,7 +34,8 @@ from tensile_specimen_charts import SpecimenChartsView
 from tensile_locations import (LOCATION, SPECIMEN_COUNT, REQUIRED_VARIABLES,
     ensure_required_variables, reconcile_specimen_counts)
 from tensile_order import sort_group_frame, validate_group_order
-from tensile_colors import DEFAULT_PALETTE, PALETTE_OPTIONS, group_color_map, palette_preview, validate_palette
+from tensile_colors import (DEFAULT_PALETTE, PALETTE_OPTIONS, COLOR_SLOTS, group_color_map,
+    palette_colors, palette_preview, reconcile_color_slots, validate_color_slots, validate_palette)
 from tensile_fit import fit_policy, validate_override, validate_threshold
 from tensile_selection import (is_included, selection_state, migrate_specimen_selections,
                                specimen_id, SAMPLE_GROUP_PREFIX, SAMPLE_ID_PREFIX,
@@ -64,6 +65,9 @@ def upgrade_legacy_demo_graph(project, data_dir, sample_data_dir):
         graph['settings']['groups'] = [rename[group] for group in groups]
         if 'group_order' in graph['settings']:
             graph['settings']['group_order'] = [rename.get(group, group) for group in graph['settings']['group_order']]
+        if COLOR_SLOTS in graph['settings']:
+            graph['settings'][COLOR_SLOTS] = {rename.get(group, group): slot
+                                            for group, slot in graph['settings'][COLOR_SLOTS].items()}
         for variable in project.get('group_variables', {}).values():
             variable['values'] = {rename.get(k, k): v for k, v in variable.get('values', {}).items()}
             if 'minimums' in variable:
@@ -195,14 +199,22 @@ class PreviewSession:
             self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)})
             for group, paths in self.files.items()}
         self.project = reconcile_specimen_counts(self.project, self.imported_counts)
-        import itertools
-        palette = itertools.cycle(self.engine.plt.rcParams["axes.prop_cycle"].by_key()["color"])
-        # Adding sample groups must not change the colours of research groups.
-        self.colors = {g: next(palette) for g in [*sorted(research), *sorted(set(files) - set(research))]}
+        # Stable allocation order, independent of the display order. Unselected
+        # groups never reserve a colour; bundled samples come after research.
+        self.color_order = [*sorted(research), *sorted(set(files) - set(research))]
+
+    def color_slots(self, state):
+        selected = set(self.visible_groups(state['groups']))
+        groups = [group for group in self.color_order if group in selected]
+        swatches = palette_colors(state.get('color_palette', DEFAULT_PALETTE),
+                                  self.engine.plt.rcParams['axes.prop_cycle'].by_key()['color'])
+        return reconcile_color_slots(groups, state.get(COLOR_SLOTS, {}), len(swatches))
 
     def color_map(self, state, spec):
-        return group_color_map(self.colors, state.get('color_palette', DEFAULT_PALETTE),
-                               spec.get('color_overrides', {}))
+        slots = self.color_slots(state)
+        return group_color_map(slots, state.get('color_palette', DEFAULT_PALETTE),
+            spec.get('color_overrides', {}), slots=slots,
+            classic_colors=self.engine.plt.rcParams['axes.prop_cycle'].by_key()['color'])
 
     def hidden_sample_group(self, group):
         return group.startswith(SAMPLE_GROUP_PREFIX) and not self.show_sample_data
@@ -573,6 +585,7 @@ class PreviewSession:
     @staticmethod
     def _validate(state):
         validate_palette(state.get('color_palette', DEFAULT_PALETTE))
+        validate_color_slots(state.get(COLOR_SLOTS, {}))
         validate_group_display(state)
         validate_group_order(state.get('group_order', []))
         for family in PROPERTY_FAMILIES:
@@ -1243,8 +1256,7 @@ class TensileWorkbench:
         self.graph.observe(self._graph_changed, names="value")
         self.name.observe(self._changed, names="value")
         for key, widget in self.controls.items():
-            widget.observe(self._palette_changed if key == 'color_palette' else
-                           self._view_changed if key in VIEW_ONLY_SETTINGS else self._changed, names="value")
+            widget.observe(self._view_changed if key in VIEW_ONLY_SETTINGS else self._changed, names="value")
         for widget in list(self.family_boxes.values()) + [v for k, v in self.title_inputs.items() if k != SPECIMEN_FAMILY]:
             widget.observe(self._changed, names="value")
         for auto, lo, hi, _ in self.axes.values():
@@ -1314,6 +1326,7 @@ class TensileWorkbench:
     def state(self):
         state = {key: control.value for key, control in self.controls.items()}
         state["groups"] = list(state["groups"])
+        state[COLOR_SLOTS] = self.session.color_slots({**state, COLOR_SLOTS: self._color_slots})
         state['group_order'] = list(self._display_order)
         state['properties_by_group_labels'] = dict(self._group_labels)
         state["families"] = [family for family, box in self.family_boxes.items() if box.value]
@@ -1447,6 +1460,7 @@ class TensileWorkbench:
             self.graph.value = ident
             graph = self._current()
             state = graph["settings"]
+            self._color_slots = dict(state.get(COLOR_SLOTS, {}))
             self.name.value = graph["name"]
             # Preserve missing groups rather than silently dropping them on save.
             choices = sorted(set(self.session.files) | set(self.session.visible_groups(state["groups"])))
@@ -1612,9 +1626,11 @@ class TensileWorkbench:
                     self._paused = old
             if previous_groups != graph['settings']['groups']:
                 self.move_review.refresh()
+            self._color_slots = dict(state[COLOR_SLOTS])
             self._show_saved()
             if tuple(self.override_group.options) != tuple(state["groups"]):
                 self.override_group.options = state["groups"]
+            self._sync_automatic_color()
             self._sync_gauge_rows()
             return True
         except Exception as error:
@@ -1642,11 +1658,9 @@ class TensileWorkbench:
         else:
             self.status.value = "Settings saved. Click <b>Update plots</b>; displayed plots may reflect previous settings."
 
-    def _palette_changed(self, change):
-        if self._paused:
-            return
-        self._changed(change)
-        # Refresh the automatic colour without discarding any pending manual override.
+    def _sync_automatic_color(self):
+        # Selection edits can reclaim colours too. Keep the swatch in sync while
+        # leaving a pending manual override alone.
         if self.override_group.value is not None and not self.override_color_enabled.value:
             from matplotlib.colors import to_hex
             colors = self.session.color_map(self.state(), {})
