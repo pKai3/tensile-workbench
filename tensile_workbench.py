@@ -737,7 +737,9 @@ class PreviewSession:
                     print('[SELECTION] No included usable specimens; omitted groups: ' + ', '.join(empty))
                 shape_records = {g: eligible for g, rows in records.items()
                     if (eligible := [r for r in rows if curve_allowed(r, prepeak=family.startswith('work_hardening'))])}
-                curves = {g: [(r["strain_pct"], r["stress_mpa"]) for r in rows] for g, rows in shape_records.items()}
+                curves = {g: [e.loading_curve(r)[:2] if family.startswith('work_hardening')
+                              else (r["strain_pct"], r["stress_mpa"]) for r in rows]
+                          for g, rows in shape_records.items()}
                 if family in (*PROPERTY_FAMILIES, GROUP_FAMILY, SPECIMEN_FAMILY):
                     axis_family = GROUP_FAMILY if family == SPECIMEN_FAMILY else family
                     xlim, ylim = state.get(axis_family + '_xlim'), state.get(axis_family + '_ylim')
@@ -832,6 +834,11 @@ class PreviewSession:
                 else:
                     fig = self._compare_wh(models, curves, common, wh)
                 if fig is None:
+                    if family in ('landmark', 'work_hardening_landmark') and models:
+                        reasons = '; '.join(f"{e.group_display_name(group)}: {model['landmark_diagnostic']}"
+                            for group, model in models.items() if model.get('landmark_diagnostic'))
+                        if reasons:
+                            raise ValueError('No valid landmark curves. ' + reasons)
                     raise ValueError("No valid curves for this preview. " + stream.getvalue())
                 # Vector previews remain sharp at gallery and enlarged sizes.
                 # PNG exports retain the independent 600-DPI setting.

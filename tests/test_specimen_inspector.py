@@ -88,7 +88,7 @@ class CalculationTests(unittest.TestCase):
         calc = data['calculation']
         fig = inspection_figure(data)
         traces = {trace.name: trace for trace in fig.data}
-        np.testing.assert_array_equal(traces['Measured CSV'].x, calc['strain_pct'])
+        np.testing.assert_array_equal(traces['Measured CSV'].x, calc['full_strain_pct'])
         np.testing.assert_array_equal(traces['Fit points'].y, calc['stress_mpa'][calc['elastic_mask']])
         self.assertEqual(traces['Instron YS level'].mode, 'lines')
         self.assertEqual(tuple(traces['Instron YS level'].y), (418.5, 418.5))

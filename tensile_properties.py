@@ -3,11 +3,11 @@ import numpy as np
 import json
 from tensile_selection import analysis_properties
 from tensile_fit import validate_override, validate_threshold
-from tensile_fracture import FRACTURE_METHOD, prepared_points, fracture_endpoint, fracture_curve, fracture_audit, endpoint_available
+from tensile_fracture import FRACTURE_METHOD, prepared_points, loading_curve, fracture_endpoint, fracture_curve, fracture_audit, endpoint_available
 
 DEFAULT_FIT_FRACTIONS = (.20, .50)
 USE_RECORD = object()
-ELASTIC_METHOD = 'Context-supported elastic-window search (v5)'
+ELASTIC_METHOD = 'Context-supported elastic-window search, acquisition loading phase (v6)'
 ELASTIC_REVIEW_METHOD = 'Supported overlapping-window sensitivity (v1)'
 AUTOMATIC_FIT_MIN_UTS_FRACTION = .10
 ELASTIC_SENSITIVITY_LIMIT = .10
@@ -302,6 +302,8 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
 
     This is the single calculation path for tables, landmarks and inspection.
     Diagnostic arrays are built only on demand; the properties cache stays small.
+    Fit arrays contain only the original loading phase. Full prepared arrays
+    are separate so inspection bounds and endpoint markers retain the tail.
     Specimen overrides take precedence over analysis-level automatic fit fractions.
     A preview override can be passed explicitly without changing the record.
     """
@@ -329,8 +331,10 @@ def specimen_calculation(record, fit_fractions=DEFAULT_FIT_FRACTIONS, r2_warning
                   'Elastic intercept (MPa)', 'Elastic fit R2', 'Fit lower stress (MPa)',
                   'Fit upper stress (MPa)'):
         p[field] = np.nan
-    x, y = prepared_curve(record)
+    full_x, full_y = prepared_curve(record)
+    x, y, ids = loading_curve(record)
     calculation = {'properties': p, 'strain_pct': x, 'stress_mpa': y,
+                   'measurement_indices': ids, 'full_strain_pct': full_x, 'full_stress_mpa': full_y,
                    'elastic_mask': np.zeros(len(x), dtype=bool),
                    'uts_index': None, 'yield_bracket': None,
                    'fit_fractions': (low, high), 'override': active, 'saved_override': saved,

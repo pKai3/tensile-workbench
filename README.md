@@ -180,6 +180,13 @@ The **Data use** dropdown is available in Specimens and Group curve review:
 
 Retaining YS requires reliable strain through the **0.2% offset intersection**, not just through the elastic fit. All partial AVE-failure modes exclude failure EL, reconstructed EL, full-test toughness and full tensile shape. They also exclude the corresponding imported Instron properties from statistics. Original values remain visible (crossed out) and auditable in exports.
 
+Elastic fits, yield crossings and work-hardening calculations use measurements
+recorded up to the first maximum engineering stress. This loading phase is
+selected before sorting by strain, so later unloading or recoil cannot enter
+the fit when strain reverses. The full recorded curve remains visible in the
+inspector and group curve review. Landmark averages use the loading phase up to
+UTS and the selected fracture prefix for the remaining stage.
+
 Landmark curves use trusted curves for **shape**, then pass through each property's **eligible group mean**. Strength and elongation can therefore use different specimen counts. Pointwise averages use only eligible full curves. Strength–EL scatter plots default to **All eligible values per property** for group means and SDs, matching the summary. Individual dots still require valid pairs. Each scatter plot's **Settings → Group means** also offers **Paired specimens only**; this can give different means from the summary. An on-screen warning lists partial exclusions; warnings are not added to publication plots.
 
 In Group curve review, click a curve or specimen name to highlight it, then use **Inspect highlighted specimen** for detailed checks. Clicking a name never hides or excludes it: change **Data use** in the table below for exclusions. Exclusions have distinct line styles and short labels beside each specimen above the plot.

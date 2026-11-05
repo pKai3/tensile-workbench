@@ -1,5 +1,29 @@
 # Implementation record
 
+## Change notes — 2026-11-05
+
+### Keep unloading out of loading calculations — implemented
+
+- Select the original acquisition prefix through the first maximum engineering
+  stress before sorting strain or resolving duplicate strains. Use this loading
+  phase for automatic/manual elastic fits, offset-yield crossings, Instron YS
+  marker placement and start-to-UTS landmark shapes. Keep the existing elastic
+  window selection thresholds and fracture detector.
+- Use the same loading phase for original work hardening and individual WH
+  traces, including their exported arrays. Build the post-UTS landmark stage
+  from the separately selected fracture prefix; unloading after that endpoint
+  cannot re-enter a shape through strain sorting.
+- Retain full measurements and endpoint marker/range behaviour in the inspector
+  and raw group review. Do not discard a specimen or change its saved overrides
+  to make a group average available.
+- Show the specimen and underlying cause when a landmark fails, rather than
+  presenting the pointwise tail-estimation log as the landmark failure.
+- Verification: 136 focused synthetic checks passed, including reversing,
+  advancing and fixed-strain unloading, duplicate strain values, automatic and
+  manual fits, short post-UTS stages, inspection markers and WH export arrays.
+  Read-only numerical checks on the reported group resolve all seven fits and
+  both landmark models. No research files, exports or personal settings changed.
+
 ## Change notes — 2026-11-04
 
 ### Repeated layout warnings — implemented

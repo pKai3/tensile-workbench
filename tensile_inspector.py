@@ -68,15 +68,21 @@ def instron_ys_strain(calculation, reported):
     return float(x[i] + (reported - y[i]) / (y[i + 1] - y[i]) * (x[i + 1] - x[i]))
 
 
+def inspection_curve(calculation):
+    """Full prepared measurements, separate from the loading-only fit arrays."""
+    return (calculation.get('full_strain_pct', calculation['strain_pct']),
+            calculation.get('full_stress_mpa', calculation['stress_mpa']))
+
+
 def inspection_ranges(calculation, mode='yield', *, reported_ys=np.nan):
     """Explicit reset ranges, independent of the publication plot settings."""
-    x, y = calculation['strain_pct'], calculation['stress_mpa']
+    x, y = inspection_curve(calculation)
     if not len(x):
         return [0, 1], [0, 1]
     p = calculation['properties']
     left, right = min(0., float(x[0])), float(x[-1])
     if mode == 'yield':
-        candidates = x[calculation['elastic_mask']].tolist()
+        candidates = calculation['strain_pct'][calculation['elastic_mask']].tolist()
         if np.isfinite(p['Yield strain (%)']):
             candidates.append(p['Yield strain (%)'])
         reported_strain = instron_ys_strain(calculation, reported_ys)
@@ -114,8 +120,9 @@ def failure_detail_ranges(payload, show_gauge=False):
     """Zoom around endpoint candidates and the recorded tail, without selecting EL."""
     calc = payload['calculation']
     acquisition = payload['record'].get('_acquisition', {})
-    x = np.asarray(acquisition.get('strain', calc['strain_pct']), dtype=float)
-    y = np.asarray(acquisition.get('stress', calc['stress_mpa']), dtype=float)
+    full_x, full_y = inspection_curve(calc)
+    x = np.asarray(acquisition.get('strain', full_x), dtype=float)
+    y = np.asarray(acquisition.get('stress', full_y), dtype=float)
     valid = np.isfinite(x) & np.isfinite(y) & (x >= 0)
     if not valid.any():
         return inspection_ranges(calc, 'full')
@@ -155,7 +162,7 @@ def instron_el_marker(payload):
     """Keep the reported value; tolerate printed-digit rounding at CSV bounds only."""
     reference = payload['reference']
     reported = reference.get('values', {}).get('el', np.nan)
-    x = np.asarray(payload['calculation']['strain_pct'], float)
+    x = np.asarray(inspection_curve(payload['calculation'])[0], float)
     result = {'reported': reported, 'strain': np.nan, 'snapped': False, 'tolerance': 0.}
     if not np.isfinite(reported) or not len(x):
         return result
@@ -184,6 +191,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
 
     calculation = payload['calculation']
     x, y = calculation['strain_pct'], calculation['stress_mpa']
+    full_x, full_y = inspection_curve(calculation)
     p = calculation['properties']
     fig = go.Figure()
 
@@ -200,8 +208,8 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             hovertemplate=escape(name) + '<br>Strain: %{x:.' + str(places) + 'f}%<br>Stress: %{y:.2f} MPa<extra></extra>'))
 
     acquisition = payload['record'].get('_acquisition', {})
-    measured_x = np.asarray(acquisition.get('strain', x), float)
-    measured_y = np.asarray(acquisition.get('stress', y), float)
+    measured_x = np.asarray(acquisition.get('strain', full_x), float)
+    measured_y = np.asarray(acquisition.get('stress', full_y), float)
     valid = np.isfinite(measured_x) & np.isfinite(measured_y)
     # Keep acquisition order, including repeated/reversing strain at collapse.
     # Fit points remain the prepared points used by the yield calculation.
@@ -247,7 +255,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
             np.isclose(y[peak], acquisition['stress'][raw_peak], rtol=1e-9, atol=1e-9))
         peak_name = 'UTS / max force' if same_peak and acquisition.get('force_channel') else 'UTS / uniform EL'
         points(peak_name, [x[peak]], [y[peak]], '#2563eb', 'circle', 11, layer='uts')
-        points('Max retained strain', [x[-1]], [y[-1]], '#94a3b8', 'circle-open', 8, layer='csv_end')
+        points('Max retained strain', [full_x[-1]], [full_y[-1]], '#94a3b8', 'circle-open', 8, layer='csv_end')
     if raw_peak_valid and not same_peak:
         name = 'Max force (original CSV)' if acquisition.get('force_channel') else 'Max stress (original CSV)'
         points(name, [acquisition['strain'][raw_peak]], [acquisition['stress'][raw_peak]],
@@ -270,7 +278,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
                            xanchor='left', font=dict(color='#b45309'))
     reported = payload['reference'].get('values', {}).get('ys', np.nan)
     if np.isfinite(reported) and len(x):
-        line('Instron YS level', [min(0., x[0]), x[-1]], [reported, reported],
+        line('Instron YS level', [min(0., full_x[0]), full_x[-1]], [reported, reported],
              '#be185d', layer='instron_ys_level', dash='dot', width=1.8)
         # Instron supplies the yield stress here, not a yield strain. Locate
         # the first ascending crossing on the measured pre-UTS loading curve.
@@ -291,7 +299,7 @@ def inspection_figure(payload, mode='yield', edit=None, show_gauge=False):
                              '<br>Marker strain: %{x:.5f}%; imported EL is unchanged'
                              if el_marker['snapped'] else '')
             fig.add_trace(go.Scatter(x=[el_marker['strain']],
-                y=[float(np.interp(el_marker['strain'], x, y))], customdata=[[float(reported_el)]],
+                y=[float(np.interp(el_marker['strain'], full_x, full_y))], customdata=[[float(reported_el)]],
                 name='Instron EL', mode='markers', meta={'inspector_layer': 'fracture_instron'},
                 marker=dict(color='#be185d', symbol='diamond-open', size=14, line=dict(width=2)),
                 hovertemplate='Instron fracture EL: %{customdata[0]:.5f}%<br>CSV-interpolated stress: %{y:.2f} MPa'

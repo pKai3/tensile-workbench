@@ -221,6 +221,32 @@ def prepared_points(record):
     return x[selected], y[selected], ids[selected]
 
 
+def loading_curve(record):
+    """Prepare the acquisition prefix through the first maximum stress.
+
+    Select the loading phase BEFORE sorting or combining duplicate strains.
+    Later unloading/recoil can revisit the same strain and stress ranges; those
+    rows must never enter an elastic fit, offset crossing or pre-UTS shape.
+    The original record remains available in full for inspection.
+    """
+    measured = record.get('_measured_record', record)
+    acquisition = measured.get('_acquisition', {})
+    original = 'strain' in acquisition and 'stress' in acquisition
+    x = np.asarray(acquisition['strain'] if original else
+                   measured.get('raw_strain_pct', measured['strain_pct']), dtype=float)
+    y = np.asarray(acquisition['stress'] if original else
+                   measured.get('raw_stress_mpa', measured['stress_mpa']), dtype=float)
+    valid_stress = np.flatnonzero(np.isfinite(y) & (y >= 0))
+    stop = int(valid_stress[np.argmax(y[valid_stress])]) + 1 if len(valid_stress) else 0
+    ids = np.arange(stop) if original else np.full(stop, -1, dtype=int)
+    x, y = x[:stop], y[:stop]
+    finite = np.flatnonzero(np.isfinite(x) & np.isfinite(y))
+    starts = np.flatnonzero((x[finite] >= 0) & (y[finite] >= 0))
+    keep = finite[starts[0]:] if len(starts) else np.array([], dtype=int)
+    return prepared_points({'strain_pct': x[keep], 'stress_mpa': y[keep],
+                            '_measurement_indices': ids[keep]})
+
+
 def detect_drop_onset(strain, stress, slope_fraction=None, *, force=None, time=None):
     """Select a measured endpoint, distinguishing evidence from confirmation.
 

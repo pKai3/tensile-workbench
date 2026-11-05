@@ -31,9 +31,9 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from tensile_properties import prepared_curve, specimen_properties
+from tensile_properties import specimen_properties
 from tensile_order import ordered_groups
-from tensile_fracture import detect_drop_onset, fracture_endpoint, fracture_curve, endpoint_available
+from tensile_fracture import detect_drop_onset, loading_curve, fracture_endpoint, fracture_curve, endpoint_available
 from tensile_selection import curve_allowed, discover_sample_groups, group_display_name
 from tensile_columns import FORCE_COLS, STRESS_COLS, STRAIN_COLS, is_measurement_header
 from tensile_units import CurveImportError, conversion, measurement_column
@@ -1486,7 +1486,7 @@ def safe_filename(text):
 def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
                       points_per_stage=None, prepeak_only=False):
     """Three measured sections, each mapped to progress 0..1 (no extrapolation)."""
-    x, y = prepared_curve(record)
+    x, y, _ = loading_curve(record)
     if len(x) < 20:
         raise ValueError("fewer than 20 valid strain points")
     peak = int(np.argmax(y))
@@ -1506,11 +1506,13 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
         if not endpoint_available(endpoint):
             raise ValueError('CSV fracture not detected: ' + endpoint['reason'])
         end_x = endpoint['strain_pct']
+        tail_x, tail_y, _ = fracture_curve(record)
         # The selected measurement sets reported EL. Only the shape endpoint retreats.
         # Re-use measured detection; a reconstructed curve has no unloading drop.
         clean_end = end_x - LANDMARK_PREBREAK_MARGIN_PERCENT
         if clean_end <= peak_x:
-            clean_end = min(end_x, float(x[peak + 1])) if peak + 1 < len(x) else peak_x
+            after_peak = tail_x[tail_x > peak_x]
+            clean_end = min(end_x, float(after_peak[0])) if len(after_peak) else peak_x
         if not peak_x < clean_end <= end_x:
             raise ValueError('No resolved post-UTS segment before detected fracture')
         source_knots = np.r_[source_knots, clean_end]
@@ -1519,7 +1521,9 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
     if isinstance(count, bool) or not isinstance(count, (int, np.integer)) or count < 3:
         raise ValueError("Landmark points per stage must be an integer of at least 3")
     progress=np.linspace(0,1,count)
-    stages=[np.interp(a+progress*(b-a),x,y) for a,b in zip(source_knots[:-1],source_knots[1:])]
+    stages=[np.interp(a+progress*(b-a),x,y) for a,b in zip(source_knots[:2],source_knots[1:3])]
+    if not prepeak_only:
+        stages.append(np.interp(peak_x+progress*(clean_end-peak_x),tail_x,tail_y))
     stages[0][-1]=stages[1][0]=ys
     stages[1][-1] = uts
     if not prepeak_only:
@@ -1601,7 +1605,7 @@ def prepare_average_curves(plot_spec, selected_records, *,
                 'pointwise_diagnostic': 'No eligible curve shapes',
                 'landmark_diagnostic': 'No eligible curve shapes; property means remain available', 'curves': []}
             continue
-        curves = ([(r['strain_pct'], r['stress_mpa']) for r in records] if prepeak_only else
+        curves = ([loading_curve(r)[:2] for r in records] if prepeak_only else
                   [fracture_curve(r)[:2] for r in records])
         ends = [fracture_endpoint(r)['strain_pct'] for r in records]
         target = float(np.mean(ends)) if not prepeak_only else np.nan
@@ -1630,7 +1634,7 @@ def prepare_average_curves(plot_spec, selected_records, *,
                          "mean_failure": target, "pointwise_diagnostic": diagnostic,
                          "landmark_diagnostic": "", "curves": curves}
         fit_fractions=plot_spec.get("landmark_yield_fit_fractions",LANDMARK_YIELD_FIT_FRACTIONS)
-        items=[];rejected=[]
+        items=[];rejected=[];rejection_reasons=[]
         for record in records:
             try:
                 item=landmark_specimen(record,fit_fractions,points_per_stage=landmark_points, prepeak_only=prepeak_only)
@@ -1639,11 +1643,12 @@ def prepare_average_curves(plot_spec, selected_records, *,
                 items.append(item); audit.append({"Group":group,"Status":"included",**item[2]})
             except ValueError as error:
                 rejected.append(record["sample"])
+                rejection_reasons.append(f"{record.get('specimen_label') or record['sample']}: {error}")
                 audit.append({"Group":group,"Sample":record["sample"],"Raw source":record["source_file"],
                               "Status":"unresolved", "Notes":str(error)})
         # Do not silently change the population to make a synthetic mean work.
         if rejected or not items:
-            models[group]["landmark_diagnostic"] = f"unresolved specimens: {', '.join(rejected)}"
+            models[group]["landmark_diagnostic"] = 'unresolved specimens — ' + '; '.join(rejection_reasons)
             print(f"[LANDMARK WARNING] {group}: plot omitted; unresolved specimens {rejected}")
             continue
         # Shapes and property means may have different eligible populations.
