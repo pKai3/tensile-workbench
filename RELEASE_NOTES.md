@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.5
 
 - Fix elastic fits and yield calculations when recorded strain reverses during
   unloading. Select the original loading phase before sorting by strain, so
