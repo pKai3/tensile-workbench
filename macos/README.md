@@ -23,15 +23,19 @@ Dock app first. For a developer-only rebuild without package setup, use
 `/bin/zsh tools/run_macos.sh app`.
 See [SETUP.md](../SETUP.md#mac-dock-app) for the end-user workflow.
 
-The installer compiles for the current Mac's architecture, signs the app
-ad-hoc, verifies it, and installs it to the current user's Applications folder.
+The installer compiles for the current Mac's architecture when the launcher
+changes. Otherwise it reuses the installed executable after checking its source,
+build recipe, signature, architecture and installation path. Every update
+refreshes the bundle metadata/resources, signs the app ad-hoc, verifies it, and
+installs it to the current user's Applications folder.
 Compilation and module caches use a temporary directory that is cleaned up on
 success or failure. A staged replacement and backup preserve the existing app
 directory (and its Dock reference); the old Contents are restored if replacement
 fails. The bundle-building step does not launch Workbench, run pip or process data.
 
 The generated bundle includes this Swift source and the repository licence for
-inspection/recovery. Git remains the source of truth. Change the template's
-bundle version when releasing launcher changes. For public prebuilt downloads,
+inspection/recovery. Git remains the source of truth. The bundle version comes
+from `VERSION`; bump `BUILD_RECIPE` when compiler flags or deployment targets
+change. For public prebuilt downloads,
 Apple signing/notarisation and release packaging would be a separate workflow;
 do not commit a locally generated personal app as a release.

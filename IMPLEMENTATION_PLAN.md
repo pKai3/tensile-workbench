@@ -1,5 +1,24 @@
 # Implementation record
 
+## Change notes — 2026-11-06
+
+### Mac updater speed and shutdown — implemented
+
+- Reuse the installed launcher executable when its bundled Swift source,
+  architecture, signature, build recipe and installation path match. Always
+  refresh the app metadata, icon, licence and signature; rebuild when validation
+  fails. Wire reuse into both staged updates and the standalone installer.
+- Fix the observed updater hang: `terminateLater` nested AppKit's quit loop
+  inside the polling timer that needed to finish shutdown. Keep the ordinary
+  event loop running until the owned server group has exited, then acknowledge
+  the updater and terminate. Preserve the updater's independent actual-exit
+  check before replacing any files.
+- Add focused reuse/preparation checks and an opt-in native event-loop probe
+  to the Mac CI job, using dummy child processes and temporary files only.
+- Verification: 56 focused installer/updater checks and three native shutdown
+  probes pass. The probes cover an active server, an already-stopped server,
+  and quitting during shutdown without opening the workbench or user files.
+
 ## Change notes — 2026-11-05
 
 ### Keep unloading out of loading calculations — implemented

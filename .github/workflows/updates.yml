@@ -10,6 +10,7 @@ on:
       - 'tools/*app.py'
       - 'macos/Launcher.swift'
       - 'tests/test_updates.py'
+      - 'tests/test_macos*.py'
       - '.github/workflows/updates.yml'
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - 'tools/*app.py'
       - 'macos/Launcher.swift'
       - 'tests/test_updates.py'
+      - 'tests/test_macos*.py'
       - '.github/workflows/updates.yml'
   workflow_dispatch:
   workflow_call:
@@ -46,3 +48,8 @@ jobs:
       - name: Compile the native Mac launcher
         if: runner.os == 'macOS'
         run: xcrun swiftc -typecheck -framework AppKit macos/Launcher.swift
+      - name: Exercise native Mac shutdown and updater handoff
+        if: runner.os == 'macOS'
+        env:
+          TENSILE_NATIVE_LAUNCHER_TESTS: '1'
+        run: python -m unittest -v tests.test_macos_shutdown

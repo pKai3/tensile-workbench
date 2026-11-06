@@ -55,7 +55,7 @@ The native launcher requires **macOS 13 or newer** and **Apple Command Line Tool
 
 The installed app uses your existing checkout and Python environment. It is **not a portable copy of the whole workbench**. Git contains `macos/Launcher.swift`, a generic `macos/Info.plist`, the icon and the installer; installation fills in local paths only in the built app. Build/signing is local (ad-hoc), not an Apple-notarised downloadable binary. Keep normal macOS security protections enabled.
 
-After a manual code update or moving the checkout, rerun **Install_Tensile_Workbench_App.command**. It checks the Python environment and refreshes the launcher together. Normal **Check for updates** installs already handle this. Apple Silicon and Intel Macs build for their own architecture. Temporary compiler caches are removed after the build, including on failure.
+After a manual code update or moving the checkout, rerun **Install_Tensile_Workbench_App.command**. It checks the Python environment and refreshes the launcher together. Normal **Check for updates** installs already handle this. The installed launcher is reused when its source and build settings still match, avoiding a Swift rebuild for routine updates. Apple Silicon and Intel Macs build for their own architecture when compilation is needed. Temporary compiler caches are removed after the build, including on failure.
 
 ## Advanced console use
 

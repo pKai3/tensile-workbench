@@ -281,6 +281,20 @@ class UpdateTests(UpdateFixture):
             with self.assertRaises(updates.UpdateError):
                 updates.wait_for_shutdown(session, timeout=.01)
 
+    def test_mac_update_preparation_passes_installed_app_for_reuse(self):
+        plan = {'root': str(self.root), 'stage': str(self.base / 'staged source'),
+                'environment': str(self.folder), 'directory': str(self.base / 'transaction')}
+        app = str(self.base / 'Applications/Tensile Workbench.app')
+        with patch.object(update_workbench.sys, 'platform', 'darwin'), \
+             patch.object(update_workbench, 'run_logged') as run, \
+             patch.object(update_workbench, 'write_json'):
+            update_workbench.prepare_launcher(plan, {'app': app}, lambda text: None)
+        command, directory, env = run.call_args.args
+        self.assertIn('reuse_app=Path(sys.argv[4])', command[2])
+        self.assertEqual(command[-2:], [str(self.root), app])
+        self.assertEqual(env['PYTHONPATH'], plan['stage'])
+        self.assertEqual(plan['app'], app)
+
     def test_bridge_needs_nonce_live_helper_and_matching_action(self):
         with patch.object(update_bridge, 'update_directory', return_value=self.base / 'sessions'):
             bridge = update_bridge.UpdateBridge(self.root, self.folder)

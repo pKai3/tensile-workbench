@@ -16,6 +16,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 APP_NAME = 'Tensile Workbench.app'
 BUNDLE_ID = 'local.tensileworkbench.launcher'
+# Bump when compiler flags or the deployment target change. Older bundles used
+# the same recipe, so their bundled source can still establish a safe match.
+BUILD_RECIPE = 1
 
 
 def run(command, **kwargs):
@@ -65,7 +68,32 @@ def validate_destination(destination):
         raise RuntimeError(f'An unrecognised item already exists at {destination}; it was not overwritten.') from error
 
 
-def build_bundle(root, build_directory, environ=None, architecture=None, launch_root=None):
+def reusable_launcher(app, root, architecture, launch_root):
+    """Reuse only a signed, matching native binary from this installation."""
+    if not app:
+        return None
+    app = Path(app)
+    try:
+        validate_destination(app)
+        contents = app / 'Contents'
+        metadata = plistlib.loads((contents / 'Info.plist').read_bytes())
+        if (metadata.get('WorkbenchBuildRecipe', 1) != BUILD_RECIPE
+                or metadata.get('LSMinimumSystemVersion') != '13.0'
+                or metadata.get('WorkbenchLauncherPath') != str(Path(launch_root) / 'Launch_Tensile_Workbench.command')):
+            return None
+        binary = contents / 'MacOS/TensileWorkbench'
+        if not binary.is_file() or binary.is_symlink():
+            return None
+        if (contents / 'Resources/Launcher.swift').read_bytes() != (Path(root) / 'macos/Launcher.swift').read_bytes():
+            return None
+        run(['/usr/bin/codesign', '--verify', '--strict', app], capture_output=True)
+        run(['/usr/bin/lipo', binary, '-verify_arch', architecture], capture_output=True)
+        return binary
+    except (OSError, ValueError, RuntimeError, plistlib.InvalidFileException, subprocess.CalledProcessError):
+        return None
+
+
+def build_bundle(root, build_directory, environ=None, architecture=None, launch_root=None, reuse_app=None):
     """Machine-specific paths are generated only inside this temporary bundle."""
     root = Path(root).resolve()
     build_directory = Path(build_directory)
@@ -82,7 +110,9 @@ def build_bundle(root, build_directory, environ=None, architecture=None, launch_
     metadata = plistlib.loads((root / 'macos/Info.plist').read_bytes())
     if (root / 'VERSION').is_file():
         metadata['CFBundleShortVersionString'] = (root / 'VERSION').read_text().strip()
+        metadata['CFBundleVersion'] = metadata['CFBundleShortVersionString']
     metadata['WorkbenchLauncherPath'] = str(Path(launch_root or root) / 'Launch_Tensile_Workbench.command')
+    metadata['WorkbenchBuildRecipe'] = BUILD_RECIPE
     if environ.get('TENSILE_ENV_DIR'):
         # Finder does not inherit a Terminal's custom environment setting.
         sys.path.insert(0, str(root))
@@ -103,9 +133,15 @@ def build_bundle(root, build_directory, environ=None, architecture=None, launch_
     for source, name in (('macos/TensileWorkbench.icns', 'TensileWorkbench.icns'),
                          ('macos/Launcher.swift', 'Launcher.swift'), ('LICENSE', 'LICENSE')):
         shutil.copyfile(root / source, resources / name)
-    run(['/usr/bin/xcrun', 'swiftc', '-O', '-target', architecture + '-apple-macos13.0',
-         '-module-cache-path', build_directory / 'module-cache', '-framework', 'AppKit',
-         root / 'macos/Launcher.swift', '-o', contents / 'MacOS/TensileWorkbench'])
+    binary = reusable_launcher(reuse_app, root, architecture, launch_root or root)
+    if binary is not None:
+        print('Reusing unchanged Mac launcher.', flush=True)
+        shutil.copy2(binary, contents / 'MacOS/TensileWorkbench')
+    else:
+        print('Compiling Mac launcher…', flush=True)
+        run(['/usr/bin/xcrun', 'swiftc', '-O', '-target', architecture + '-apple-macos13.0',
+             '-module-cache-path', build_directory / 'module-cache', '-framework', 'AppKit',
+             root / 'macos/Launcher.swift', '-o', contents / 'MacOS/TensileWorkbench'])
     run(['/usr/bin/codesign', '--force', '--sign', '-', app])
     run(['/usr/bin/codesign', '--verify', '--strict', app])
     return app
@@ -149,11 +185,11 @@ def main():
     user_home = Path.home()
     destination = user_home / 'Applications' / APP_NAME
     validate_destination(destination)
-    print('Building the Dock app for this Mac. No data will be processed.', flush=True)
+    print('Preparing the Dock app for this Mac. No data will be processed.', flush=True)
     # The temporary compiler cache can be large. Always remove it, including
     # on build failure; never leave it in the checkout or a synced data folder.
     with tempfile.TemporaryDirectory(prefix='tensile-macos-app-') as directory:
-        app = build_bundle(ROOT, directory)
+        app = build_bundle(ROOT, directory, reuse_app=destination)
         backup = install_bundle(app, destination,
                                 user_home / 'Library/Application Support/Tensile Workbench/launcher-backups')
     registrar = Path('/System/Library/Frameworks/CoreServices.framework/Frameworks/'

@@ -31,16 +31,16 @@ def prepare_launcher(plan, session, progress):
     if sys.platform != 'darwin':
         return
     progress('Preparing the Mac launcher…')
-    # Compile from the verified staged source, but embed the stable installed path.
+    # Build from verified staged source, reusing an unchanged installed launcher.
     code = ('from tools.install_macos_app import build_bundle; from pathlib import Path; '
             'import sys; build_bundle(Path(sys.argv[1]), Path(sys.argv[2]), '
-            'launch_root=Path(sys.argv[3]))')
+            'launch_root=Path(sys.argv[3]), reuse_app=Path(sys.argv[4]))')
     folder = Path(plan['environment'])
     env = os.environ.copy()
     env['TENSILE_ENV_DIR'] = str(folder)
     env['PYTHONPATH'] = plan['stage']
     run_logged([folder / 'bin/python', '-c', code, plan['stage'],
-                str(Path(plan['directory']) / 'app-build'), plan['root']], plan['directory'], env)
+                str(Path(plan['directory']) / 'app-build'), plan['root'], session['app']], plan['directory'], env)
     plan['app'] = session['app']
     write_json(Path(plan['directory']) / 'transaction.json', plan)
 

@@ -34,7 +34,7 @@ class MacAppTests(unittest.TestCase):
         self.destination = self.base / 'Applications' / installer.APP_NAME
         self.backups = self.base / 'backups'
 
-    def fake_build(self, architecture='arm64', environ=None):
+    def fake_build(self, architecture='arm64', environ=None, **kwargs):
         def command(args, **kwargs):
             if 'swiftc' in args:
                 Path(args[args.index('-o') + 1]).write_bytes(b'fake executable')
@@ -42,7 +42,7 @@ class MacAppTests(unittest.TestCase):
         with patch.object(installer, 'run', side_effect=command) as calls:
             app = installer.build_bundle(self.root, self.build_dir,
                                          environ={} if environ is None else environ,
-                                         architecture=architecture)
+                                         architecture=architecture, **kwargs)
         return app, calls
 
     def test_build_injects_paths_only_in_generated_plist_and_uses_native_architecture(self):
@@ -69,6 +69,54 @@ class MacAppTests(unittest.TestCase):
         metadata = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
         self.assertEqual(metadata['WorkbenchEnvironmentPath'], str(environment))
         self.assertFalse(environment.exists())
+
+    def test_unchanged_launcher_is_reused_but_metadata_and_resources_refresh(self):
+        old, _ = self.fake_build()
+        shutil.copytree(old, self.destination)
+        self.build_dir = self.base / 'next build'
+        (self.root / 'VERSION').write_text('1.2.3\n')
+        (self.root / 'LICENSE').write_text('Updated licence notice')
+        environment = self.base / 'new environment'
+        app, calls = self.fake_build(reuse_app=self.destination,
+                                    environ={'TENSILE_ENV_DIR': str(environment)})
+        commands = [call.args[0] for call in calls.call_args_list]
+        self.assertFalse(any('swiftc' in command for command in commands))
+        self.assertTrue(any(command[0] == '/usr/bin/lipo' for command in commands))
+        self.assertEqual(commands[-1][1:3], ['--verify', '--strict'])
+        self.assertEqual((app / 'Contents/MacOS/TensileWorkbench').read_bytes(), b'fake executable')
+        self.assertEqual((app / 'Contents/Resources/LICENSE').read_text(), 'Updated licence notice')
+        info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+        self.assertEqual(info['CFBundleShortVersionString'], '1.2.3')
+        self.assertEqual(info['CFBundleVersion'], '1.2.3')
+        self.assertEqual(info['WorkbenchEnvironmentPath'], str(environment))
+
+    def test_changed_source_and_build_recipe_require_compilation(self):
+        old, _ = self.fake_build()
+        shutil.copytree(old, self.destination)
+        source = self.root / 'macos/Launcher.swift'
+        original = source.read_bytes()
+        for reason in ('source', 'recipe', 'checkout', 'missing'):
+            with self.subTest(reason=reason):
+                source.write_bytes(original + (b'\n// changed' if reason == 'source' else b''))
+                info = plistlib.loads((old / 'Contents/Info.plist').read_bytes())
+                if reason == 'recipe':
+                    info['WorkbenchBuildRecipe'] = installer.BUILD_RECIPE + 1
+                if reason == 'checkout':
+                    info['WorkbenchLauncherPath'] = '/different/launcher.command'
+                (self.destination / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+                self.build_dir = self.base / ('build-' + reason)
+                app, calls = self.fake_build(reuse_app=self.base / 'absent.app' if reason == 'missing' else self.destination)
+                self.assertTrue(any('swiftc' in call.args[0] for call in calls.call_args_list))
+
+    def test_invalid_signature_or_wrong_architecture_cannot_be_reused(self):
+        old, _ = self.fake_build()
+        for failed_tool in ('codesign', 'lipo'):
+            def command(args, **kwargs):
+                if args[0] == '/usr/bin/' + failed_tool:
+                    raise subprocess.CalledProcessError(1, args)
+                return subprocess.CompletedProcess(args, 0)
+            with self.subTest(tool=failed_tool), patch.object(installer, 'run', side_effect=command):
+                self.assertIsNone(installer.reusable_launcher(old, self.root, 'arm64', self.root))
 
     def test_staged_update_embeds_installed_path_not_temporary_source(self):
         with patch.object(installer, 'run'):
@@ -143,7 +191,7 @@ class MacAppTests(unittest.TestCase):
 
     def test_temporary_compiler_cache_removed_on_build_failure(self):
         created = []
-        def fail_build(root, directory):
+        def fail_build(root, directory, **kwargs):
             created.append(Path(directory))
             cache = Path(directory) / 'module-cache'
             cache.mkdir()
