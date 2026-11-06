@@ -2,6 +2,18 @@
 
 ## Change notes — 2026-11-06
 
+### Explicit platform names for installation and launch — implemented
+
+- Rename the four public entry files to `Install/Launch Tensile Workbench -
+  Windows.bat` and `Install/Launch Tensile Workbench - macOS.command`. Update
+  app paths, repair messages, instructions and shell/bootstrap checks together.
+- Retire unchanged old wrappers after installation, with recoverable backups.
+  Preserve modified files and symlinks. Keep installed app/shortcut names and
+  personal settings unchanged.
+- Verification: 77 focused platform/setup checks pass (five Windows-only skips
+  on this Mac); native Windows execution is covered by GitHub CI. The renamed
+  macOS launcher compiles and its bundle signature verifies.
+
 ### Mac updater speed and shutdown — implemented
 
 - Reuse the installed launcher executable when its bundled Swift source,

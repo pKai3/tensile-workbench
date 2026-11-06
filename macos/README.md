@@ -2,7 +2,7 @@
 
 `Launcher.swift` is the small AppKit application hosting the launcher and live
 log window, not the browser workbench itself. Its child process starts the
-`Launch_Tensile_Workbench.command` with `TENSILE_DESKTOP_APP=1` in an isolated process group. Without that flag, the same file opens the installed desktop app. Stop
+`Launch Tensile Workbench - macOS.command` with `TENSILE_DESKTOP_APP=1` in an isolated process group. Without that flag, the same file opens the installed desktop app. Stop
 and Quit affect only that group. The app does not embed Python or research data.
 
 `Info.plist` is a portable template. `tools/install_macos_app.py` writes the
@@ -16,7 +16,7 @@ The icon is intentionally tracked; generated `.app` bundles are not.
 ## Build or update
 
 On macOS 13+, use Python 3.14 and Apple Command Line Tools (or Xcode), then
-run `Install_Tensile_Workbench_App.command` from the repository. If Python is
+run `Install Tensile Workbench - macOS.command` from the repository. If Python is
 missing, the wrapper offers the official installer. It checks launcher/build
 prerequisites, sets up Workbench packages and builds the app. Quit the existing
 Dock app first. For a developer-only rebuild without package setup, use

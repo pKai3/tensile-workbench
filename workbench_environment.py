@@ -28,6 +28,19 @@ def retire_legacy_entrypoints(root):
     known = {'Setup_Tensile_Workbench.bat': batch.format(action='setup'),
              'Launch_Tensile_Workbench.bat': batch.format(action='launch'),
              'Setup_Tensile_Workbench.command': '#!/bin/zsh\nexec /bin/zsh "${0:A:h}/tools/run_macos.sh" setup\n'}
+    renamed = {
+        'Install_Tensile_Workbench_App.bat': ('Install Tensile Workbench - Windows.bat', batch.format(action='install-app')),
+        'Launch_Tensile_Workbench_App.bat': ('Launch Tensile Workbench - Windows.bat', batch.format(action='desktop')),
+        'Install_Tensile_Workbench_App.command': ('Install Tensile Workbench - macOS.command',
+            '#!/bin/zsh\nexec /bin/zsh "${0:A:h}/tools/run_macos.sh" install-app\n'),
+        'Launch_Tensile_Workbench.command': ('Launch Tensile Workbench - macOS.command',
+            '#!/bin/zsh\n# Existing Dock launchers use this entry point to start their owned server.\n'
+            'if [[ "${TENSILE_DESKTOP_APP:-}" == "1" ]]; then\n'
+            '    exec /bin/zsh "${0:A:h}/tools/run_macos.sh" launch\nfi\n'
+            'exec /bin/zsh "${0:A:h}/tools/run_macos.sh" desktop\n'),
+    }
+    known.update({old: content for old, (replacement, content) in renamed.items()
+                  if (Path(root) / replacement).is_file()})
     for name, expected in known.items():
         path = Path(root) / name
         if not path.is_file() or path.is_symlink():
@@ -259,7 +272,7 @@ def main(argv=None, root=None):
     folder = environment_folder(root)
     validate_environment_location(folder, root)
     if action in ('install-app', 'desktop') and sys.platform != 'win32':
-        raise RuntimeError('Use Install_Tensile_Workbench_App.command for the Mac app.')
+        raise RuntimeError('Use Install Tensile Workbench - macOS.command for the Mac app.')
     if action in ('setup', 'install-app'):
         setup(folder, root)
         if action == 'install-app':
@@ -267,15 +280,16 @@ def main(argv=None, root=None):
         return 0
     python = python_in(folder, sys.platform)
     if not python.is_file():
-        raise RuntimeError('The workbench environment was not found. Run Install_Tensile_Workbench_App.'
-                           + ('bat' if sys.platform == 'win32' else 'command') + ' first. See SETUP.md.')
+        installer = ('Install Tensile Workbench - Windows.bat' if sys.platform == 'win32'
+                     else 'Install Tensile Workbench - macOS.command')
+        raise RuntimeError(f'The workbench environment was not found. Run {installer} first. See SETUP.md.')
     print('Using environment:', folder, flush=True)
     env = child_environment(folder)
     if action == 'desktop':
         pythonw = folder / 'Scripts/pythonw.exe'
         launcher = root / 'tools/windows_app.py'
         if not pythonw.is_file() or not launcher.is_file():
-            raise RuntimeError('Run Install_Tensile_Workbench_App.bat first.')
+            raise RuntimeError('Run Install Tensile Workbench - Windows.bat first.')
         # The control window performs preflight in its managed child and shows errors.
         subprocess.Popen([str(pythonw), str(launcher), '--environment', str(folder)],
                          cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

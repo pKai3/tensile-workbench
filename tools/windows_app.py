@@ -111,7 +111,7 @@ class ServerProcess:
             self._send('start')
         except Exception as error:
             self.logger.error('Could not start: %s', redact(str(error), self.token))
-            self.state = 'Could not start — view log or rerun Install_Tensile_Workbench_App.bat.'
+            self.state = 'Could not start — view log or rerun Install Tensile Workbench - Windows.bat.'
             self._dispose()
 
     def _send(self, command):
@@ -382,7 +382,7 @@ if __name__ == '__main__':
         # pythonw has no terminal; surface startup failures instead of disappearing.
         if sys.platform == 'win32':
             import ctypes
-            ctypes.windll.user32.MessageBoxW(None, str(error) + '\n\nRerun Install_Tensile_Workbench_App.bat. '
+            ctypes.windll.user32.MessageBoxW(None, str(error) + '\n\nRerun Install Tensile Workbench - Windows.bat. '
                 'Python must include Tcl/Tk.', 'Tensile Workbench could not start', 0x10)
         else:
             print(error, file=sys.stderr)

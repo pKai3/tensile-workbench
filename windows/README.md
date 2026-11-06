@@ -1,6 +1,6 @@
 # Windows desktop launcher
 
-Run **Install_Tensile_Workbench_App.bat** from a complete checkout/ZIP on Windows
+Run **Install Tensile Workbench - Windows.bat** from a complete checkout/ZIP on Windows
 10/11 x86-64 with standard Python 3.14, including Tcl/Tk. It sets up or reuses the
 external environment, then creates per-user Desktop and Start-menu shortcuts.
 See [SETUP.md](../SETUP.md#windows-desktop-app) for user instructions.
@@ -20,7 +20,7 @@ first-install path on a machine with no Python 3.14.
 The persistent Tk control window follows the TEM Workbench launcher layout:
 Start/Stop, Open Workbench and a separate live log. The analytical interface
 continues to run in the user's default browser. This does not bundle Python or
-duplicate the saved project. **Launch_Tensile_Workbench_App.bat** opens this same
+duplicate the saved project. **Launch Tensile Workbench - Windows.bat** opens this same
 desktop interface. Console-only setup/launch are internal `tools/run_windows.bat`
 actions; see the advanced console workflow in SETUP.md.
 

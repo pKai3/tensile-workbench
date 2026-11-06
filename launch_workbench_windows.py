@@ -5,7 +5,7 @@ from workbench_environment import main as manage_environment
 
 def main():
     if sys.platform != 'win32':
-        raise RuntimeError('Use Launch_Tensile_Workbench.command on macOS.')
+        raise RuntimeError('Use Launch Tensile Workbench - macOS.command on macOS.')
     return manage_environment(['launch'])
 
 

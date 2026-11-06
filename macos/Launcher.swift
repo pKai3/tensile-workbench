@@ -412,7 +412,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         do {
             guard FileManager.default.isReadableFile(atPath: launcher) else {
                 throw NSError(domain: "WorkbenchLauncher", code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Workbench folder not found. If you moved it, run Install_Tensile_Workbench_App.command from its new location."])
+                    userInfo: [NSLocalizedDescriptionKey: "Workbench folder not found. If you moved it, run Install Tensile Workbench - macOS.command from its new location."])
             }
             if try existingServer() {
                 status.stringValue = "Workbench is already running outside this app. If it is open in Terminal, press Ctrl+C there, then click Start here."

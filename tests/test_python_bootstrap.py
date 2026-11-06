@@ -85,7 +85,7 @@ public class Probe {
         shutil.copy2(self.stub, self.bin / 'py.exe')
         shutil.copy2(self.stub, self.bin / 'python.exe')
         shutil.copy2(TOOLS / 'run_windows.bat', self.tools / 'run_windows.bat')
-        for filename in ('Install_Tensile_Workbench_App.bat', 'Launch_Tensile_Workbench_App.bat'):
+        for filename in ('Install Tensile Workbench - Windows.bat', 'Launch Tensile Workbench - Windows.bat'):
             shutil.copy2(ROOT / filename, self.root / filename)
         self.log = self.base / 'events.txt'
         self.installed = self.base / 'installed'
@@ -111,7 +111,7 @@ exit /b 0
             TW_TEST_LOG=str(self.log), TW_TEST_AFTER_INSTALL_EXIT='0',
             TW_TEST_INSTALL_EXIT='0', TW_TEST_SETUP_EXIT='0', TW_TEST_ACTION_EXIT='0')
 
-    def launch(self, probe_exit, action='Install_Tensile_Workbench_App.bat', **values):
+    def launch(self, probe_exit, action='Install Tensile Workbench - Windows.bat', **values):
         self.installed.unlink(missing_ok=True)
         self.installed_python.unlink(missing_ok=True)
         self.log.unlink(missing_ok=True)
@@ -150,7 +150,7 @@ exit /b 0
     def test_launch_builds_environment_after_install_and_stops_on_setup_failure(self):
         for code in (0, 1, -1610612730):
             with self.subTest(exit_code=code):
-                result, events = self.launch(-1610612730, 'Launch_Tensile_Workbench_App.bat',
+                result, events = self.launch(-1610612730, 'Launch Tensile Workbench - Windows.bat',
                                              TW_TEST_SETUP_EXIT=str(code))
                 self.assertEqual(result.returncode & 0xffffffff, code & 0xffffffff)
                 self.assertEqual(events, ['installer', 'action:setup'] +

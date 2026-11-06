@@ -10,8 +10,8 @@
 
    | System | Install once / repair | Open normally |
    | --- | --- | --- |
-   | Windows | `Install_Tensile_Workbench_App.bat` | **Tensile Workbench** on the desktop or Start menu |
-   | Mac | `Install_Tensile_Workbench_App.command` | `Tensile Workbench.app` in your user Applications folder, or `Launch_Tensile_Workbench.command` |
+   | Windows | `Install Tensile Workbench - Windows.bat` | **Tensile Workbench** on the desktop or Start menu |
+   | Mac | `Install Tensile Workbench - macOS.command` | `Tensile Workbench.app` in your user Applications folder, or `Launch Tensile Workbench - macOS.command` |
 
 4. Wait for the installer to finish. It prepares the Python environment and desktop launcher together. Internet access is needed for package installation. It checks imports and analysis-definition validity without loading research datasets, creating plots or changing definitions.
 5. Open the installed app. The web app opens in your browser and runs automatically—there is no notebook editor or Run All Cells step. Confirm the data/output folders on first use. The control window provides **Stop** and **Check for updates**. The server listens on this computer only (`127.0.0.1`).
@@ -23,14 +23,14 @@ The Python installer opens only after you accept the offer. macOS asks for admin
 - The app installer first looks for an existing standard 3.14 interpreter. If found, no Python download is offered. If absent, accept **Install Python** on Mac or answer **Y** on Windows.
 - The helper downloads the official **Python 3.14.10** installer from python.org, checks its published SHA-256, and opens the ordinary installer UI. Windows also checks the executable's signature. Licence acceptance, installation scope and administrator prompts stay in the normal OS workflow.
 - On Windows, keep **Tcl/Tk** and the **Python launcher** selected. Setup checks standard install locations again afterwards, so a freshly changed PATH does not require another terminal. On Mac, the helper also runs Python's supplied **Install Certificates.command** to complete HTTPS setup.
-- If Python installation succeeds, Workbench installation resumes. Cancelling, a download/checksum failure, or an unsuccessful installer stops the process; rerun **Install_Tensile_Workbench_App** to retry. Temporary installer files are removed after the attempt.
-- Other Python versions and existing workbench environments are preserved. A launch with Python already installed still expects the Workbench environment to have been set up previously. The Mac Dock app can show the installer offer if its Python is missing; a Windows shortcut whose Python executable has been removed must be repaired through **Install_Tensile_Workbench_App.bat**.
+- If Python installation succeeds, Workbench installation resumes. Cancelling, a download/checksum failure, or an unsuccessful installer stops the process; rerun the **Install Tensile Workbench** file labelled **Windows** or **macOS** for your computer to retry. Temporary installer files are removed after the attempt.
+- Other Python versions and existing workbench environments are preserved. A launch with Python already installed still expects the Workbench environment to have been set up previously. The Mac Dock app can show the installer offer if its Python is missing; a Windows shortcut whose Python executable has been removed must be repaired through **Install Tensile Workbench - Windows.bat**.
 
 Installer URLs and checksums are recorded together in `tools/python_installers.conf`, sourced from the [official release page](https://www.python.org/downloads/release/python-31410/). A future installer update must change both; helpers do not run an unverified replacement download.
 
 ## Windows desktop app
 
-Double-click **Install_Tensile_Workbench_App.bat** on Windows 10/11 x86-64. It runs the normal environment setup, checks Tcl/Tk, and adds **Tensile Workbench** to your desktop and Start menu. Installation uses your own account and does not require administrator privileges. The setup console remains visible until finished; the installed shortcuts launch without a console. **Launch_Tensile_Workbench_App.bat** is an alternative entry point.
+Double-click **Install Tensile Workbench - Windows.bat** on Windows 10/11 x86-64. It runs the normal environment setup, checks Tcl/Tk, and adds **Tensile Workbench** to your desktop and Start menu. Installation uses your own account and does not require administrator privileges. The setup console remains visible until finished; the installed shortcuts launch without a console. **Launch Tensile Workbench - Windows.bat** is an alternative entry point.
 
 - The control window starts the server and opens your browser when ready. **Open Workbench** uses the current authenticated address; **Start/Stop** restarts or stops this instance.
 - Keep the window open or minimised. **Stop** and closing the window ask for confirmation, then stop this server and its calculation processes. Closing just the browser or live-log window leaves the server running.
@@ -44,7 +44,7 @@ The source, icon and installer are included in Git; shortcuts contain local path
 
 ## Mac Dock app
 
-The native launcher requires **macOS 13 or newer** and **Apple Command Line Tools** (or Xcode). **Install_Tensile_Workbench_App.command** checks these prerequisites, sets up the Python environment and builds the app. It refuses to change packages while the Dock app is running. If build tools are missing, run `xcode-select --install` in Terminal, complete Apple's installer and rerun the Workbench installer. Full Xcode is not required. On older macOS, use the advanced console workflow below if Python supports your system.
+The native launcher requires **macOS 13 or newer** and **Apple Command Line Tools** (or Xcode). **Install Tensile Workbench - macOS.command** checks these prerequisites, sets up the Python environment and builds the app. It refuses to change packages while the Dock app is running. If build tools are missing, run `xcode-select --install` in Terminal, complete Apple's installer and rerun the Workbench installer. Full Xcode is not required. On older macOS, use the advanced console workflow below if Python supports your system.
 
 - The app is installed in **~/Applications/Tensile Workbench.app**, without administrator privileges. In Finder, choose Go → Go to Folder and enter `~/Applications`, then drag the app to your Dock.
 - **Open Workbench** reopens the browser using the current server's authenticated address.
@@ -55,7 +55,7 @@ The native launcher requires **macOS 13 or newer** and **Apple Command Line Tool
 
 The installed app uses your existing checkout and Python environment. It is **not a portable copy of the whole workbench**. Git contains `macos/Launcher.swift`, a generic `macos/Info.plist`, the icon and the installer; installation fills in local paths only in the built app. Build/signing is local (ad-hoc), not an Apple-notarised downloadable binary. Keep normal macOS security protections enabled.
 
-After a manual code update or moving the checkout, rerun **Install_Tensile_Workbench_App.command**. It checks the Python environment and refreshes the launcher together. Normal **Check for updates** installs already handle this. The installed launcher is reused when its source and build settings still match, avoiding a Swift rebuild for routine updates. Apple Silicon and Intel Macs build for their own architecture when compilation is needed. Temporary compiler caches are removed after the build, including on failure.
+After a manual code update or moving the checkout, rerun **Install Tensile Workbench - macOS.command**. It checks the Python environment and refreshes the launcher together. Normal **Check for updates** installs already handle this. The installed launcher is reused when its source and build settings still match, avoiding a Swift rebuild for routine updates. Apple Silicon and Intel Macs build for their own architecture when compilation is needed. Temporary compiler caches are removed after the build, including on failure.
 
 ## Advanced console use
 
@@ -70,7 +70,7 @@ application folder, run:
 | Rebuild only the Mac launcher | — | `/bin/zsh tools/run_macos.sh app` |
 
 Leave that console open while working; **Ctrl-C** stops its server. The Mac
-source-folder `Launch_Tensile_Workbench.command` opens the installed desktop app;
+source-folder `Launch Tensile Workbench - macOS.command` opens the installed desktop app;
 it checks that the app belongs to this checkout. Old Dock launchers can still
 start their owned server through the same file without reopening themselves.
 
@@ -156,7 +156,7 @@ just to repair this error.
 
 ### Manual setup and Python upgrades
 
-**This version uses Python 3.14.** Close the running workbench, then run **Install_Tensile_Workbench_App.bat** on Windows or **Install_Tensile_Workbench_App.command** on Mac. Accept the Python installer if offered. The installer creates or reuses the `py314/venv` environment and refreshes the desktop launcher.
+**This version uses Python 3.14.** Close the running workbench, then run **Install Tensile Workbench - Windows.bat** on Windows or **Install Tensile Workbench - macOS.command** on Mac. Accept the Python installer if offered. The installer creates or reuses the `py314/venv` environment and refreshes the desktop launcher.
 
 Older `venv` and Windows `v17-py313-…/venv` environments are left untouched, together with their caches. They are no longer selected automatically. Python environments are not renamed, copied or upgraded in place. The old environment remains available with the older code if rollback is needed. Your project file, overrides, backups and folder preferences remain in their existing locations.
 
@@ -188,9 +188,9 @@ Both systems accept `TENSILE_ENV_DIR` as an **absolute path to the environment i
 ## Troubleshooting
 
 - **Missing Python:** run the app installer and accept its Python offer, or install the supported Python version above manually and rerun the app installer. Both systems check the selected environment and standard installation locations. Windows also checks the Python launcher and PATH; Mac also checks Python.org and Homebrew. Cancellation stops installation without repeatedly prompting.
-- **Windows shortcut does not open:** double-click `Launch_Tensile_Workbench_App.bat` for visible startup errors. Check that the code folder and Python environment still exist, then rerun the app installer. If the control window opens but the server stops, use **View log**. A missing Tcl/Tk component requires modifying the Python installation, not installing a pip package.
-- **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag `Install_Tensile_Workbench_App.command` into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
-- **Mac Dock app was not installed:** follow the build-tool message above, quit any running Dock app and run Install_Tensile_Workbench_App.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. Installation prepares the environment and launcher without starting the server.
+- **Windows shortcut does not open:** double-click `Launch Tensile Workbench - Windows.bat` for visible startup errors. Check that the code folder and Python environment still exist, then rerun the app installer. If the control window opens but the server stops, use **View log**. A missing Tcl/Tk component requires modifying the Python installation, not installing a pip package.
+- **Mac command file permission:** if the downloaded ZIP lost executable permissions, open Terminal, type `/bin/zsh `, drag `Install Tensile Workbench - macOS.command` into the window, then press Return. Use the same approach for Launch. If macOS blocks the download with a security warning, review it through the normal macOS approval workflow or ask IT; do not disable Gatekeeper.
+- **Mac Dock app was not installed:** follow the build-tool message above, quit any running Dock app and run Install Tensile Workbench - macOS.command again. A broken or unrecognised app at the destination is not overwritten; preserve or move it deliberately before retrying. Installation prepares the environment and launcher without starting the server.
 - **Network/package failure:** retry the app installer when network access is restored. Packages are installed without a persistent pip download cache; setup uses binary wheels and will report an error instead of starting a lengthy source build. Do not disable certificate verification. For Python.org certificate errors on Mac, follow the Python installer's certificate instructions or ask IT.
 - **Partial installation:** if the environment's Python exists, the installer can retry missing packages. If the interpreter is missing/broken but the directory contains files, it stops instead of overwriting them. Close all workbench sessions; rename that **specific environment folder** as a backup and rerun the app installer. Keep the backup until the replacement works; do not rename/delete research folders.
 - **App fails to load / missing kernel:** close the app, rerun its installer and open it again. The app runs automatically through Voilà using the environment's `python3` kernel. Users do not need to choose a kernel. Advanced notebook access is still available with `python launch_workbench.py --notebook`; in that mode select **Tensile Workbench** and Run All Cells. Kernel registration uses `--sys-prefix`, not a global user kernel. See [IPython's kernel documentation](https://ipython.readthedocs.io/en/stable/install/kernel_install.html).

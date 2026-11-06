@@ -55,7 +55,7 @@ def shortcut_environment(root, folder, environ=None):
             raise RuntimeError('Missing ' + name + '. Extract the complete repository before installing.')
     python = folder / 'Scripts/pythonw.exe'
     if not python.is_file():
-        raise RuntimeError('The windowed Python launcher is missing. Run Install_Tensile_Workbench_App.bat first.')
+        raise RuntimeError('The windowed Python launcher is missing. Run Install Tensile Workbench - Windows.bat first.')
     env = dict(os.environ if environ is None else environ)
     env.update(TW_SHORTCUT_ROOT=str(root), TW_SHORTCUT_PYTHON=str(python),
                TW_SHORTCUT_ICON=str(root / 'windows/TensileWorkbench.ico'),
@@ -67,7 +67,7 @@ def shortcut_environment(root, folder, environ=None):
 def install(root=ROOT, folder=None):
     require_runtime()
     if sys.platform != 'win32':
-        raise RuntimeError('Use Install_Tensile_Workbench_App.command on macOS.')
+        raise RuntimeError('Use Install Tensile Workbench - macOS.command on macOS.')
     folder = folder or environment_folder(root)
     env = shortcut_environment(root, folder)
     # Tcl/Tk belongs to the Python installation, not a package downloaded by pip.

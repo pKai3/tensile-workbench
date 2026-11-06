@@ -34,14 +34,14 @@ ensure_python() {
     find_python && return 0
     bootstrap_python || return 1
     PYTHON_INSTALLED=1
-    find_python || { print -u2 -r -- 'Python 3.14 was not found after installation. Rerun Install_Tensile_Workbench_App.command, or see SETUP.md.'; return 1; }
+    find_python || { print -u2 -r -- 'Python 3.14 was not found after installation. Rerun Install Tensile Workbench - macOS.command, or see SETUP.md.'; return 1; }
 }
 
 open_installed_app() {
     local app_path="${1:-$HOME/Applications/Tensile Workbench.app}" installed_launcher
     installed_launcher="$(/usr/libexec/PlistBuddy -c 'Print :WorkbenchLauncherPath' "$app_path/Contents/Info.plist" 2>/dev/null)" || installed_launcher=""
-    if [[ -z "$installed_launcher" || "${installed_launcher:A}" != "$PROJECT_DIR/Launch_Tensile_Workbench.command" ]]; then
-        print -u2 -r -- 'Run Install_Tensile_Workbench_App.command from this folder first.'
+    if [[ -z "$installed_launcher" || "${installed_launcher:A}" != "$PROJECT_DIR/Launch Tensile Workbench - macOS.command" ]]; then
+        print -u2 -r -- 'Run Install Tensile Workbench - macOS.command from this folder first.'
         return 1
     fi
     /usr/bin/open "$app_path"

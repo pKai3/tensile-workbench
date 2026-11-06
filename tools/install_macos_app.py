@@ -27,7 +27,7 @@ def run(command, **kwargs):
 
 def require_build_tools():
     if sys.platform != 'darwin':
-        raise RuntimeError('This installer is for macOS. Use Install_Tensile_Workbench_App.bat on Windows.')
+        raise RuntimeError('This installer is for macOS. Use Install Tensile Workbench - Windows.bat on Windows.')
     if int(platform.mac_ver()[0].split('.')[0]) < 13:
         raise RuntimeError('The Dock app requires macOS 13 or newer. See the console workflow in SETUP.md for older systems.')
     try:
@@ -37,7 +37,7 @@ def require_build_tools():
         raise RuntimeError(
             'The Dock app needs Apple Command Line Tools (or Xcode). In Terminal, run '
             'xcode-select --install and finish Apple’s installation, then double-click '
-            'Install_Tensile_Workbench_App.command. See SETUP.md for the console workflow.'
+            'Install Tensile Workbench - macOS.command. See SETUP.md for the console workflow.'
         ) from error
 
 
@@ -79,7 +79,7 @@ def reusable_launcher(app, root, architecture, launch_root):
         metadata = plistlib.loads((contents / 'Info.plist').read_bytes())
         if (metadata.get('WorkbenchBuildRecipe', 1) != BUILD_RECIPE
                 or metadata.get('LSMinimumSystemVersion') != '13.0'
-                or metadata.get('WorkbenchLauncherPath') != str(Path(launch_root) / 'Launch_Tensile_Workbench.command')):
+                or metadata.get('WorkbenchLauncherPath') != str(Path(launch_root) / 'Launch Tensile Workbench - macOS.command')):
             return None
         binary = contents / 'MacOS/TensileWorkbench'
         if not binary.is_file() or binary.is_symlink():
@@ -102,7 +102,7 @@ def build_bundle(root, build_directory, environ=None, architecture=None, launch_
     if architecture not in ('arm64', 'x86_64'):
         raise RuntimeError(f'Unsupported Mac architecture: {architecture}')
     required = ('macos/Launcher.swift', 'macos/Info.plist', 'macos/TensileWorkbench.icns',
-                'LICENSE', 'Launch_Tensile_Workbench.command', 'tools/run_macos.sh',
+                'LICENSE', 'Launch Tensile Workbench - macOS.command', 'tools/run_macos.sh',
                 'workbench_server.py', 'workbench_environment.py')
     for name in required:
         if not (root / name).is_file():
@@ -111,7 +111,7 @@ def build_bundle(root, build_directory, environ=None, architecture=None, launch_
     if (root / 'VERSION').is_file():
         metadata['CFBundleShortVersionString'] = (root / 'VERSION').read_text().strip()
         metadata['CFBundleVersion'] = metadata['CFBundleShortVersionString']
-    metadata['WorkbenchLauncherPath'] = str(Path(launch_root or root) / 'Launch_Tensile_Workbench.command')
+    metadata['WorkbenchLauncherPath'] = str(Path(launch_root or root) / 'Launch Tensile Workbench - macOS.command')
     metadata['WorkbenchBuildRecipe'] = BUILD_RECIPE
     if environ.get('TENSILE_ENV_DIR'):
         # Finder does not inherit a Terminal's custom environment setting.

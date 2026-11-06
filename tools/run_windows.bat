@@ -51,7 +51,7 @@ if "%~1"=="install-app" goto run_action
 set "RESULT=%ERRORLEVEL%"
 goto finished
 :missing
-echo Python 3.14 was not found after installation. Rerun Install_Tensile_Workbench_App.bat, or see SETUP.md.
+echo Python 3.14 was not found after installation. Rerun Install Tensile Workbench - Windows.bat, or see SETUP.md.
 echo On a managed computer, ask IT if installation is blocked.
 set "RESULT=1"
 goto finished

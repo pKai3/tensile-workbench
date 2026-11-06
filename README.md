@@ -16,16 +16,16 @@ You need **standard Python 3.14, 64-bit**, a browser, and internet access during
 
 | System | First installation | Open the app afterwards |
 |---|---|---|
-| Windows | [Install_Tensile_Workbench_App.bat](Install_Tensile_Workbench_App.bat) | **Tensile Workbench** on the desktop or Start menu |
-| macOS | [Install_Tensile_Workbench_App.command](Install_Tensile_Workbench_App.command) | **Tensile Workbench.app** in your user Applications folder; or [Launch_Tensile_Workbench.command](Launch_Tensile_Workbench.command) |
+| Windows | [Install Tensile Workbench - Windows.bat](<Install Tensile Workbench - Windows.bat>) | **Tensile Workbench** on the desktop or Start menu |
+| macOS | [Install Tensile Workbench - macOS.command](<Install Tensile Workbench - macOS.command>) | **Tensile Workbench.app** in your user Applications folder; or [Launch Tensile Workbench - macOS.command](<Launch Tensile Workbench - macOS.command>) |
 
 Setup creates or reuses a separate local Python environment outside the code and data folders. It installs dependencies but does not analyse data. Launch reuses that environment and does not install packages.
 
 **Upgrading from Python 3.13:** rerun the installation file above and accept the Python 3.14 installer if offered. Setup creates a separate `py314/venv` environment and preserves the old one. Saved analyses, overrides and folder preferences stay in the code folder. Restart the app after setup; Windows shortcuts must be refreshed by the app installer. See [upgrade instructions](SETUP.md#existing-installations-and-updates).
 
-**Windows desktop app:** the installer sets up the environment and adds shortcuts for your user account. The app stays open with **Start/Stop**, **Open Workbench** and **View log** (live updates and copying). Keep it open or minimised while working; closing the control window asks to stop its server and calculations. Daily use opens no terminal. Python must include **Tcl/Tk**, as provided by the full Python.org installer. You can also use [Launch_Tensile_Workbench_App.bat](Launch_Tensile_Workbench_App.bat). The app uses the code folder in place; rerun the installer if you move it.
+**Windows desktop app:** the installer sets up the environment and adds shortcuts for your user account. The app stays open with **Start/Stop**, **Open Workbench** and **View log** (live updates and copying). Keep it open or minimised while working; closing the control window asks to stop its server and calculations. Daily use opens no terminal. Python must include **Tcl/Tk**, as provided by the full Python.org installer. You can also use [Launch Tensile Workbench - Windows.bat](<Launch Tensile Workbench - Windows.bat>). The app uses the code folder in place; rerun the installer if you move it.
 
-**Mac Dock app:** on macOS 13 or newer, the installer prepares Python and its packages and builds the native launcher in **~/Applications/Tensile Workbench.app**. This requires Apple's Command Line Tools (or Xcode); the installer explains how to add them if needed. Drag the app to your Dock. It stays open, runs the server without Terminal, and offers **Open Workbench**, **Start/Stop** and **View log** (live updates and copying). Closing its window leaves the server running; **Quit** stops the server it started. The source-folder **Launch_Tensile_Workbench.command** opens this same app.
+**Mac Dock app:** on macOS 13 or newer, the installer prepares Python and its packages and builds the native launcher in **~/Applications/Tensile Workbench.app**. This requires Apple's Command Line Tools (or Xcode); the installer explains how to add them if needed. Drag the app to your Dock. It stays open, runs the server without Terminal, and offers **Open Workbench**, **Start/Stop** and **View log** (live updates and copying). Closing its window leaves the server running; **Quit** stops the server it started. The source-folder **Launch Tensile Workbench - macOS.command** opens this same app.
 
 There is one installer and one app-launch file per system. Install once, open the app for daily work, and use **Check for updates** in its control window for updates. The console workflow is under `tools` for troubleshooting; see [advanced console use](SETUP.md#advanced-console-use). If the browser does not open, use **Open Workbench** in the desktop app.
 
@@ -246,9 +246,9 @@ manually updating a development checkout:
 
 1. Use **Back up now**, then close the app and stop its launcher. Keep an additional off-device copy of important settings.
 2. Pull the new code, or copy the extracted ZIP contents over the existing application folder. **Do not delete the old folder first**; preserve local settings, data and outputs.
-3. Rerun your system's **Install_Tensile_Workbench_App** file to check dependencies and refresh the desktop launcher, then open the app again. Routine updates through **Check for updates** handle these steps automatically.
+3. Rerun **Install Tensile Workbench - Windows.bat** or **Install Tensile Workbench - macOS.command** to check dependencies and refresh the desktop launcher, then open the app again. Routine updates through **Check for updates** handle these steps automatically.
 
-The Mac app points to the checkout/downloaded folder it was built from; it does not contain another copy of the workbench or Python. If you move that folder, rerun **Install_Tensile_Workbench_App.command** from its new location. The launcher source and icon are shared in Git, but installed app bundles, logs, environments and machine-specific paths are not.
+The Mac app points to the checkout/downloaded folder it was built from; it does not contain another copy of the workbench or Python. If you move that folder, rerun **Install Tensile Workbench - macOS.command** from its new location. The launcher source and icon are shared in Git, but installed app bundles, logs, environments and machine-specific paths are not.
 
 For very old installations where personal definitions were tracked by Git, back up **tensile_workbench.project.json** outside the checkout before pulling. That one-time transition can remove the tracked copy; restore your own copy afterwards if necessary.
 
@@ -256,7 +256,7 @@ For very old installations where personal definitions were tracked by Git, back 
 
 | Problem | What to try |
 |---|---|
-| Missing Python or dependencies | Rerun **Install_Tensile_Workbench_App**; it offers Python 3.14 if needed and installs Workbench dependencies |
+| Missing Python or dependencies | Rerun the **Install Tensile Workbench** file labelled **Windows** or **macOS** for your computer; it offers Python 3.14 if needed and installs Workbench dependencies |
 | Mac will not execute a .command file | See [Mac permission troubleshooting](SETUP.md#troubleshooting) |
 | No groups appear | Check the Data folder, group subfolders and local file availability; click Reload data |
 | Plots did not change after editing settings | Click Update plots; live preview is normally off |

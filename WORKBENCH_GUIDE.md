@@ -3,7 +3,7 @@
 ## Open or update the workbench
 
 1. Download and extract the latest release, or clone the repository. Existing desktop users can choose **Check for updates → Install update and restart** in the control window.
-2. First-time users: run **Install_Tensile_Workbench_App.bat** (Windows) or **Install_Tensile_Workbench_App.command** (Mac). Then open **Tensile Workbench** using its installed shortcut or Dock icon. Use the installer again for repairs or after a manual Git update. See [installation instructions](SETUP.md).
+2. First-time users: run **Install Tensile Workbench - Windows.bat** (Windows) or **Install Tensile Workbench - macOS.command** (Mac). Then open **Tensile Workbench** using its installed shortcut or Dock icon. Use the installer again for repairs or after a manual Git update. See [installation instructions](SETUP.md).
 3. The web app opens in your browser and starts automatically. No notebook or kernel commands are needed.
 4. On first run, choose data and output folders, defaulting to **./data** and **./output** relative to the workbench folder. Expand **Folders** at the top to change these later.
 
