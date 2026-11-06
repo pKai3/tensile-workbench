@@ -1,4 +1,4 @@
-# Tensile Workbench 1.0.5
+# Tensile Workbench 1.0.6
 
 - Fix a Mac launcher hang during **Install update and restart** and quitting.
   Finish stopping the owned server before closing the launcher, while keeping
