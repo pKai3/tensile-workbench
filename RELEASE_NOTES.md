@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.8
 
 - Labels and colours follows the saved sample-group order, keeping the selected
   group and pending edits in place when the order changes.
