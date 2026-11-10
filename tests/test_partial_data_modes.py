@@ -196,7 +196,7 @@ class PartialDataTests(unittest.TestCase):
         self.assertIsNone(review.figure)
         review.set_active(True)
         self.assertIsNotNone(review.figure, review.status.value)
-        self.assertEqual(len(review.figure.data), 3)
+        self.assertEqual(len([t for t in review.figure.data if t.mode == 'lines']), 3)
         trace = review.figure.data[0]
         self.assertEqual(trace.line.dash, '12 5')
         self.assertEqual(len(trace.x), len(self.session._load('Alloy A')[0]['_acquisition']['strain']))
@@ -206,7 +206,7 @@ class PartialDataTests(unittest.TestCase):
         self.assertTrue(all(t.visible is True for t in review.figure.data))
         self.assertEqual(self.session.project, before)
         review.show_excluded.value = False
-        self.assertEqual(len(review.figure.data), 2)
+        self.assertEqual(len([t for t in review.figure.data if t.mode == 'lines']), 2)
 
     def test_group_review_sorts_displayed_names_naturally_in_table_and_legend(self):
         frames = self.frames()
@@ -218,7 +218,7 @@ class PartialDataTests(unittest.TestCase):
         review.set_active(True)
         expected = ['B003_1', 'b003_2', 'B003_10']
         self.assertEqual([r['sample'] for r in review.table.rows], expected)
-        self.assertEqual([trace.name for trace in review.figure.data], expected)
+        self.assertEqual([trace.name for trace in review.figure.data if trace.mode == 'lines'], expected)
         self.assertEqual(review.selected, rows[2]['id'])
         self.assertEqual([r['sample'] for r in named], ['B003_10', 'b003_2', 'B003_1'])
 
@@ -237,11 +237,13 @@ class PartialDataTests(unittest.TestCase):
         # Voilà must receive complete initial data/layout, not an empty widget
         # followed by pre-mount messages that the browser may never receive.
         initial_figure = create_widget.call_args.args[0]
-        self.assertEqual(len(initial_figure.data), 3)
+        curves = [t for t in initial_figure.data if t.mode == 'lines']
+        self.assertEqual(len(curves), 3)
+        self.assertEqual(len([t for t in initial_figure.data if t.mode == 'markers']), 9)
         self.assertFalse(initial_figure.layout.showlegend)
         self.assertEqual(initial_figure.layout.yaxis.title.text, 'Engineering stress (MPa)')
         self.assertEqual(DATA_MODES['after_uts'], 'AVE failed after UTS / Broke outside dots')
-        self.assertEqual([t.line.dash for t in review.figure.data], ['8 4', '2 4', '8 3 2 3'])
+        self.assertEqual([t.line.dash for t in curves], ['8 4', '2 4', '8 3 2 3'])
         for row, short, trace in zip(rows, ['EL excluded', 'Post-yield strain excluded', 'All strain excluded'], review.figure.data):
             button = review._legend_buttons[row['id']]
             self.assertIsInstance(button, w.Button)

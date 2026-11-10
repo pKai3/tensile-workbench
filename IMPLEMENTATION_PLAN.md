@@ -17,6 +17,9 @@
 - Verification: focused group-order, palette, saved-display-mode and existing UI/
   theme checks pass. Browser verification confirms illustrated selections and
   floating keyboard help; the preview server and process group have exited.
+- Release follow-up: update three curve-only assertions for the new default
+  marker traces and complete the browser mock used by the zoom/theme probe.
+  All 23 partial-data and plot-loading checks pass with strict traitlets warnings.
 
 ### Compact help, illustrated views and review acknowledgements — implemented
 

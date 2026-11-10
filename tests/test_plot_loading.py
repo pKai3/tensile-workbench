@@ -24,7 +24,7 @@ class PlotLoadingTests(unittest.TestCase):
           globalThis.document={documentElement:{dataset:{twTheme:'dark'}}};
           const classes=new Set(['tw-themed-plot']); let background='rgb(255, 255, 255)';
           globalThis.getComputedStyle=()=>({backgroundColor:background});
-          const plot={querySelector:()=>({}),classList:{add:c=>classes.add(c), remove:(...cs)=>cs.forEach(c=>classes.delete(c)), contains:c=>classes.has(c)}};
+          const plot={matches:()=>false,querySelector:()=>({}),classList:{add:c=>classes.add(c), remove:(...cs)=>cs.forEach(c=>classes.delete(c)), contains:c=>classes.has(c)}};
           const el={style:{},isConnected:true,closest:()=>({querySelectorAll:()=>[plot]})};
           const values={theme:'light'};
           const model={get:k=>values[k],set:(k,v)=>values[k]=v,save_changes:()=>{}};
