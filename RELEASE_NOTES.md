@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.7
 
 - Choose plots from illustrated cards organised into **Tensile response**,
   **Work hardening**, and **Properties & trends**. Small schematic previews
