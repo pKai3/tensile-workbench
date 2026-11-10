@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.9
 
 - Separate **Display** and **Specimens** choices into two labelled rows.
 - Keep plot-type cards aligned across sections, with up to four per row.
