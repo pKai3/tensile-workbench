@@ -2,6 +2,37 @@
 
 ## Change notes — 2026-11-11
 
+### Plot-control grouping and consistent card sizing — implemented
+
+- Separate display mode and specimen visibility into labelled rows.
+- Use matching responsive columns across plot-type sections, up to four per row.
+  Keep empty slots in shorter rows instead of stretching the remaining cards;
+  align card heights and Settings buttons within each row.
+- Replace group-order, custom-variable and gauge-reconstruction expanders with
+  compact illustrated buttons and popups. Reuse the existing editors and save
+  behaviour, including deferred specimen-variable loading; support Done, Escape,
+  outside click and keyboard focus return.
+- Use a shared browser-modal shell for plot and workspace settings. Centre it
+  in the viewport even within scrolling notebook containers; lock background
+  scrolling while retaining scrolling inside the popup. Require backdrop
+  pointer-down and click before dismissal, preventing tab-layout changes from
+  accidentally closing Custom variables. Keep help and loading indicators in
+  the dialog's top layer.
+- Match TEM Workbench's header: LOCAL ANALYSIS, application title, running version
+  and a live local-Python connection badge. Remove the introductory paragraph.
+  Observe the existing kernel connection rather than adding polling or marking
+  lengthy calculations as disconnected.
+- Validation: 86 focused checks passed; synthetic browser checks covered narrow
+  and wide card grids, all workspace popups, repeated variable-tab switches,
+  scroll locking, viewport centring, help, Escape and focus return.
+
+### Folder/project workflow — under discussion, not implemented
+
+- Consider TEM-style named source folders, per-source output overrides, a proper
+  folder browser, project filtering and a searchable specimen/curve browser.
+- Preserve cross-project analyses and existing saved specimen policies. Stable
+  source identities and a reviewed migration of existing paths would be required.
+
 ### Consistent group editing and compact display choices — implemented
 
 - Follow the saved sample-group order in Labels and colours and the shared

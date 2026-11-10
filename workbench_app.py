@@ -15,6 +15,7 @@ if str(root) not in sys.path:
 
 from migrate_tensile_project import migrate
 from tensile_startup import launch
+from tensile_header import app_header
 
 display(w.HTML('''<style>
 html { scrollbar-gutter: stable; }
@@ -53,8 +54,7 @@ footer = w.HTML('<footer class="tw-copyright">' + escape(copyright_notice.replac
     + '<p>Third-party dependencies retain their own licences. This software licence does not change '
       'the rights applying to imported datasets or generated results.</p></details></footer>')
 page = w.VBox([
-    w.HTML('<h1>Tensile Workbench</h1><p>Select your folders, choose an analysis, and analyse your samples. '
-           'No notebook commands are needed. Keep the launcher window open while you work.</p>'),
+    app_header(w, root),
     workbench.ui,
     footer,
 ], layout=w.Layout(width='var(--tw-content-width, 1600px)', max_width='100%', min_width='0'))

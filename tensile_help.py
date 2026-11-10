@@ -33,6 +33,8 @@ class HelpTooltips(anywidget.AnyWidget):
         if(active!==target){active?.removeAttribute('aria-describedby');active=target;
           popup.innerHTML=target.querySelector('.tw-help-content')?.innerHTML || '';
           target.setAttribute('aria-describedby',popup.id);}
+        // Help inside a modal must share its top layer.
+        (target.closest('dialog[open]') || document.body).append(popup);
         popup.hidden=false;position();
       };
       const enter=event=>{

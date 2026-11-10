@@ -15,6 +15,7 @@ from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_plot_picker import PlotPicker, review_selector_css
+from tensile_popup import SettingsPopup
 from tensile_help import help_html, HelpTooltips
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
@@ -1074,7 +1075,14 @@ class TensileWorkbench:
                       'Overlay individual specimens on the group results.',
                       'Generate both versions: group results alone, and with individual specimens.'])
         self.individual_display.add_class('tw-individuals-switch')
-        self.plot_display_options = self._row([self.controls['renderer'], self.individual_display])
+        display_rows = []
+        for label, control in (('Display', self.controls['renderer']), ('Specimens', self.individual_display)):
+            row = self._row([w.HTML('<b>' + label + '</b>',
+                layout=w.Layout(width='90px', flex='0 0 90px')), control])
+            row.layout.align_items = 'center'
+            display_rows.append(row)
+        self.plot_display_options = w.VBox(display_rows,
+            layout=w.Layout(width='100%', min_width='0', grid_gap='10px'))
         self.plot_display_options.add_class('tw-plot-display-options')
         self.plot_display_css = w.HTML(review_selector_css('tw-renderer-switch', ('display_static', 'display_interactive'))
             + review_selector_css('tw-individuals-switch', ('display_mean', 'display_individuals', 'display_both')))
@@ -1207,6 +1215,23 @@ class TensileWorkbench:
         self.custom_variables_panel.set_title(0, 'Custom variables · shared by all analyses')
         self.custom_variables_panel.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
         self.custom_variable_tabs.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
+        self.workspace_panels = {'order': self.display_order_panel,
+                                 'variables': self.custom_variables_panel, 'gauge': self.gauge_panel}
+        self._workspace_panel_open = None
+        self.workspace_popup = SettingsPopup(w, on_close=self._close_workspace_settings)
+        self.workspace_tool_buttons = {}
+        for key, label, tooltip in (
+            ('order', 'Group order', 'Set the sample-group order used by this analysis’s tables and plots.'),
+            ('variables', 'Custom variables', 'Edit group and specimen variables, shared by all analyses.'),
+            ('gauge', 'Gauge reconstruction', 'Set target gauge lengths and enable reconstruction per sample group.')):
+            button = w.Button(description=label, tooltip=tooltip, layout=w.Layout(width='auto', flex='0 1 auto'))
+            button.on_click(lambda _, key=key: self._open_workspace_settings(key))
+            self.workspace_tool_buttons[key] = button
+        actions = self._row(list(self.workspace_tool_buttons.values()))
+        actions.add_class('tw-workspace-actions')
+        self.workspace_tools = w.VBox([w.HTML(review_selector_css('tw-workspace-actions',
+            ('workspace_order', 'workspace_variables', 'workspace_gauge'))), actions, self.workspace_popup.ui],
+            layout=w.Layout(width='100%', min_width='0', margin='8px 0 12px'))
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             if family == SPECIMEN_FAMILY:
@@ -1294,9 +1319,7 @@ class TensileWorkbench:
             w.HTML(help_html('Selecting sample groups', 'Expand folders to choose individual groups, or tick a folder to select everything below it. '
                    'A mixed tick means only some groups are selected. Groups are still analysed separately.')),
             self.move_review.ui,
-            self.display_order_panel,
-            self.custom_variables_panel,
-            self.gauge_panel,
+            self.workspace_tools,
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.plot_display_css, self.plot_display_options,
             self.plot_options,
@@ -1565,6 +1588,18 @@ class TensileWorkbench:
         finally:
             self._paused = old
         self._changed()
+
+    def _open_workspace_settings(self, key):
+        self.workspace_popup.close()
+        panel = self.workspace_panels[key]
+        self._workspace_panel_open = key
+        panel.selected_index = 0
+        self.workspace_popup.open(panel.get_title(0), panel.children)
+
+    def _close_workspace_settings(self):
+        if self._workspace_panel_open is not None:
+            self.workspace_panels[self._workspace_panel_open].selected_index = None
+        self._workspace_panel_open = None
 
     def _specimen_variable_ids(self, groups):
         catalogue = self.session.specimen_variable_catalogue(ordered_groups(list(groups), self._display_order))

@@ -45,14 +45,22 @@ class GroupOrderTests(unittest.TestCase):
         return {**self.app.state(), 'graph_index': 0, 'family': 'landmark',
                 'group_order': self.order, **kwargs}
 
-    def test_order_panel_is_below_selector_and_above_tables_not_in_colours(self):
+    def test_order_popup_is_below_selector_and_above_tables_not_in_colours(self):
         app = self.app
         children = list(app.analysis_ui.children)
         panel = app.display_order_panel
-        self.assertEqual(children.index(panel), children.index(app.group_picker.ui) + 3)
-        self.assertIs(children[children.index(panel) - 1], app.move_review.ui)
-        self.assertLess(children.index(panel), children.index(app.properties_panel))
+        self.assertEqual(children.index(app.workspace_tools), children.index(app.group_picker.ui) + 3)
+        self.assertIs(children[children.index(app.workspace_tools) - 1], app.move_review.ui)
+        self.assertLess(children.index(app.workspace_tools), children.index(app.properties_panel))
         self.assertIsNone(panel.selected_index)
+        app.workspace_tool_buttons['order'].click()
+        self.assertEqual(panel.selected_index, 0)
+        self.assertEqual(app.workspace_popup.body.children, panel.children)
+        self.assertEqual(app.workspace_popup.overlay.layout.display, 'flex')
+        app.workspace_popup.done.click()
+        self.assertIsNone(panel.selected_index)
+        self.assertEqual(app.workspace_popup.body.children, ())
+        self.assertEqual(app.workspace_popup.overlay.layout.display, 'none')
         self.assertEqual(panel.get_title(0), 'Sample group order · tables and plots')
         self.assertIn(app.display_order_select, panel.children[0].children)
         colours = next(child for child in children if isinstance(child, widgets.Accordion)

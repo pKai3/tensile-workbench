@@ -80,6 +80,7 @@ class BusyOverlay(anywidget.AnyWidget):
           if(priorBusy===null) host.removeAttribute('aria-busy');else host.setAttribute('aria-busy',priorBusy);
         }
         if(active && focus?.isConnected && !focus.disabled) focus.focus({preventScroll:true});
+        document.body.append(overlay);
         host=undefined;focus=undefined;active=false;
       }
       function sync() {
@@ -87,8 +88,10 @@ class BusyOverlay(anywidget.AnyWidget):
         if(!state.busy) {release();return;}
         label.textContent=state.message || 'Working…';
         if(active) return;
-        host=el.closest('.tw-webapp') || el.closest('.tw-launcher') || el.closest('.tw-workbench');
+        const dialog=document.querySelector('dialog.tw-modal-shell[open]');
+        host=dialog?.querySelector('.tw-settings-overlay') || el.closest('.tw-webapp') || el.closest('.tw-launcher') || el.closest('.tw-workbench');
         if(!host) return;
+        (dialog || document.body).append(overlay);
         active=true;focus=document.activeElement;
         priorInert=host.inert;priorBusy=host.getAttribute('aria-busy');
         host.inert=true;host.setAttribute('aria-busy','true');

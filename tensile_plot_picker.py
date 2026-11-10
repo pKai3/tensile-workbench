@@ -3,19 +3,14 @@ from html import escape
 from base64 import b64encode
 import anywidget
 from tensile_help import help_html
+from tensile_popup import SettingsPopup
 
 
 class CardClicks(anywidget.AnyWidget):
     """Forward card-body clicks to the existing checkbox; keep one selection state."""
     _esm = """
-    export default {render({el, model}) {
-      const root = () => el.closest('.tw-plot-picker');
-      const overlay = () => root()?.querySelector('.tw-settings-overlay');
-      const isOpen = () => overlay() && getComputedStyle(overlay()).display !== 'none';
-      let lastFocus, wasOpen=false;
+    export default {render({el}) {
       const click = event => {
-        if(event.target.closest('.tw-plot-settings-button')?.closest('.tw-plot-picker') === root()) lastFocus=document.activeElement;
-        if(event.target === overlay()) {model.send({action:'close_settings'}); return;}
         const card = event.target.closest('.tw-plot-card');
         if (!card || card.closest('.tw-plot-picker') !== el.closest('.tw-plot-picker')) return;
         if (event.defaultPrevented || event.button !== 0 ||
@@ -24,32 +19,8 @@ class CardClicks(anywidget.AnyWidget):
         const checkbox = card.querySelector('.tw-plot-choice input[type="checkbox"]');
         if (checkbox && !checkbox.disabled) checkbox.click();
       };
-      const keys = event => {
-        if(!isOpen()) return;
-        if(event.key === 'Escape') {event.preventDefault(); model.send({action:'close_settings'});}
-        if(event.key === 'Tab') {
-          const focusable=[...overlay().querySelectorAll('button,input,select,textarea,[tabindex="0"],summary')]
-            .filter(node => !node.disabled && node.getClientRects().length);
-          const first=focusable[0], last=focusable.at(-1);
-          if(event.shiftKey && (document.activeElement === first || !overlay().contains(document.activeElement))) {event.preventDefault();last?.focus();}
-          else if(!event.shiftKey && (document.activeElement === last || !overlay().contains(document.activeElement))) {event.preventDefault();first?.focus();}
-        }
-      };
-      const observer=new MutationObserver(() => {
-        const open=isOpen();
-        if(open && !wasOpen) {
-          const panel=overlay().querySelector('.tw-settings-dialog');
-          panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');
-          panel.setAttribute('aria-label','Plot settings');
-          panel.querySelector('button')?.focus({preventScroll:true});
-        }
-        if(!open && wasOpen) lastFocus?.focus({preventScroll:true});
-        wasOpen=open;
-      });
-      observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['style']});
       document.addEventListener('click', click);
-      document.addEventListener('keydown', keys);
-      return () => {observer.disconnect(); document.removeEventListener('click',click);document.removeEventListener('keydown',keys);};
+      return () => document.removeEventListener('click',click);
     }};
     """
 
@@ -89,7 +60,22 @@ DESCRIPTIONS = {
 def thumbnail(family):
     """Small inline vectors: a stable visual vocabulary, independent of data."""
     axes = '<path class="tw-sketch-axis" d="M14 8V68H116"/>'
-    if family in ('display_static', 'display_interactive'):
+    if family == 'workspace_order':
+        axes = ''
+        marks = ('<path class="tw-sketch-blue" d="M28 24h56M28 42h42M28 60h56"/>'
+                 '<path class="tw-sketch-orange" d="M105 18v48m-7-40 7-8 7 8m-14 32 7 8 7-8"/>'
+                 '<g class="tw-sketch-green" fill="currentColor"><circle cx="16" cy="24" r="3"/>'
+                 '<circle cx="16" cy="42" r="3"/><circle cx="16" cy="60" r="3"/></g>')
+    elif family == 'workspace_variables':
+        axes = ''
+        marks = ('<path class="tw-sketch-blue" d="M14 12h100v60H14Zm0 18h100m-100 14h100m-100 14h100M48 12v60m33-60v60"/>'
+                 '<path class="tw-sketch-orange" stroke-width="5" d="M23 21h16m18 0h15m18 0h15"/>')
+    elif family == 'workspace_gauge':
+        axes = ''
+        marks = ('<path class="tw-sketch-blue" d="M12 26h22q10 0 15 10h30q5-10 15-10h22v32H94q-10 0-15-10H49q-5 10-15 10H12Z"/>'
+                 '<path class="tw-sketch-green" d="M49 16v11m30-11v11M49 20h30m-24-4-6 4 6 4m18-8 6 4-6 4"/>'
+                 '<path class="tw-sketch-orange" d="M37 65v12m54-12v12M37 72h54m-48-4-6 4 6 4m42-8 6 4-6 4"/>')
+    elif family in ('display_static', 'display_interactive'):
         marks = ('<path class="tw-sketch-blue" d="M18 64Q24 27 36 24Q70 12 105 40"/>'
                  '<path class="tw-sketch-orange" stroke-dasharray="4 3" d="M18 64Q30 33 42 30Q75 21 109 49"/>')
         if family == 'display_static':
@@ -194,17 +180,10 @@ class PlotPicker:
         self.boxes, self.settings, self.cards = boxes, settings, {}
         self.status = w.HTML()
         self.clicks = CardClicks(layout=w.Layout(display='none'))
-        self.clicks.on_msg(lambda _, content, buffers: self.close_settings() if content.get('action') == 'close_settings' else None)
-        self.settings_title = w.HTML()
-        self.settings_close = w.Button(description='Done', icon='check', tooltip='Close settings. Changes save automatically.', layout=w.Layout(width='auto'))
-        self.settings_close.on_click(lambda _: self.close_settings())
-        self.settings_body = w.VBox(layout=w.Layout(width='100%', min_width='0'))
-        dialog = w.VBox([w.HBox([self.settings_title, self.settings_close],
-            layout=w.Layout(justify_content='space-between', align_items='center', flex_flow='row wrap')),
-            self.settings_body], layout=w.Layout(width='min(960px, 94vw)', max_height='88vh', overflow='auto', padding='20px'))
-        dialog.add_class('tw-settings-dialog')
-        self.settings_overlay = w.Box([dialog], layout=w.Layout(display='none'))
-        self.settings_overlay.add_class('tw-settings-overlay')
+        self.popup = SettingsPopup(w, on_close=self._settings_closed, width='960px')
+        self.settings_title, self.settings_close = self.popup.title, self.popup.done
+        self.settings_close.tooltip = 'Close settings. Changes save automatically.'
+        self.settings_body, self.settings_overlay = self.popup.body, self.popup.overlay
         self.settings_buttons = {}
         self._settings_family = None
         sections = [self.clicks, self.status]
@@ -225,15 +204,19 @@ class PlotPicker:
                 settings_button.add_class('tw-plot-settings-button')
                 settings_button.on_click(lambda _, key=family: self.open_settings(key))
                 self.settings_buttons[family] = settings_button
-                card = w.VBox([heading_row, settings_button], layout=w.Layout(min_width='0', width='100%'))
+                card = w.VBox([heading_row, settings_button], layout=w.Layout(
+                    min_width='0', width='100%', height='100%', justify_content='space-between'))
                 card.add_class('tw-plot-card')
                 self.cards[family] = card
                 checkbox.observe(lambda change, key=family: self._selected(key), names='value')
                 cards.append(card)
+            # Every section uses the same column widths, including empty slots.
+            # Cap at four columns, reducing the count below 350 px per card.
             grid = w.GridBox(cards, layout=w.Layout(width='100%', min_width='0', grid_gap='12px',
-                grid_template_columns='repeat(auto-fit, minmax(min(100%, 350px), 1fr))', align_items='flex-start'))
+                grid_template_columns='repeat(auto-fill, minmax(min(100%, max(350px, calc((100% - 36px) / 4))), 1fr))',
+                align_items='stretch'))
             sections.extend([w.HTML('<h4 class="tw-plot-section-title">' + escape(heading) + '</h4>'), grid])
-        self.ui = w.VBox([*sections, self.settings_overlay], layout=w.Layout(width='100%', min_width='0'))
+        self.ui = w.VBox([*sections, self.popup.ui], layout=w.Layout(width='100%', min_width='0'))
         self.ui.add_class('tw-plot-picker')
         for family in self.cards:
             self._selected(family)
@@ -255,12 +238,11 @@ class PlotPicker:
     def open_settings(self, family):
         if not self.boxes[family].value:
             return
-        self.settings_title.value = '<h3 style="margin:0">' + escape(self.boxes[family].description) + '</h3>'
         self._settings_family = family
-        self.settings_body.children = self.settings[family].children
-        self.settings_overlay.layout.display = 'flex'
+        self.popup.open(self.boxes[family].description, self.settings[family].children)
 
     def close_settings(self):
-        self.settings_overlay.layout.display = 'none'
-        self.settings_body.children = ()
+        self.popup.close()
+
+    def _settings_closed(self):
         self._settings_family = None
