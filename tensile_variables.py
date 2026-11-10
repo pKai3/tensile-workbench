@@ -1,7 +1,6 @@
 """User-supplied group/specimen variables, shared by saved analyses."""
 from copy import deepcopy
 from html import escape
-from tensile_help import help_html
 import math
 import re
 import uuid
@@ -133,6 +132,8 @@ class GroupVariablesView:
     def __init__(self, w, get_variables, get_groups, on_save_all=None, get_usage=None,
                  *, scope='group', row_label=None, on_scope_change=None, required=None,
                  get_defaults=None):
+        # Project validation is also used before the UI dependencies are loaded.
+        from tensile_help import help_html
         from tensile_variable_table import VariableTable
         self.get_variables, self.get_groups = get_variables, get_groups
         self.on_save_all = on_save_all

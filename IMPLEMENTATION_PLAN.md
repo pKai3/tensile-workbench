@@ -20,6 +20,9 @@
 - Release follow-up: update three curve-only assertions for the new default
   marker traces and complete the browser mock used by the zoom/theme probe.
   All 23 partial-data and plot-loading checks pass with strict traitlets warnings.
+- Keep hover-help dependencies local to the variable editor so startup settings
+  validation remains lightweight. Isolate count-reconciliation checks from the
+  representative-curve UI refresh. All 37 setup and required-location checks pass.
 
 ### Compact help, illustrated views and review acknowledgements — implemented
 

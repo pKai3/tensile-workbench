@@ -54,8 +54,11 @@ class RequiredLocationTests(unittest.TestCase):
         self.assertEqual(cell(reopened.group_variables, SPECIMEN_COUNT, 'Alloy A'), '10')
         new = self.root / 'data' / 'Alloy Z' / 'coupon_4.csv'
         new.write_bytes((new.parent / 'coupon_1.csv').read_bytes())
+        # Isolate inventory/count reconciliation from the table and representative
+        # curve controls, which legitimately load measurements when refreshed.
         with (patch.object(reopened.session, '_load', side_effect=AssertionError('No curve analysis to count')),
-              patch.object(reopened, '_refresh_properties')):
+              patch.object(reopened, '_refresh_properties'),
+              patch.object(reopened, '_load_overrides')):
             reopened._reload_data(plots=False)
         self.assertNotIn('failed', reopened.status.value.lower())
         self.assertEqual(reopened.store.data['group_variables'][SPECIMEN_COUNT]['values']['Alloy Z'], 4)
