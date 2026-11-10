@@ -174,7 +174,7 @@ class DataMoveTests(unittest.TestCase):
         class Store:
             def __init__(self, project):
                 self.data = deepcopy(project)
-            def save(self, project):
+            def save(self, project, **kwargs):
                 self.data = deepcopy(project)
         class Session:
             data_dir = root

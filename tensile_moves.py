@@ -154,7 +154,7 @@ def match_files(old, new, sources, targets):
     return mapping
 
 
-def scan_moves(project, root, files, *, force_groups=()):
+def scan_moves(project, root, files, *, force_groups=(), source_id=None, source_path=None):
     """Return a new index and review proposals; never apply a relocation.
 
     Fingerprint work is cached by path, size, mtime and ctime. Confirmation
@@ -162,6 +162,11 @@ def scan_moves(project, root, files, *, force_groups=()):
     """
     validate_tracking(project)
     root = Path(root)
+    identify = source_id or (lambda group, path: Path(path).relative_to(root).as_posix())
+    resolve = source_path or (lambda ident: root / ident)
+    def exists(ident):
+        path = resolve(ident)
+        return path is not None and path.is_file()
     tracking = deepcopy(project.get('data_move_tracking', {'version': 1, 'groups': {}, 'cache': {}}))
     history = tracking['groups']
     seed_legacy(project, history)
@@ -170,7 +175,7 @@ def scan_moves(project, root, files, *, force_groups=()):
         return group in group_refs or any(under(s, group) for s in specimen_refs)
     # Normal starts index only groups with saved settings/selections. Expand the
     # search to other groups only when a tracked source actually goes missing.
-    searching = any(relevant(g) and any(not (root / p).exists() for p in entry['files'])
+    searching = any(relevant(g) and any(not exists(p) for p in entry['files'])
                     for g, entry in history.items())
     current, cache, warnings = {}, deepcopy(tracking['cache']), []
     for group in sorted(group_refs - files.keys() - history.keys()):
@@ -184,7 +189,7 @@ def scan_moves(project, root, files, *, force_groups=()):
         try:
             for path in paths:
                 path = Path(path)
-                ident = path.relative_to(root).as_posix()
+                ident = identify(group, path)
                 cached = None if group in force_groups else tracking['cache'].get(ident)
                 info = fingerprint(path, cached)
                 cache[ident] = info
@@ -201,7 +206,7 @@ def scan_moves(project, root, files, *, force_groups=()):
         if not old_files:
             continue
         same_group = old in files
-        missing = {p: sha for p, sha in old_files.items() if not (root / p).exists()}
+        missing = {p: sha for p, sha in old_files.items() if not exists(p)}
         if not missing:
             continue  # A copy is not a move, even if its contents are identical.
         if not same_group and len(missing) != len(old_files):
@@ -233,7 +238,7 @@ def scan_moves(project, root, files, *, force_groups=()):
         new, mapping = candidates[0]
         mapping = {a: b for a, b in mapping.items() if a != b}
         unresolved = sorted(s for s in specimen_refs if under(s, old)
-                            and s not in mapping and not (root / s).exists())
+                            and s not in mapping and not exists(s))
         proposals.append({'old': old, 'new': new, 'mapping': mapping,
                           'target': current[new], 'unresolved': unresolved,
                           'partial_evidence': not baseline['complete'], 'blocked': ''})
@@ -251,7 +256,7 @@ def scan_moves(project, root, files, *, force_groups=()):
     # Otherwise a second reload would forget an unapproved rename.
     for group, entry in current.items():
         previous = history.get(group)
-        if previous is None or all((root / p).exists() for p in previous['files']):
+        if previous is None or all(exists(p) for p in previous['files']):
             history[group] = entry
     tracking['cache'] = cache
     return tracking, proposals, warnings

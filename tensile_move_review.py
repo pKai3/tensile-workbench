@@ -40,7 +40,9 @@ class MoveReview:
         self.summary.value = 'Checking data-folder identities…'
         try:
             tracking, proposals, warnings = scan_moves(
-                self.store.data, self.session.data_dir, self.session.files)
+                self.store.data, self.session.data_dir, self.session.files,
+                source_id=getattr(self.session, 'source_id', None),
+                source_path=getattr(self.session, 'source_path', None))
             project = deepcopy(self.store.data)
             project['data_move_tracking'] = tracking
             if project != self.store.data:
@@ -154,7 +156,9 @@ class MoveReview:
             # Rediscover and verify at approval, not just against stale UI/cache.
             self.session.reload_data()
             tracking, proposals, _ = scan_moves(self.store.data, self.session.data_dir,
-                self.session.files, force_groups=(proposal['new'],))
+                self.session.files, force_groups=(proposal['new'],),
+                source_id=getattr(self.session, 'source_id', None),
+                source_path=getattr(self.session, 'source_path', None))
             fresh = next((p for p in proposals if p['old'] == proposal['old']), None)
             if (not fresh or fresh['blocked'] or any(fresh[k] != proposal[k]
                     for k in ('new', 'mapping', 'target', 'unresolved', 'partial_evidence'))):
@@ -163,7 +167,7 @@ class MoveReview:
             project = deepcopy(self.store.data)
             project['data_move_tracking'] = tracking
             project = migrate_settings(project, fresh)
-            self.store.save(project)  # Existing lock, conflict check and atomic backup.
+            self.store.save(project, reason='pre-migration')
             self.session.set_project(self.store.data)
         except Exception as error:
             self.message.value = '<b>Move not applied:</b> ' + escape(str(error))

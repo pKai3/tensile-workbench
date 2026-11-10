@@ -110,6 +110,9 @@ def validate_paths(raw):
     if 'sample_data_directory' in value and (not isinstance(value['sample_data_directory'], str)
                                              or not value['sample_data_directory'].strip()):
         raise ValueError('Invalid sample-data folder.')
+    if 'sources' in value:
+        from tensile_sources import validate_sources
+        validate_sources(value['sources'])
     return value
 
 

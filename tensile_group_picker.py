@@ -71,6 +71,7 @@ class GroupCheckboxes:
         self.boxes, self.folder_boxes, self.folder_members = {}, {}, {}
         self._owned, self._expanded = [], set()
         self._syncing = False
+        self.visible = lambda group: True
         self._scope = 'tensile-groups-' + uuid.uuid4().hex
         self.summary = widgets.HTML(layout=widgets.Layout(width='100%', min_width='0'))
         self.clear_button = widgets.Button(description='Clear selection', icon='times',
@@ -97,7 +98,9 @@ class GroupCheckboxes:
             widget.close()
         self._owned = []
         self.boxes, self.folder_boxes, self.folder_members = {}, {}, {}
-        children, _ = self._branch(group_tree(self.selection.options), ())
+        options = [item for item in self.selection.options
+                   if self.visible(item[1] if isinstance(item, (tuple, list)) else item)]
+        children, _ = self._branch(group_tree(options), ())
         self.grid.children = tuple(children)
         self._value_changed()
 
@@ -181,4 +184,5 @@ class GroupCheckboxes:
 
     def _checked(self, _):
         if not self._syncing:
-            self.selection.value = tuple(group for group in self._option_groups() if self.boxes[group].value)
+            self.selection.value = tuple(group for group in self._option_groups()
+                if (self.boxes[group].value if group in self.boxes else group in self.selection.value))

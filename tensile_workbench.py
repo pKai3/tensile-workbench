@@ -146,7 +146,7 @@ VIEW_ONLY_SETTINGS = ('columns', 'plot_width', 'renderer', 'live_update', 'expor
 class PreviewSession:
     """Headless calculation layer, also usable without Jupyter widgets."""
 
-    def __init__(self, project_dir=None, project=None, data_dir=None, output_dir=None):
+    def __init__(self, project_dir=None, project=None, data_dir=None, output_dir=None, sources=None):
         self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self._output_override = output_dir
         engine_path = self.project_dir / "tensile_core.py"
@@ -161,6 +161,10 @@ class PreviewSession:
         validate_project(self.project)
         configured = Path(data_dir or self.project.get("data_directory", "data")).expanduser()
         self.data_dir = (configured if configured.is_absolute() else self.project_dir / configured).resolve()
+        from tensile_sources import default_source, resolve_sources
+        self._explicit_sources = sources is not None
+        self.sources = resolve_sources(sources if sources is not None else [default_source(self.data_dir)], self.project_dir,
+                                       output=self.output_root())
         sample_settings = sample_data_settings(self.project_dir)
         self.sample_data_dir = resolve_folder(sample_settings['sample_data_directory'], self.project_dir)
         self.show_sample_data = sample_settings['show_sample_data']
@@ -170,38 +174,65 @@ class PreviewSession:
         self._previews = OrderedDict()
         self.reload_data()
 
-    def reload_data(self):
-        if not self.data_dir.is_dir():
+    def reload_data(self, *, preserve_groups=()):
+        if not self.data_dir.is_dir() and not self._explicit_sources:
             raise FileNotFoundError(f"Tensile data directory not found: {self.data_dir}")
         # This is the existing script's scoped data-folder discovery, not a
         # search of the user's home or thesis directories.
         # Relative paths keep groups in different organisational folders separate.
         # Preserve the reserved bundled-data namespace used by saved definitions.
-        research = self.engine.find_sample_groups(self.data_dir) if self.data_dir != self.sample_data_dir else {}
+        from tensile_sources import prefix
+        research, roots, directories, owners, issues = {}, {}, {}, {}, []
+        namespaces = {}
+        for source in self.sources:
+            root = Path(source['path'])
+            if not root.is_dir():
+                issues.append(f'{source["name"]}: source folder unavailable. Saved work is retained; reconnect it in Projects.')
+                continue
+            found = self.engine.find_sample_groups(root) if root != self.sample_data_dir else {}
+            issues.extend(getattr(found, 'warnings', []))
+            for relative, paths in found.items():
+                group = prefix(source) + relative
+                if group in research:
+                    raise ValueError(f'Project group name collision: {group}. Give the added project another name.')
+                research[group], roots[group], directories[group] = paths, root, root / relative
+                owners[group] = source['id']
+                namespaces[group] = prefix(source)
         if any(group.startswith(SAMPLE_GROUP_PREFIX) for group in research):
             raise ValueError('The group prefix "Sample data / " is reserved for bundled examples. '
                              'Rename that organisational folder (remove its trailing space).')
         samples = (self.engine.find_sample_groups(self.sample_data_dir)
                    if self.show_sample_data and self.sample_data_dir.is_dir() else {})
         files = {**research, **{SAMPLE_GROUP_PREFIX + group: paths for group, paths in samples.items()}}
-        roots = {group: self.data_dir for group in research}
         roots.update({SAMPLE_GROUP_PREFIX + group: self.sample_data_dir for group in samples})
-        directories = {group: self.data_dir / group for group in research}
         directories.update({SAMPLE_GROUP_PREFIX + group: self.sample_data_dir / group for group in samples})
+        instron = InstronSummaries(self.data_dir, directories)
+        # Finish discovery before replacing a usable catalogue. An interrupted
+        # network read must not leave half the session pointing at new sources.
+        counts = {group: len({row['_export_test_key'] for row in instron.catalogue(group, paths,
+            self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)})
+            for group, paths in files.items()}
+        project = reconcile_specimen_counts(self.project, counts)
         self.files, self.source_roots = files, roots
-        self.discovery_issues = list(getattr(research, 'warnings', [])) + list(getattr(samples, 'warnings', []))
-        self.import_issues = {}
-        self._records.clear()
-        self._models.clear()
-        self._previews.clear()
-        self._property_frames = {}
-        self.instron = InstronSummaries(self.data_dir, directories)
+        self.source_prefixes = namespaces
+        self.source_directories = directories
+        self.group_sources = owners
+        self.discovery_issues = issues + list(getattr(samples, 'warnings', []))
+        preserved = set(preserve_groups) & set(files)
+        self.import_issues = {g: rows for g, rows in getattr(self, 'import_issues', {}).items() if g in preserved}
+        if preserved:
+            self._invalidate_groups(set(self._records) - preserved)
+            self._records = {g: records for g, records in self._records.items() if g in preserved}
+        else:
+            self._records.clear()
+            self._models.clear()
+            self._previews.clear()
+            self._property_frames = {}
+        self.instron = instron
         # Inventory only: no numerical curves, fits or fracture detection. Count
         # all imported specimens, including globally/partially excluded ones.
-        self.imported_counts = {group: len({row['_export_test_key'] for row in self.instron.catalogue(group, paths,
-            self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)})
-            for group, paths in self.files.items()}
-        self.project = reconcile_specimen_counts(self.project, self.imported_counts)
+        self.imported_counts = counts
+        self.project = project
         # Stable allocation order, independent of the display order. Unselected
         # groups never reserve a colour; bundled samples come after research.
         self.color_order = [*sorted(research), *sorted(set(files) - set(research))]
@@ -272,9 +303,25 @@ class PreviewSession:
         record['_fit_r2_threshold'] = self.project.get('yield_r2_warning', .98)
 
     def _group_specimen_ids(self, groups):
-        return {((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
-                 + source.relative_to(self.source_roots[group]).as_posix())
+        return {self.source_id(group, source)
                 for group in groups for source in self.files.get(group, [])}
+
+    def source_id(self, group, path):
+        namespace = SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else self.source_prefixes.get(group, '')
+        return namespace + Path(path).relative_to(self.source_roots[group]).as_posix()
+
+    def source_path(self, ident):
+        """Resolve saved identities only inside configured sources; missing sources stay missing."""
+        from tensile_sources import prefix
+        for source in sorted(self.sources, key=lambda s: len(prefix(s)), reverse=True):
+            namespace = prefix(source)
+            if namespace and not ident.startswith(namespace):
+                continue
+            root = Path(source['path'])
+            target = (root / ident[len(namespace):]).resolve()
+            if target.is_relative_to(root):
+                return target
+        return None
 
     def fit_signature(self, groups=None):
         policy = fit_policy(self.project)
@@ -311,10 +358,15 @@ class PreviewSession:
                 'specimen_failure_overrides': {k: v for k, v in self.project.get('specimen_failure_overrides', {}).items() if k in ids},
                 'specimen_failure_history': [event for event in self.project.get('specimen_failure_history', []) if event['specimen_id'] in ids]}
 
-    def output_root(self):
+    def output_root(self, groups=None):
         """Local folder choice overrides the analysis template without changing it."""
         from tensile_startup import resolve_folder
         configured = self._output_override if self._output_override is not None else self.project.get('output_directory', './output')
+        owners = {self.group_sources.get(group) for group in groups or []}
+        if len(owners) == 1 and None not in owners:
+            source = next((s for s in self.sources if s['id'] in owners), None)
+            if source and source.get('output'):
+                configured = source['output']
         return resolve_folder(configured, self.project_dir)
 
     def defaults(self, graph_index=0):
@@ -348,8 +400,7 @@ class PreviewSession:
                 strain, stress, acquisition, indices = result
                 records.append({
                     "sample": source.stem, "source_file": str(source),
-                    "specimen_id": ((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
-                                    + source.relative_to(self.source_roots[group]).as_posix()),
+                    "specimen_id": self.source_id(group, source),
                     "strain_pct": strain, "stress_mpa": stress,
                     "raw_strain_pct": strain, "raw_stress_mpa": stress,
                     "_acquisition": acquisition, "_measurement_indices": indices,
@@ -523,7 +574,7 @@ class PreviewSession:
         frames = self.property_tables(state, spec)
         if frames['tensile_samples'].empty and frames['import_diagnostics'].empty:
             raise ValueError('No specimen data to export.')
-        base = self.output_root()
+        base = self.output_root(state['groups'])
         destination = base / self.engine.safe_filename(spec['name']) / (datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '_tables')
         destination.mkdir(parents=True, exist_ok=False)
         export_results(frames, destination / (self.engine.safe_filename(spec['name']) + '_results.xlsx'),
@@ -567,8 +618,7 @@ class PreviewSession:
             else:
                 rows = self.instron.catalogue(group, self.files[group], self.engine.STRAIN_COLS,
                                               self.engine.STRESS_COLS + self.engine.FORCE_COLS)
-                rows = [{**row, 'specimen_id': ((SAMPLE_ID_PREFIX if group.startswith(SAMPLE_GROUP_PREFIX) else '')
-                        + Path(row['source_file']).relative_to(self.source_roots[group]).as_posix())} for row in rows]
+                rows = [{**row, 'specimen_id': self.source_id(group, row['source_file'])} for row in rows]
             rows = sorted(rows, key=specimen_sort_key)
             for record, label in zip(rows, self.engine.scatter_specimen_labels(rows)):
                 result.append({'id': specimen_id(record), 'label': group + ' · ' + label,
@@ -911,7 +961,7 @@ class PreviewSession:
         result = results[0]
         graph = self.engine.safe_filename(result["graph_spec"]["name"])
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_" + uuid.uuid4().hex[:6]
-        destination = self.output_root() / graph / stamp
+        destination = self.output_root(self._export_groups(results)) / graph / stamp
         destination.mkdir(parents=True, exist_ok=False)
         state = {**result['state'], 'groups': self._export_groups(results)}
         metadata = {
@@ -973,14 +1023,14 @@ class PreviewSession:
 class TensileWorkbench:
     """Analysis editor and multi-plot board. Definitions autosave independently of previews."""
 
-    def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None, activity=None):
+    def __init__(self, project_dir=None, project_path=None, data_dir=None, output_dir=None, activity=None, sources=None):
         import ipywidgets as w
         self.w = w
         self.activity = activity if activity is not None else BusyOverlay()
         self.project_dir = Path(project_dir or Path(__file__).parent).expanduser().resolve()
         self.store = ProjectStore(project_path or self.project_dir / "tensile_workbench.project.json",
                                   self.project_dir / "tensile_workbench_defaults.json")
-        self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir)
+        self.session = PreviewSession(self.project_dir, self.store.data, data_dir, output_dir, sources=sources)
         upgraded = migrate_specimen_selections(migrate_group_gauges(
             upgrade_legacy_demo_graph(self.session.project, self.session.data_dir, self.session.sample_data_dir)))
         if upgraded != self.store.data:
@@ -1017,6 +1067,18 @@ class TensileWorkbench:
         self.sample_data_note = w.HTML()
         self.group_picker.ui.children = (self.group_picker.ui.children[0],
             self._row([self.sample_data_toggle, self.sample_data_note]), *self.group_picker.ui.children[1:])
+        self.project_filter = w.Dropdown(description='Project:', options=[('All projects', ''),
+            *((source['name'], source['id']) for source in self.session.sources)],
+            layout=w.Layout(width='300px', max_width='100%'))
+        self.group_search = w.Text(placeholder='Find sample group…', continuous_update=False,
+            tooltip='Filter by group name or folder. Hidden selections remain selected.',
+            layout=w.Layout(width='300px', max_width='100%'))
+        self.folder_status = w.HTML('<small>Watching project folders while idle.</small>')
+        self.group_picker.ui.children = (*self.group_picker.ui.children[:2],
+            self._row([self.project_filter, self.group_search]), self.folder_status,
+            *self.group_picker.ui.children[2:])
+        self.project_filter.observe(self._filter_groups, names='value')
+        self.group_search.observe(self._filter_groups, names='value')
         self.family_boxes = {family: w.Checkbox(description=label, indent=False, layout=w.Layout(width="auto")) for label, family in FAMILIES}
         self._check("show_individuals", "Show individual specimens")
         self._check("show_both_versions", "Display both with/without-individuals versions")
@@ -1382,6 +1444,7 @@ class TensileWorkbench:
         self._paused = False
         self.move_review.refresh()
         self._show_saved()
+        self._start_folder_watch()
         if not self.session.files:
             self.tables.clear('No tensile sample groups found in the selected data folder.')
             self.status.value = 'Add tensile CSV files in sample-group subfolders, then click Reload data, or choose another location under Folders.'
@@ -2213,6 +2276,7 @@ class TensileWorkbench:
         self.tables.clear('Reloading source CSVs and summaries…')
         try:
             self.session.reload_data()
+            self._reset_folder_watch()
             self._save_reconciled_counts()
             self.move_review.refresh()
             self._show_saved()
@@ -2228,6 +2292,95 @@ class TensileWorkbench:
             self.tables.status.value = self.status.value
         finally:
             self.reload_button.disabled = self.tables_reload_button.disabled = False
+
+    def _filter_groups(self, _=None):
+        from tensile_sources import prefix
+        owner, query = self.project_filter.value, self.group_search.value.strip().casefold()
+        source = next((s for s in self.session.sources if s['id'] == owner), None)
+        def visible(group):
+            belongs = (not owner or self.session.group_sources.get(group) == owner
+                or (group not in self.session.files and source and
+                    (group.startswith(prefix(source)) if prefix(source) else
+                     not any(group.startswith(prefix(s)) for s in self.session.sources if prefix(s)))))
+            return bool(belongs and (not query or query in group.casefold()
+                or query in self.store.data.get('display_names', {}).get(group, '').casefold()))
+        self.group_picker.visible = visible
+        self.group_picker._options_changed()
+
+    def _start_folder_watch(self):
+        from tensile_folder_watch import FolderPulse
+        self._folder_watch = FolderPulse(self._poll_sources, layout=self.w.Layout(display='none'))
+        self.ui.children = (*self.ui.children, self._folder_watch)
+        self._reset_folder_watch()
+
+    def _reset_folder_watch(self):
+        from tensile_sources import FolderChanges, folder_snapshot
+        try:
+            self._folder_changes = FolderChanges(folder_snapshot(self.session.sources))
+        except OSError as error:
+            self._folder_changes = FolderChanges({})
+            self.folder_status.value = '<small>Folder watch will retry: ' + escape(str(error)) + '</small>'
+
+    def _poll_sources(self):
+        if self._paused or self._busy or self.activity.state.get('busy'):
+            return
+        from tensile_sources import folder_snapshot
+        try:
+            current = folder_snapshot(self.session.sources)
+            if self._folder_changes is None:
+                self._reset_folder_watch()
+                return
+            if not self._folder_changes.observe(current):
+                return
+            if not self.save_current():
+                return
+            before = self._folder_changes.accepted
+            changed = {key for key in before.keys() | current.keys() if before.get(key) != current.get(key)}
+            affected = set()
+            previously_available = set(self.session.files)
+            for group, owner in self.session.group_sources.items():
+                relative = self.session.source_directories[group].relative_to(self.session.source_roots[group]).as_posix()
+                if any(source == owner and (not path or relative == '.' or path.startswith(relative + '/'))
+                       for source, path in changed):
+                    affected.add(group)
+            selected = self.controls['groups'].value
+            if set(selected) & affected:
+                self._invalidate_watched_outputs()
+            self.session.reload_data(preserve_groups=set(self.session.files) - affected)
+            affected.update(set(self.session.files) ^ previously_available)
+            self._save_reconciled_counts()
+            self.move_review.refresh()
+            old, self._paused = self._paused, True
+            try:
+                selected = self.controls['groups'].value
+                choices = sorted(set(self.session.files) | set(selected))
+                self.controls['groups'].options = [(g if g in self.session.files else g + ' (unavailable)', g) for g in choices]
+                self.controls['groups'].value = selected
+                self._filter_groups()
+            finally:
+                self._paused = old
+            if set(selected) & affected:
+                self._invalidate_watched_outputs()
+            self._folder_changes.accept(current)
+            missing = [s['name'] for s in self.session.sources if not Path(s['path']).is_dir()]
+            self.folder_status.value = '<small>Project folders refreshed automatically. Saved selections are retained.' + (
+                ' Unavailable: ' + escape(', '.join(missing)) + '.' if missing else '') + '</small>'
+        except Exception as error:
+            self.folder_status.value = '<small>Folder refresh will retry: ' + escape(str(error)) + '</small>'
+
+    def _invalidate_watched_outputs(self):
+        self._results, self._signature = [], None
+        self.viewer.clear('Source data changed. Update plots to calculate from the refreshed files.')
+        self.tables.clear('Source data changed. Update tables to calculate from the refreshed files.')
+        self.export_button.disabled = self.table_export_button.disabled = True
+
+    def close(self):
+        """Detach timers when the launcher replaces/restores a workspace."""
+        self._paused = True
+        if hasattr(self, '_folder_watch'):
+            self._folder_watch.enabled = False
+            self._folder_watch.close()
+        self.ui.close()
 
     def _move_applied(self, action='Group move approved'):
         """Refresh saved identities after one explicitly approved migration."""

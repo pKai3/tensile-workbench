@@ -57,12 +57,15 @@ before updating, or continue managing that checkout yourself. See
 
 ## 2. Choose folders—or try the examples
 
-On first launch, confirm the **Data folder** and **Output folder**, then click **Save folders and open**.
+On first launch, confirm the source folder for **My data** and the **Main output folder**, then click **Save folders and open**.
 
 - Defaults are **./data** and **./output**, relative to the application folder.
 - Either folder can be elsewhere on your computer or on an accessible external/network drive.
 - Changing these settings never moves or copies existing data.
-- Change them later under **Folders · data and output locations**.
+- Change them later under **Projects · source and output folders**. **Browse** opens a folder picker with Up, Home and a path box.
+- **Add project** attaches another independent source folder, such as a colleague's datasets. Each project has a name and an optional output folder. Analyses can combine groups from several projects; their results go to the main output. An analysis using only one project uses that project's output when configured.
+- Project source folders must not overlap. Removing a project detaches its folder; it does not delete data or saved analyses/overrides. An unavailable source can be reconnected by editing its folder path.
+- The **Project** filter and group search narrow the selector without deselecting hidden groups. The original source retains its existing group/specimen identities. Additional projects prefix group names to distinguish identical folder names.
 
 To explore first, leave **Show sample data** enabled and select **Demo comparison**. The examples appear alongside your own groups without changing your data folder. They are invented curves, not experimental results. See [examples/README.md](examples/README.md).
 
@@ -100,11 +103,11 @@ With neither summary, raw specimen CSVs containing stress and strain still load 
 
 Keep original export filenames where possible: names and export row numbers help associate curves with summary rows. A **!** anywhere in a file or nested folder name makes the workbench ignore it entirely. For routine exclusions, use the **Data use** dropdown instead.
 
-After adding or changing files, click **Reload data**. Cloud-hosted files must be downloaded and accessible locally.
+While the page is visible and idle, the workbench checks project folders every 15 seconds. Changes refresh the group list after two matching observations (usually 15–30 seconds); it waits while files are still changing. Editing and open popups pause this check. Existing selections stay selected. Affected tables/plots are cleared with an update prompt; background watching does not run expensive fits or regenerate plots. **Reload data** remains available for an immediate refresh. Cloud-hosted files must be downloaded and accessible locally.
 
 Group identities include their relative folder path, so different colleagues can use the same sample names without their data being merged. Existing flat layouts still work.
 
-**Moving groups:** open this version once before reorganising existing data, so it can remember file fingerprints for groups with saved selections/settings. After moving folders, use **Reload data** or **Check for moved groups**. Each verified move is flagged beside the selector with its old/new paths and a separate **OK, migrate settings** button. Approving it carries saved analysis selections, specimen overrides/exclusions and group settings to the new location; nothing transfers without your OK. The workbench does not move source files itself. Ambiguous duplicates or conflicting settings are blocked. See [move protection](WORKBENCH_GUIDE.md#moving-data-and-retaining-settings) for limitations.
+**Moving groups:** open this version once before reorganising existing data, so it can remember file fingerprints for groups with saved selections/settings. Folder watching, **Reload data** or **Check for moved groups** detects moves within and between configured projects. Each verified move is flagged beside the selector with its old/new paths and a separate **OK, migrate settings** button. Approving it carries saved analysis selections, specimen overrides/exclusions and group settings to the new location; nothing transfers without your OK. Renaming an added project also uses this review when its group prefixes change. To move an entire project without changing its name, edit its source path instead. The workbench does not move source files itself. Ambiguous duplicates or conflicting settings are blocked. See [move protection](WORKBENCH_GUIDE.md#moving-data-and-retaining-settings) for limitations.
 
 ## 3. Everyday workflow
 
@@ -226,7 +229,7 @@ The first two files are ignored by Git. They are saved automatically, with backu
 
 ### Automatic backups and recovery
 
-Open **Backups & restore**, just below Folders. It lists dated snapshots, with analysis counts and revision numbers for project settings. **Back up now** makes a protected copy of both saved settings files. Unsaved editor drafts, research CSVs and exported results are not part of these backups.
+Open **Backups & restore**, just below Projects. It lists dated snapshots, with analysis counts and revision numbers for project settings. **Back up now** makes a protected copy of both saved settings files, including project-source pointers and the content-matching index. Project-source changes and approved moves also preserve a protected pre-migration snapshot. Unsaved editor drafts, research CSVs and exported results are not part of these backups.
 
 - Automatic history retains the latest **20 changed versions**, hourly checkpoints within the latest **48 hours** of saved history, and **30 daily checkpoints**, per settings file. Manual copies and safety copies made before a settings upgrade or restore are retained without automatic expiry.
 - Choose **Project** or **Folders**, select a snapshot, then **Restore selected… → Confirm restore**. Only that settings file is restored. The current file is preserved first, even if damaged, and the workbench reopens. Cancel changes nothing.

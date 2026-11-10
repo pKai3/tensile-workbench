@@ -30,12 +30,30 @@
   and wide card grids, all workspace popups, repeated variable-tab switches,
   scroll locking, viewport centring, help, Escape and focus return.
 
-### Folder/project workflow — under discussion, not implemented
+### Folder/project workflow — approved and implemented
 
-- Consider TEM-style named source folders, per-source output overrides, a proper
-  folder browser, project filtering and a searchable specimen/curve browser.
-- Preserve cross-project analyses and existing saved specimen policies. Stable
-  source identities and a reviewed migration of existing paths would be required.
+- Reuse TEM's named-source management workflow: Add/Remove projects, browse
+  source/output folders, optional project output, and main output for combined
+  analyses. Reject overlapping sources/output locations. Preserve original IDs;
+  namespace additional groups by project name. Project renames use reviewed
+  content matching; changing a project's root path retains its relative IDs.
+- Add project and text filters without changing hidden group selections.
+- Watch CSV/PDF metadata every 15 seconds while visible and idle. Require two
+  stable scans; pause during edits, popups and calculations. Refresh discovery
+  and move proposals, retain unrelated curve caches, and invalidate affected
+  outputs instead of doing expensive analysis in the background. Stop the
+  watcher when a workspace is replaced/restored or its browser view is closed.
+- Generalise SHA-256 move matching across independent roots. Preserve explicit
+  approval per group, duplicate/conflict rejection, and rehash at approval.
+- Keep Tensile's existing checksummed, rotating external backup vault (more
+  extensive than TEM's settings recovery). Include source configuration in its
+  validation and snapshots; protect snapshots before source changes/migration.
+- Verification: 90 focused synthetic checks passed, covering independent duplicate group names,
+  cross-project moves, ambiguous copies, unavailable/relinked roots, filtering,
+  output routing, watcher debounce and settings/backup compatibility.
+- Browser verification confirmed folder navigation, readable project controls,
+  selection-preserving project filtering and automatic appearance of a newly
+  copied group. No JavaScript errors; temporary server and both kernels stopped.
 
 ### Consistent group editing and compact display choices — implemented
 
