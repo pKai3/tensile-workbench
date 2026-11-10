@@ -7,6 +7,8 @@
   buttons into popups, keeping the page compact.
 - Centre all settings popups in the browser window, lock background scrolling,
   and keep Custom variables open while switching tabs.
+- Keep Custom variables at a stable size across both tabs, with scrolling inside
+  the popup and the Done button kept in view.
 - Simplify the header to match TEM Workbench, with the running version and live
   connection status at the top right. Remove the introductory paragraph.
 

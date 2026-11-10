@@ -73,20 +73,23 @@ class SettingsPopup:
         self.done = w.Button(description='Done', icon='check', tooltip='Close this window.',
                              layout=w.Layout(width='auto'))
         self.done.on_click(lambda _: self.close())
-        self.body = w.VBox(layout=w.Layout(width='100%', min_width='0'))
-        dialog = w.VBox([w.HBox([self.title, self.done], layout=w.Layout(
-            justify_content='space-between', align_items='center', flex_flow='row wrap')), self.body],
-            layout=w.Layout(width=f'min({width}, 94vw)', max_height='88vh', overflow='auto', padding='20px'))
-        dialog.add_class('tw-settings-dialog')
-        self.overlay = w.Box([dialog], layout=w.Layout(display='none'))
+        self.body = w.VBox(layout=w.Layout(width='100%', min_width='0', min_height='0',
+                                         flex='1 1 auto', overflow='auto'))
+        self.dialog = w.VBox([w.HBox([self.title, self.done], layout=w.Layout(
+            justify_content='space-between', align_items='center', flex_flow='row wrap', flex='0 0 auto')), self.body],
+            layout=w.Layout(width=f'min({width}, 94vw)', max_height='88vh', overflow='hidden', padding='20px'))
+        self.dialog.add_class('tw-settings-dialog')
+        self.body.add_class('tw-settings-body')
+        self.overlay = w.Box([self.dialog], layout=w.Layout(display='none'))
         self.overlay.add_class('tw-settings-overlay')
         self.events = PopupEvents(layout=w.Layout(display='none'))
         self.events.on_msg(lambda _, content, buffers: self.close() if content.get('action') == 'close' else None)
         self.ui = w.VBox([self.events, self.overlay])
         self.ui.add_class('tw-popup-host')
 
-    def open(self, title, children):
+    def open(self, title, children, *, height=None):
         self.title.value = '<h3 style="margin:0">' + escape(title) + '</h3>'
+        self.dialog.layout.height = height
         self.body.children = tuple(children)
         self.overlay.layout.display = 'flex'
 

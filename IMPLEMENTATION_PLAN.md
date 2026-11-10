@@ -18,6 +18,8 @@
   pointer-down and click before dismissal, preventing tab-layout changes from
   accidentally closing Custom variables. Keep help and loading indicators in
   the dialog's top layer.
+- Keep Custom variables at a fixed responsive height across both tabs. Scroll
+  the contents within the dialog while retaining its title and Done button.
 - Match TEM Workbench's header: LOCAL ANALYSIS, application title, running version
   and a live local-Python connection badge. Remove the introductory paragraph.
   Observe the existing kernel connection rather than adding polling or marking

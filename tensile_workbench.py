@@ -1594,7 +1594,8 @@ class TensileWorkbench:
         panel = self.workspace_panels[key]
         self._workspace_panel_open = key
         panel.selected_index = 0
-        self.workspace_popup.open(panel.get_title(0), panel.children)
+        self.workspace_popup.open(panel.get_title(0), panel.children,
+                                  height='min(760px, 88vh)' if key == 'variables' else None)
 
     def _close_workspace_settings(self):
         if self._workspace_panel_open is not None:
