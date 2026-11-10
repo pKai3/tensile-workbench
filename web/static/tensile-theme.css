@@ -151,7 +151,7 @@ html[data-tw-theme="light"] .tw-themed-plot:not(.tw-theme-light):not(.tw-theme-f
 /* Data-independent plot sketches keep the selector quick, even for large tests. */
 .tw-plot-picker {color:var(--tw-text,#24354a);}
 .tw-plot-section-title {margin:18px 0 4px;font-size:16px;font-weight:650;}
-.tw-plot-count {font-weight:600;}
+.tw-plot-count {font-weight:600;margin-right:12px;}
 .tw-plot-card {
   box-sizing:border-box;padding:12px;border:1px solid var(--tw-border,#d5dde6);
   border-radius:8px;background:var(--tw-panel-bg,#fff);cursor:pointer;
@@ -161,12 +161,11 @@ html[data-tw-theme="light"] .tw-themed-plot:not(.tw-theme-light):not(.tw-theme-f
 .tw-plot-card-settings {cursor:auto;}
 .tw-plot-actions {margin:20px 0 10px;align-items:center;row-gap:10px !important;column-gap:12px !important;}
 .tw-plot-status {margin:0 0 12px;}
-.tw-help {margin:2px 0 6px;color:var(--tw-muted,#64748b);font-size:13px;line-height:1.5;white-space:normal;}
-.tw-help>summary {display:inline-block;cursor:help;list-style:none;padding:2px 0;}
-.tw-help>summary::-webkit-details-marker {display:none;}
-.tw-help>summary:hover,.tw-help>summary:focus-visible {color:var(--tw-accent,#167a9c);}
-.tw-help[open]>summary {color:var(--tw-text,#203650);}
-.tw-help-content {max-width:800px;padding:10px 12px;margin:4px 0 8px;background:var(--tw-surface-alt,#f2f6fa);border:1px solid var(--tw-border,#dce3e9);border-radius:6px;}
+.tw-help {display:inline-block;margin:2px 10px 6px 0;padding:2px 0;cursor:help;color:var(--tw-muted,#64748b);font-size:13px;line-height:1.5;white-space:normal;}
+.tw-help:hover,.tw-help:focus-visible {color:var(--tw-accent,#167a9c);}
+.tw-help:focus-visible {outline:2px solid var(--tw-accent,#167a9c);outline-offset:3px;border-radius:3px;}
+.tw-help-content[hidden],.tw-help-popup[hidden] {display:none;}
+.tw-help-popup {position:fixed;z-index:10010;box-sizing:border-box;width:max-content;max-width:min(520px,calc(100vw - 24px));max-height:min(420px,80vh);overflow:auto;padding:12px 14px;background:var(--tw-panel-bg,#fff);color:var(--tw-text,#24354a);border:1px solid var(--tw-border,#dce3e9);border-radius:8px;box-shadow:0 6px 24px #0004;font:14px/1.5 system-ui,sans-serif;white-space:normal;}
 .tw-settings-overlay {position:fixed!important;inset:0;z-index:9000;background:#0009;align-items:center;justify-content:center;}
 .tw-settings-dialog {background:var(--tw-panel-bg,#fff);color:var(--tw-text,#203650);border:1px solid var(--tw-border,#dce3e9);border-radius:12px;box-shadow:0 12px 50px #0006;}
 .tw-plot-card.tw-plot-selected {

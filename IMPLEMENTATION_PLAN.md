@@ -2,6 +2,22 @@
 
 ## Change notes — 2026-11-11
 
+### Consistent group editing and compact display choices — implemented
+
+- Follow the saved sample-group order in Labels and colours and the shared
+  group-override selector. Preserve the selected group and pending label/colour
+  edits during reordering; refresh correctly on selection and analysis changes.
+- Replace renderer/individual-display dropdowns and checkboxes with illustrated
+  selectors. Keep the existing saved settings and export behaviour compatible.
+- Show routine ⓘ help in floating hover/focus previews, without page expansion;
+  keyboard and touch activation remain available.
+- Require preview-server cleanup in AGENTS.md. Verification uses an isolated
+  temporary launch entry, synthetic data and an automatic shutdown limit, then
+  explicitly stops and verifies cleanup before finishing.
+- Verification: focused group-order, palette, saved-display-mode and existing UI/
+  theme checks pass. Browser verification confirms illustrated selections and
+  floating keyboard help; the preview server and process group have exited.
+
 ### Compact help, illustrated views and review acknowledgements — implemented
 
 - Make plot-card bodies clickable while keeping Settings separate. Open settings

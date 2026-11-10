@@ -131,11 +131,39 @@ class GroupOrderTests(unittest.TestCase):
             reopened.controls['groups'].value = ('Alloy A',)
             reopened.controls['groups'].value = ('Alloy A', 'Batch/Alloy Z', 'Reference/Control')
         self.assertEqual(list(reopened.display_order_select.options), self.order)
+        self.assertEqual(list(reopened.override_group.options), self.order)
         self.assertEqual(reopened.state()['group_order'], self.order)
         reopened._apply_graph('1')
         self.assertEqual(reopened.state()['group_order'], ['Alloy A'])
+        self.assertEqual(list(reopened.override_group.options), ['Alloy A'])
         reopened._apply_graph('0')
         self.assertEqual(reopened.state()['group_order'], self.order)
+        self.assertEqual(list(reopened.override_group.options), self.order)
+
+    def test_labels_and_colours_reorder_preserves_selected_group_and_pending_edits(self):
+        app = self.app
+        app.override_group.value = 'Batch/Alloy Z'
+        app.override_name.value = 'Pending label'
+        app.override_color_enabled.value = True
+        app.override_color.value = '#112233'
+        app.display_order_select.value = 'Reference/Control'
+        with redirect_stdout(io.StringIO()):
+            app.display_order_up.click()
+            app.display_order_up.click()
+        self.assertEqual(list(app.override_group.options), self.order)
+        self.assertEqual(app.override_group.value, 'Batch/Alloy Z')
+        self.assertEqual(app.override_name.value, 'Pending label')
+        self.assertEqual(app.override_color.value, '#112233')
+        with redirect_stdout(io.StringIO()):
+            app.override_button.click()
+        spec = app._current()['definition']
+        self.assertEqual(spec['name_overrides']['Batch/Alloy Z'], 'Pending label')
+        self.assertEqual(spec['color_overrides']['Batch/Alloy Z'], '#112233')
+        with redirect_stdout(io.StringIO()):
+            app.controls['groups'].value = ('Alloy A', 'Reference/Control')
+        self.assertEqual(list(app.override_group.options), self.order[:2])
+        self.assertEqual(app.override_group.value, 'Reference/Control')
+        self.assertNotEqual(app.override_name.value, 'Pending label')
 
     def test_table_and_export_frames_use_order_without_recalculation_or_value_changes(self):
         before = self.session.property_tables(self.state(group_order=[]), {})

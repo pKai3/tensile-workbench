@@ -91,7 +91,7 @@ class WebAppTests(unittest.TestCase):
         app = self.make_app()
         self.assertFalse(hasattr(app, 'range_button'))
         self.assertFalse(hasattr(app, 'range_from'))
-        self.assertEqual(app.controls['renderer'].options[0], ('Static plots', 'static'))
+        self.assertEqual(app.controls['renderer'].options[0], ('Static', 'static'))
         self.assertEqual(app.properties_panel.selected_index, 0)
         content = app.properties_panel.children[0]
         self.assertIn(app.tables.ui, content.children)
@@ -100,6 +100,26 @@ class WebAppTests(unittest.TestCase):
             app.properties_panel.selected_index = None
             app.properties_panel.selected_index = 0
         calculate.assert_not_called()
+
+    def test_illustrated_display_modes_keep_saved_settings_compatible(self):
+        app = self.make_app()
+        app.individual_display.value = 'groups'
+        for mode, individuals, both in [('individuals', True, False), ('both', True, True),
+                                         ('groups', False, False)]:
+            with self.subTest(mode=mode), patch.object(app, '_refresh_properties') as refresh:
+                app.individual_display.value = mode
+                self.assertEqual(app.controls['show_individuals'].value, individuals)
+                self.assertEqual(app.controls['show_both_versions'].value, both)
+                saved = app._current()['settings']
+                self.assertEqual(saved['show_individuals'], individuals)
+                self.assertEqual(saved['show_both_versions'], both)
+                refresh.assert_called_once()
+        app.controls['renderer'].value = 'plotly'
+        app.individual_display.value = 'both'
+        app._apply_graph('2')
+        app._apply_graph('0')
+        self.assertEqual(app.controls['renderer'].value, 'plotly')
+        self.assertEqual(app.individual_display.value, 'both')
 
     def test_advanced_notebook_mode_is_still_available(self):
         with patch.object(launch_workbench.subprocess, 'call', return_value=0) as call, redirect_stdout(io.StringIO()):

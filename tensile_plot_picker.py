@@ -89,7 +89,28 @@ DESCRIPTIONS = {
 def thumbnail(family):
     """Small inline vectors: a stable visual vocabulary, independent of data."""
     axes = '<path class="tw-sketch-axis" d="M14 8V68H116"/>'
-    if family == 'detail_yield':
+    if family in ('display_static', 'display_interactive'):
+        marks = ('<path class="tw-sketch-blue" d="M18 64Q24 27 36 24Q70 12 105 40"/>'
+                 '<path class="tw-sketch-orange" stroke-dasharray="4 3" d="M18 64Q30 33 42 30Q75 21 109 49"/>')
+        if family == 'display_static':
+            marks += '<path class="tw-sketch-axis" d="M7 3H121V77H7Z"/>'
+        else:
+            marks += ('<path class="tw-sketch-green" fill="currentColor" d="M62 35l3 25 7-8 10 2Z"/>'
+                      '<circle class="tw-sketch-orange" cx="102" cy="20" r="8"/>'
+                      '<path class="tw-sketch-orange" d="M108 26l9 9M98 20h8m-4-4v8"/>')
+    elif family == 'display_both':
+        axes = '<path class="tw-sketch-axis" d="M9 11V68H57M70 11V68H119"/>'
+        marks = ('<path class="tw-sketch-blue" d="M12 65Q16 23 25 25Q43 19 53 47"/>'
+                 '<g class="tw-sketch-blue" opacity=".35"><path d="M73 65Q76 19 85 21Q102 15 115 44"/>'
+                 '<path d="M73 65Q79 32 88 32Q105 25 117 54"/></g>'
+                 '<path class="tw-sketch-blue" d="M73 65Q77 25 86 27Q104 21 116 49"/>')
+    elif family == 'display_mean':
+        marks = '<path class="tw-sketch-blue" d="M18 65Q23 29 33 24Q66 9 92 30L108 55"/>'
+    elif family == 'display_individuals':
+        marks = ('<g class="tw-sketch-blue" opacity=".5"><path d="M18 65Q20 21 31 19Q65 2 91 25L107 49"/>'
+                 '<path d="M18 65Q26 38 39 35Q71 22 96 40L111 63"/></g>'
+                 '<path class="tw-sketch-blue" stroke-width="3" d="M18 65Q23 29 33 24Q66 9 92 30L108 55"/>')
+    elif family == 'detail_yield':
         marks = ('<path class="tw-sketch-blue" d="M18 65L65 24Q79 15 112 15"/>'
                  '<path class="tw-sketch-green" stroke-dasharray="4 3" d="M18 65L80 10"/>'
                  '<path class="tw-sketch-orange" stroke-dasharray="4 3" d="M43 65L99 15"/>'

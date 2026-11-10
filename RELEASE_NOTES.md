@@ -1,5 +1,11 @@
 # Tensile Workbench — next update
 
+- Labels and colours follows the saved sample-group order, keeping the selected
+  group and pending edits in place when the order changes.
+- Choose Static/Interactive and Groups only/With specimens/Both versions using
+  illustrated controls. Hover or focus ⓘ help to see a floating explanation
+  without expanding the page.
+
 - Click anywhere on a plot card to select/deselect it. Its separate **Settings**
   gear opens a popup without expanding the page. Close with Done, Escape or
   the background; existing settings still save automatically.

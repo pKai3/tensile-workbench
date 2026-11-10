@@ -14,8 +14,8 @@ from pathlib import Path
 from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
-from tensile_plot_picker import PlotPicker
-from tensile_help import help_html
+from tensile_plot_picker import PlotPicker, review_selector_css
+from tensile_help import help_html, HelpTooltips
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
 from tensile_override_view import SavedOverridesView
@@ -1065,8 +1065,19 @@ class TensileWorkbench:
                                               description="Layout:", layout=w.Layout(width="270px"))
         self.controls["plot_width"] = w.IntSlider(value=640, min=320, max=1600, step=40,
             description="Plot width (px)", continuous_update=False, style={"description_width": "initial"}, layout=w.Layout(width="360px"))
-        self.controls["renderer"] = w.Dropdown(options=[("Static plots", "static"), ("Interactive Plotly", "plotly")],
-            value="static", description="Plot display:", style={"description_width": "initial"}, layout=w.Layout(width="350px"))
+        self.controls["renderer"] = w.ToggleButtons(options=[("Static", "static"), ("Interactive", "plotly")],
+            value="static", tooltips=['Publication-style image previews.', 'Interactive plots: zoom, pan and inspect values.'])
+        self.controls['renderer'].add_class('tw-renderer-switch')
+        self.individual_display = w.ToggleButtons(options=[('Groups only', 'groups'),
+            ('With specimens', 'individuals'), ('Both versions', 'both')], value='groups',
+            tooltips=['Show group results without individual specimen curves or points.',
+                      'Overlay individual specimens on the group results.',
+                      'Generate both versions: group results alone, and with individual specimens.'])
+        self.individual_display.add_class('tw-individuals-switch')
+        self.plot_display_options = self._row([self.controls['renderer'], self.individual_display])
+        self.plot_display_options.add_class('tw-plot-display-options')
+        self.plot_display_css = w.HTML(review_selector_css('tw-renderer-switch', ('display_static', 'display_interactive'))
+            + review_selector_css('tw-individuals-switch', ('display_mean', 'display_individuals', 'display_both')))
         sliders = (
             ("landmark_points", "Landmark points/stage", 50, 2000, 50, True),
             ("pointwise_points", "Pointwise tensile points", 100, 2000, 100, True),
@@ -1287,8 +1298,7 @@ class TensileWorkbench:
             self.custom_variables_panel,
             self.gauge_panel,
             self.fit_review_bar, self.properties_panel,
-            w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
-            self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
+            w.HTML("<h3>Plot views</h3>"), self.plot_display_css, self.plot_display_options,
             self.plot_options,
             plot_actions,
             self.status, general, self.viewer.ui,
@@ -1313,13 +1323,15 @@ class TensileWorkbench:
             contents = [self.activity, ContentWidth(), self.pages]
         else:
             contents = [self.pages]
-        self.ui = w.VBox(contents, layout=w.Layout(
+        self.help_tooltips = HelpTooltips(layout=w.Layout(display='none'))
+        self.ui = w.VBox([self.help_tooltips, *contents], layout=w.Layout(
             width='var(--tw-content-width, 1600px)' if activity is None else '100%',
             min_width='0', max_width='100%'))
         self.ui.add_class('tw-workbench')
         self._refresh_graph_options()
         self._apply_graph(self.store.data["selected_graph"])
         self.sample_data_toggle.observe(self._sample_data_changed, names='value')
+        self.individual_display.observe(self._individual_display_changed, names='value')
         self.graph.observe(self._graph_changed, names="value")
         self.name.observe(self._changed, names="value")
         for key, widget in self.controls.items():
@@ -1626,7 +1638,7 @@ class TensileWorkbench:
             self.specimen_charts.load(state.get(SPECIMEN_VARIANTS_KEY))
             self.group_variables.refresh(self.controls['groups'].value, order=self._display_order, force=True)
             self._refresh_specimen_variables(force=True)
-            self.override_group.options = self.session.visible_groups(state["groups"])
+            self._sync_override_groups()
             self._sync_gauge_rows(force=True)
             self._sample_data_note()
             self._load_overrides()
@@ -1640,6 +1652,12 @@ class TensileWorkbench:
             self._paused = old
 
     def _sync_disabled(self):
+        old, self._paused = self._paused, True
+        try:
+            self.individual_display.value = ('both' if self.controls['show_both_versions'].value else
+                'individuals' if self.controls['show_individuals'].value else 'groups')
+        finally:
+            self._paused = old
         self._sync_property_title()
         self.palette_swatches.value = palette_preview(self.controls['color_palette'].value,
             self.session.engine.plt.rcParams['axes.prop_cycle'].by_key()['color'])
@@ -1655,12 +1673,39 @@ class TensileWorkbench:
         for family, settings in self.plot_settings.items():
             settings.layout.display = "" if self.family_boxes[family].value else "none"
 
+    def _individual_display_changed(self, change):
+        if self._paused:
+            return
+        self._paused = True
+        try:
+            self.controls['show_both_versions'].value = change['new'] == 'both'
+            if change['new'] != 'both':
+                self.controls['show_individuals'].value = change['new'] == 'individuals'
+        finally:
+            self._paused = False
+        self._changed()
+
     def _sync_display_order_buttons(self):
         options = list(self.display_order_select.options)
         selected = self.display_order_select.value
         index = options.index(selected) if selected in options else -1
         self.display_order_up.disabled = index <= 0
         self.display_order_down.disabled = index < 0 or index >= len(options) - 1
+
+    def _sync_override_groups(self):
+        """Follow presentation order without changing the group being edited."""
+        options = ordered_groups(list(self.controls['groups'].value), self._display_order)
+        if tuple(self.override_group.options) == tuple(options):
+            return
+        selected = self.override_group.value
+        self._syncing_override_groups = True
+        try:
+            self.override_group.options = options
+            self.override_group.value = selected if selected in options else next(iter(options), None)
+        finally:
+            self._syncing_override_groups = False
+        if self.override_group.value != selected and not self._paused:
+            self._load_overrides()
 
     def _sync_display_order(self):
         groups = sorted(self.controls['groups'].value)
@@ -1758,8 +1803,7 @@ class TensileWorkbench:
                 self.move_review.refresh()
             self._color_slots = dict(state[COLOR_SLOTS])
             self._show_saved()
-            if tuple(self.override_group.options) != tuple(state["groups"]):
-                self.override_group.options = state["groups"]
+            self._sync_override_groups()
             self._sync_automatic_color()
             self._sync_gauge_rows()
             return True
@@ -2063,6 +2107,8 @@ class TensileWorkbench:
 
     @busy('Loading sample-group settings…')
     def _load_overrides(self, _=None):
+        if getattr(self, '_syncing_override_groups', False):
+            return
         group = self.override_group.value
         if group is None:
             return
