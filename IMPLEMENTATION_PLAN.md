@@ -20,6 +20,8 @@
   the dialog's top layer.
 - Keep Custom variables at a fixed responsive height across both tabs. Scroll
   the contents within the dialog while retaining its title and Done button.
+- Preserve existing scrollbar gutters while locking background scroll, so the
+  centred main panel does not shift sideways on popup open/close.
 - Match TEM Workbench's header: LOCAL ANALYSIS, application title, running version
   and a live local-Python connection badge. Remove the introductory paragraph.
   Observe the existing kernel connection rather than adding polling or marking

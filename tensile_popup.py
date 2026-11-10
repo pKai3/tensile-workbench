@@ -15,9 +15,13 @@ class PopupEvents(anywidget.AnyWidget):
       // intentional click that started on the backdrop dismisses the dialog.
       const down=event=>{backdropPress=event.target===overlay();};
       const click=event=>{if(backdropPress && event.target===overlay())close();backdropPress=false;};
-      const unlock=()=>{for(const [node,value,priority] of locked){
-        if(value)node.style.setProperty('overflow',value,priority);else node.style.removeProperty('overflow');
+      const unlock=()=>{for(const [node,property,value,priority] of locked){
+        if(value)node.style.setProperty(property,value,priority);else node.style.removeProperty(property);
       }locked=[];};
+      const preserve=(node,property,value)=>{
+        locked.push([node,property,node.style.getPropertyValue(property),node.style.getPropertyPriority(property)]);
+        node.style.setProperty(property,value,'important');
+      };
       const dismiss=event=>{event.preventDefault();close();};
       const key=event=>{
         if(!isOpen())return;
@@ -47,8 +51,13 @@ class PopupEvents(anywidget.AnyWidget):
             previousFocus=document.activeElement;
             // Voilà can scroll an inner container rather than body.
             for(let node=root();node;node=node.parentElement){
-              locked.push([node,node.style.getPropertyValue('overflow'),node.style.getPropertyPriority('overflow')]);
-              node.style.setProperty('overflow','hidden','important');
+              const css=getComputedStyle(node);
+              const gutter=node===document.documentElement ? innerWidth-node.clientWidth
+                : node.offsetWidth-node.clientWidth-parseFloat(css.borderLeftWidth || 0)-parseFloat(css.borderRightWidth || 0);
+              // Keep an existing scrollbar's space, but do not introduce a
+              // gutter on the many non-scrolling widget ancestors.
+              if(gutter>1 && css.scrollbarGutter==='auto')preserve(node,'scrollbar-gutter','stable');
+              preserve(node,'overflow','hidden');
             }
             shell.showModal();panel.querySelector('button')?.focus({preventScroll:true});
           }}
