@@ -18,6 +18,7 @@ from tensile_colors import COLOR_SLOTS
 GROUP_MAPS = ('name_overrides', 'color_overrides', 'youngs_modulus_overrides',
               'representative_overrides', 'gauge_reconstruction')
 SPECIMEN_MAPS = ('specimen_exclusions', 'specimen_data_modes',
+                 'specimen_review_acknowledgements',
                  'specimen_fit_overrides', 'specimen_failure_overrides',
                  'specimen_inclusion_overrides')
 HISTORIES = ('specimen_fit_history', 'specimen_failure_history')

@@ -52,6 +52,7 @@ class DataMoveTests(unittest.TestCase):
         sha = hashlib.sha256((self.root / 'Alloy/b.csv').read_bytes()).hexdigest()
         self.project['specimen_fit_overrides'] = {'Alloy/b.csv': {'source_sha256': sha, 'mode': 'range'}}
         self.project['specimen_failure_overrides'] = {'Alloy/b.csv': {'source_sha256': sha, 'row': 5}}
+        self.project['specimen_review_acknowledgements'] = {'Alloy/b.csv': {'fingerprint': 'a' * 64, 'checks': 'Reviewed', 'saved_at': '2026-11-11'}}
         self.project['specimen_fit_history'] = [{'specimen_id': 'Alloy/b.csv', 'before': None, 'after': {}}]
         self.project['specimen_failure_history'] = [{'specimen_id': 'Alloy/b.csv', 'before': None, 'after': {}}]
         self.project['deleted_graphs'] = [{'graph': deepcopy(self.project['graphs'][0]), 'index': 0}]
@@ -69,6 +70,8 @@ class DataMoveTests(unittest.TestCase):
         self.assertEqual(result['display_names'], {new: 'My alloy'})
         self.assertEqual(result['specimen_exclusions'], {new + '/a.csv': 'grip slip'})
         self.assertIn(new + '/b.csv', result['specimen_data_modes'])
+        self.assertEqual(result['specimen_review_acknowledgements'][new + '/b.csv']['fingerprint'], 'a' * 64)
+        self.assertNotIn('Alloy/b.csv', result['specimen_review_acknowledgements'])
         for key in ('specimen_fit_overrides', 'specimen_failure_overrides'):
             self.assertEqual(result[key][new + '/b.csv']['source_sha256'], sha)
         for key in ('specimen_fit_history', 'specimen_failure_history'):

@@ -123,6 +123,20 @@ class SavedOverridesView:
         self.count, self.message, self.confirm_message = w.HTML(), w.HTML(), w.HTML()
         self.confirm_remove = w.Button(description='Confirm remove', button_style='danger', layout=compact())
         self.cancel = w.Button(description='Cancel', layout=compact())
+        for button, icon, help_text in (
+            (self.refresh_button, 'refresh', 'Refresh saved overrides for all specimens, including groups outside the current analysis.'),
+            (self.disable, 'pause', 'Stop applying the selected overrides while retaining their saved values for later.'),
+            (self.enable, 'play', 'Apply the selected saved overrides again.'),
+            (self.remove, 'trash', 'Review and permanently remove the selected overrides. Source measurements are kept.'),
+            (self.clear, 'times', 'Untick the selected rows without changing any overrides.'),
+            (self.confirm_remove, 'trash', 'Remove the overrides listed in the confirmation.'),
+            (self.cancel, 'times', 'Keep these overrides and close the confirmation.'),
+        ):
+            button.icon, button.tooltip = icon, help_text
+        self.search.tooltip = 'Filter the override list by group, specimen, setting or reason. Hidden rows are not deleted.'
+        self.kind.tooltip = 'Filter by the property or setting being overridden.'
+        self.scope.tooltip = 'Filter global overrides or overrides belonging to a particular analysis.'
+        self.state.tooltip = 'Show enabled overrides, disabled overrides, or both.'
         row = lambda items: w.HBox(items, layout=w.Layout(flex_flow='row wrap', grid_gap='8px', align_items='center'))
         self.confirmation = w.VBox([self.confirm_message, row([self.confirm_remove, self.cancel])],
                                    layout=w.Layout(display='none'))

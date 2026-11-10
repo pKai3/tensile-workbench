@@ -1,5 +1,6 @@
 """Lazy measured/aligned curve review. Display controls never change analysis policy."""
 from html import escape
+from tensile_help import help_html
 import uuid
 import re
 import numpy as np
@@ -85,16 +86,20 @@ class GroupCurveReview:
         self.selected, self.generation = None, None
         self._owned, self._legend_buttons, self._marker_data = [], {}, {}
         self._aligned_model, self._contribution_notes = None, {}
-        self._marker_preferences = {'measured': dict.fromkeys(MARKERS, False), 'aligned': dict.fromkeys(MARKERS, True)}
+        self._marker_preferences = {'measured': dict.fromkeys(MARKERS, True), 'aligned': dict.fromkeys(MARKERS, True)}
         self.view = widgets.ToggleButtons(description='View:',
             options=[('Measured', 'measured'), ('Landmark-aligned', 'aligned')],
             disabled=aligned_loader is None, style={'button_width': 'auto'})
+        self.view.add_class('tw-group-view-switch')
+        self.view.tooltips = ['Recorded specimen curves, before landmark alignment.',
+            'Specimen shapes scaled to shared group landmarks; these show contributions to the average, not measured curves.']
         self.group = widgets.Dropdown(description='Group:', layout=widgets.Layout(width='350px'))
         self.axis = widgets.Dropdown(description='X axis:', options=[('Recorded strain (%)', 'strain'), ('Time (s)', 'time')],
                                      layout=widgets.Layout(width='260px'))
         self.show_excluded = widgets.Checkbox(value=True, description='Show fully excluded specimens', indent=False)
         self.show_excluded.tooltip = 'Display only. Exclusions are changed with Data use in the table below.'
-        self.markers = {name: widgets.Checkbox(value=False, description=label, indent=False,
+        self.markers = {name: widgets.Checkbox(value=True, description=label, indent=False,
+                        tooltip='Show or hide the ' + name + ' markers. This does not change analysis contributions.',
                         layout=widgets.Layout(width='auto'))
                         for name, label in [('YS', '○ YS'), ('UTS', '△ UTS'), ('EL', '× EL')]}
         self.inspect = widgets.Button(description='Inspect highlighted specimen', icon='search', disabled=True,
@@ -110,11 +115,13 @@ class GroupCurveReview:
             grid_template_columns='repeat(auto-fit, minmax(min(100%, 260px), 1fr))'))
         self.table = SpecimenTable(on_selection=on_selection, on_inspect=self.select,
                                    layout=widgets.Layout(width='100%'))
+        from tensile_plot_picker import review_selector_css
         self.ui = widgets.VBox([
-            widgets.HTML('<p>Click a curve or specimen name to highlight it, not exclude it. '
+            widgets.HTML(review_selector_css(), layout=widgets.Layout(height='0', margin='0')),
+            widgets.HTML(help_html('Curve review and markers', '<p>Click a curve or specimen name to highlight it, not exclude it. '
                          'Use <b>Data use</b> in the table below to change analysis contributions. '
                          'Line styles and labels show exclusions.</p>'
-                         '<details><summary>About this view and markers</summary><p>'
+                         '<p>'
                          'Dense curves show every Nth reading, retaining endpoints and missing-data gaps. '
                          'Open the specimen inspector for full-resolution detail. '
                          'Curves include AVE glitches and unloading; fully excluded curves are faint. '
@@ -128,7 +135,7 @@ class GroupCurveReview:
                          'have to pass through the group-mean stresses. Stage boundaries are not bridged if that adjustment '
                          'creates a discontinuity in an individual contribution. Group-mean markers default to on. '
                          'Property-only and fully excluded specimens remain listed without an aligned curve. '
-                         'Gauge reconstruction, when enabled for this group, is applied before alignment.</p></details>'),
+                         'Gauge reconstruction, when enabled for this group, is applied before alignment.</p>')),
             self.view,
             widgets.HBox([self.group, self.axis, self.show_excluded], layout=widgets.Layout(flex_flow='row wrap')),
             widgets.HBox([self.marker_heading, *self.markers.values()],

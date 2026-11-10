@@ -31,6 +31,9 @@ class SpecimenChartsView:
         self.controls[SPECIMEN_TREND_KEY] = w.Dropdown(description='Trendline:',
             options=[('None', 'none'), ('Linear', 'linear'), ('Quadratic · order 2', 'quadratic')], value='quadratic',
             layout=w.Layout(width='350px', max_width='100%'))
+        self.all_groups.tooltip = 'Select all workspace groups for these specimen-location plots. Table inclusion is unchanged.'
+        self.controls[prefix + 'x_variable'].tooltip = 'Use specimen Location or a saved custom specimen variable along the horizontal axis.'
+        self.controls[SPECIMEN_TREND_KEY].tooltip = 'Fit eligible measured values only. Dotted continuation into untested locations is extrapolation.'
         for suffix, caption, bounds in (('xlim', 'Location / custom variable', (0, 10)),
                                         ('ylim', 'Strength (MPa)', (0, 1000)),
                                         ('el_ylim', 'Elongation (%)', (0, 30))):

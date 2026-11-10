@@ -1,11 +1,13 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
 from html import escape
+from tensile_help import help_html
 from datetime import datetime
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import uuid
 import json
+import hashlib
 from tensile_selection import specimen_id, selection_state, DATA_MODES, property_allowed, analysis_properties
 from tensile_specimens import SpecimenTable
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
@@ -215,7 +217,8 @@ def specimen_table_data(samples, comparisons):
                      'csv_filename': Path(str(row['Source File'])).name, 'source_file': str(row['Source File']),
                      'instron_row': str(int(row['Instron Row'])) if pd.notna(row.get('Instron Row')) else '',
                      'scope': row['Inclusion Scope'], 'global_included': bool(row['Global Included']),
-                     'fit_warning': bool(row['Fit review required']), 'check_warning': bool(row['Checks']),
+                     'fit_warning': bool(row.get('Needs review', row['Fit review required'])), 'check_warning': bool(row['Checks']),
+                     'reviewed_checks': row.get('Reviewed checks', ''),
                      'values': values})
     return columns, groups, rows
 
@@ -235,12 +238,29 @@ def specimen_review_mask(samples):
     Checks includes fracture/EL and enabled-reconstruction failures as well as
     fit and reference problems. This is a display filter, not an exclusion.
     """
+    if 'Needs review' in samples:
+        return samples['Needs review'].fillna(False).astype(bool)
     flagged = pd.Series(False, index=samples.index, dtype=bool)
     if 'Fit review required' in samples:
         flagged |= samples['Fit review required'].fillna(False).astype(bool)
     if 'Checks' in samples:
         flagged |= samples['Checks'].fillna('').astype(str).str.strip().ne('')
     return flagged
+
+
+def review_fields(checks, record, properties, reference, project):
+    """Acknowledgements apply only to the inspected data and calculation results."""
+    token = hashlib.sha256(json.dumps({
+        'source': record.get('source_sha256', ''), 'summary': reference.get('sha256', ''),
+        'properties': properties, 'checks': checks,
+    }, sort_keys=True, default=str).encode()).hexdigest()
+    saved = (project or {}).get('specimen_review_acknowledgements', {}).get(specimen_id(record), {})
+    accepted = bool(checks) and saved.get('fingerprint') == token
+    return {'Checks': '' if accepted else checks,
+            'Reviewed checks': checks if accepted else '',
+            'Review fingerprint': token,
+            'Needs review': bool(checks) and not accepted,
+            'Review status': 'Reviewed' if accepted else 'Needs review' if checks else 'No checks'}
 
 
 def specimen_check_failures(properties, reference, gauge=None, mode='all'):
@@ -313,10 +333,11 @@ def property_tables(records, spec, engine, instron, project=None):
             checks = '\n'.join(filter(None, [checks, selection.get('duplicate_review'),
                 location['Location review'],
                 *row.get('_measured_record', row).get('_acquisition', {}).get('import_warnings', [])]))
+            review = review_fields(checks, row, p, reference, project)
             fit_fields = {key: p[key] for key in ('Fit method', 'Override status', 'Fit review required')}
             fit_fields['Fit review required'] &= property_allowed(mode, 'ys')
             saved_fit = row.get('_fit_override') or {}
-            samples.append({**identity, 'Checks': checks, 'Instron Specimen Label': reference['label'],
+            samples.append({**identity, **review, 'Instron Specimen Label': reference['label'],
                             'Duplicate review': selection.get('duplicate_review', ''),
                             'Instron Match': reference['status'],
                             'Instron availability': reference.get('availability', 'matched'),
@@ -337,7 +358,7 @@ def property_tables(records, spec, engine, instron, project=None):
                                'Measured toughness (MJ/m^3)': measured['Toughness (MJ/m^3)'],
                                'Width (mm)': reference['values'].get('width', np.nan),
                                'Thickness (mm)': reference['values'].get('thickness', np.nan)})
-            diagnostics.append({**identity, 'Checks': checks, **reference.get('check_values', {}),
+            diagnostics.append({**identity, **review, 'Checks': checks, **reference.get('check_values', {}),
                                 **location,
                                 'Acquisition units': json.dumps(row.get('_measured_record', row).get('_acquisition', {}).get('unit_declarations', {})),
                                 'Strain reversal count': row.get('_measured_record', row).get('_acquisition', {}).get('strain_reversal_count', 0),
@@ -563,7 +584,7 @@ def summary_source_notice(samples):
 
 class PropertyTablesView:
     """Filterable, sortable HTML tables inside the existing Jupyter workbench."""
-    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None, aligned_group_loader=None):
+    def __init__(self, widgets, on_selection=None, inspect_loader=None, on_fit_apply=None, on_threshold=None, on_failure_apply=None, group_loader=None, aligned_group_loader=None, on_review=None):
         from tensile_inspector import SpecimenInspector
         from tensile_comparison import ComparisonView
         from tensile_group_review import GroupCurveReview
@@ -577,9 +598,9 @@ class PropertyTablesView:
         self.on_threshold = on_threshold
         self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.001,
             description='R² warning threshold:', continuous_update=False, style={'description_width': 'initial'},
-            tooltip='Flag fits below this R² for review. Does not exclude specimens or change the fit.',
+            tooltip='Flag fits below this R² for review in all analyses. Does not exclude specimens or change the fit.',
             layout=w.Layout(width='300px'))
-        self.threshold_status = w.HTML('Applies to all analyses; warning only.')
+        self.threshold_status = w.HTML()
         self.threshold.observe(self._threshold_changed, names='value')
         self.review_only = w.Checkbox(value=False, description='Only specimens needing review', indent=False,
                                      tooltip='Fit, fracture/EL, gauge reconstruction and Instron checks. Does not exclude specimens.',
@@ -594,7 +615,7 @@ class PropertyTablesView:
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', max_width='100%', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')
-        self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply, on_failure_apply=on_failure_apply)
+        self.inspector = SpecimenInspector(w, loader=inspect_loader, on_apply=on_fit_apply, on_failure_apply=on_failure_apply, on_review=on_review)
         self.specimens = SpecimenTable(on_selection=on_selection, on_inspect=self.open_inspector,
                                       layout=w.Layout(width='100%', min_width='0', margin='0'))
         self.specimen_help = w.Accordion(children=[self.panels[1]], selected_index=None,
@@ -616,8 +637,9 @@ class PropertyTablesView:
         self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
         self.source_status = w.HTML()
-        self.ui = w.VBox([w.HTML('<p>Independent of plot selection. Group statistics use sample SD and valid n. '
-                                'Instron comparisons prefer CSV summaries, with PDF reports as a fallback.</p>'),
+        self.ui = w.VBox([w.HTML(help_html('Tables and filters', 'Tables are independent of plot selection. Group statistics use sample SD and valid n. '
+                                'Instron comparisons prefer CSV summaries, with PDF reports as a fallback. '
+                                'Search and sort change the view only; Data use changes analysis contributions.')),
                           w.HBox([self.filter, self.sort, self.descending, self.review_only], layout=w.Layout(flex_flow='row wrap')),
                           self.status, self.source_status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
         for control in (self.filter, self.sort, self.descending, self.review_only):
@@ -759,8 +781,8 @@ class PropertyTablesView:
                     if np.isfinite(target):
                         basis += f' ({target:.2f} mm)'
                 labels.append(escape(str(group)) + ': ' + escape(basis))
-            basis_note = '<p><b>EL source used for plots by group:</b> ' + '; '.join(labels) + '. Instron EL is reported separately, never used for identity verification.</p>'
-        self.panels[0].value = ('<p>Mean ± sample SD of included specimens, not properties of an average curve. '
+            basis_note = help_html('EL sources by group', '; '.join(labels) + '. Instron EL is reported separately, never used for identity verification.')
+        self.panels[0].value = (help_html('Summary definitions', '<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
                                'SD requires at least two values. “—” means unavailable. '
                                'Elongation: Instron = reported break result; Calc = selected CSV endpoint; '
@@ -768,7 +790,7 @@ class PropertyTablesView:
                                'Instron columns remain available for uniform elongation and tensile toughness. '
                                'Missing endpoints and uncertain load-history selections are flagged in Checks. '
                                'Results display two decimals; elastic-fit R² and fit-strain details display five. '
-                               'Calculations and checks retain full precision.</p>'
+                               'Calculations and checks retain full precision.</p>')
                                + basis_note + summary_html(summary))
         self.panels[1].value = ('<p><b>Data use</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This analysis only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
@@ -811,5 +833,4 @@ class PropertyTablesView:
         self.inspector.set_rows(rows)
         included = int(samples['Included'].sum()) if not samples.empty else 0
         flagged = int(specimen_review_mask(samples).sum())
-        self.status.value = (f'{len(samples)} displayed specimens · {included} included · {flagged} needing review. '
-                             'Search/sort only change the view; Data use changes the analysis.')
+        self.status.value = f'{len(samples)} displayed specimens · {included} included · {flagged} needing review.'

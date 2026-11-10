@@ -1,5 +1,6 @@
 """Lazy, read-only group overview of the same fits used by the inspector."""
 from html import escape
+from tensile_help import help_html
 import re
 import uuid
 
@@ -15,7 +16,7 @@ from tensile_plot_theme import apply_plot_theme
 FIT_LAYERS = {'measured', 'fit_points', 'elastic_fit', 'offset', 'yield_calc', 'yield_instron'}
 
 
-def yield_fit_figure(record, calculation, *, crop_range=None):
+def yield_fit_figure(record, calculation, *, crop_range=None, reviewed=False):
     """Reuse inspector traces and exact fit diagnostics; only the view is reduced."""
     figure = inspection_figure({'record': record, 'calculation': calculation,
                                 'reference': record.get('_review_reference', {'values': {}})}, mode='yield')
@@ -41,10 +42,10 @@ def yield_fit_figure(record, calculation, *, crop_range=None):
     r2 = p['Elastic fit R2']
     label = f'R² = {r2:.5f}' if np.isfinite(r2) else 'R² unavailable'
     if p['Fit review required']:
-        label += ' · Review fit'
+        label += ' · Reviewed' if reviewed else ' · Review fit'
     figure.add_annotation(text=label, x=0, y=1, xref='paper', yref='paper',
                           xanchor='left', yanchor='bottom', yshift=8, showarrow=False,
-                          font={'size': 12, 'color': '#a65b00' if p['Fit review required'] else '#334155'})
+                          font={'size': 12, 'color': '#a65b00' if p['Fit review required'] and not reviewed else '#334155'})
     figure.update_layout(height=300, width=380, autosize=False, showlegend=False,
                          margin={'l': 60, 'r': 12, 't': 34, 'b': 52},
                          font={'size': 11},
@@ -80,10 +81,10 @@ class GroupYieldReview:
                                               grid_template_columns='repeat(3, minmax(0, 1fr))'))
         self.plot = w.VBox(layout=w.Layout(width='100%', min_width='0'))
         self.ui = w.VBox([
-            w.HTML('<p>Compare the saved yield fits for one sample group. R² describes agreement inside the '
+            w.HTML(help_html('Reviewing yield fits', '<p>Compare the saved yield fits for one sample group. R² describes agreement inside the '
                    'selected interval; check the fitted line against the surrounding curve too. '
                    'Use <b>Inspect / adjust</b> to open the specimen inspector. '
-                   'Exclusions remain visible for review and are labelled on each card.</p>'),
+                   'Exclusions remain visible for review and are labelled on each card.</p>')),
             w.HBox([self.group, self.show_excluded], layout=w.Layout(flex_flow='row wrap', align_items='center')),
             w.HBox([self.shared_axes, self.columns, self.reset],
                    layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
@@ -142,6 +143,7 @@ class GroupYieldReview:
             entry['figure'].update_layout(width=chart_width)
 
     def _update_axes(self):
+        from tensile_plotly import limit_zoom
         if not self.entries:
             return
         common = [[min(entry['ranges'][axis][0] for entry in self.entries),
@@ -151,6 +153,7 @@ class GroupYieldReview:
             with entry['figure'].batch_update():
                 entry['figure'].update_xaxes(range=x, autorange=False)
                 entry['figure'].update_yaxes(range=y, autorange=False)
+                limit_zoom(entry['figure'])
 
     @busy('Loading group yield fits…')
     def render(self):
@@ -205,13 +208,16 @@ class GroupYieldReview:
                 number = lambda value: f'{value:.2f}' if np.isfinite(value) else '—'
                 info += ('<br>' + escape(p['Fit method']) + ' · E ' + number(p['Fitted E (GPa)']) +
                          ' GPa · YS ' + number(p['Yield (MPa)']) + ' MPa')
-                if p['Fit review required']:
+                reviewed = bool(row.get('reviewed_checks')) and not row.get('check_warning')
+                if reviewed:
+                    info += '<br><span style="color:var(--tw-muted,#64748b)">✓ Checks reviewed</span>'
+                elif p['Fit review required']:
                     sensitivity = (p.get('Automatic fit sensitivity warning', '')
                                    if p['Fit method'] == 'Automatic' else '')
                     review_label = 'Fit sensitive to selected range' if sensitivity else 'Fit needs review · inspect for details'
                     info += ('<br><span style="color:var(--tw-warning-text,#a65b00)" title="' + escape(sensitivity or p['Notes'], quote=True) +
                              '">' + review_label + '</span>')
-                figure = yield_fit_figure(record, calculation, crop_range=crop)
+                figure = yield_fit_figure(record, calculation, crop_range=crop, reviewed=reviewed)
                 x_range, y_range = common if self.shared_axes.value else ranges
                 # Serialize the intended initial scales before mounting. Early
                 # widget relayout messages can otherwise be lost in Voilà.

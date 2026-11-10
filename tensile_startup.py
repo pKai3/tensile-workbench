@@ -135,6 +135,12 @@ class WorkbenchLauncher:
         self.save_button = w.Button(description='Save folders and open', button_style='primary',
                                     layout=w.Layout(width='190px'))
         self.defaults_button = w.Button(description='Use ./data and ./output', layout=w.Layout(width='210px'))
+        self.save_button.icon, self.save_button.tooltip = 'folder-open', 'Save these folder paths and open the workbench. Missing folders are created; existing data is not moved.'
+        self.defaults_button.icon, self.defaults_button.tooltip = 'undo', 'Fill in the data and output folders inside this installation. Save folders and open to apply.'
+        for button in (self.save_button, self.defaults_button):
+            button.layout.width = 'auto'
+        self.fields['data_directory'].tooltip = 'Folder containing sample groups. Nested folders are supported.'
+        self.fields['output_directory'].tooltip = 'Destination for exported plots and Excel files.'
         self.message = w.HTML()
         self.locations = w.HTML()
         self.body = w.VBox()

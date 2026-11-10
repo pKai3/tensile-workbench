@@ -5,6 +5,7 @@ SVG backgrounds; no browser extension or executable HTML is required.
 """
 from base64 import b64encode
 from html import escape
+from tensile_help import help_html
 import uuid
 
 from tensile_group_picker import GroupCheckboxes
@@ -27,7 +28,9 @@ class PlotView:
         self.zoom = w.IntSlider(value=100, min=100, max=300, step=25, description='Zoom (%)',
                                continuous_update=False, style={'description_width': 'initial'},
                                layout=w.Layout(width='300px'))
-        self.fit = w.Button(description='Fit width', layout=w.Layout(width='auto'))
+        self.fit = w.Button(description='Fit width', icon='arrows-h', tooltip='Fit this static figure to the preview width. Export sizes are unchanged.', layout=w.Layout(width='auto'))
+        self.back.tooltip = 'Return to the gallery of generated plots.'
+        self.choice.tooltip = 'Switch the enlarged plot without recalculating the results.'
         # A self-contained data URI avoids binary-widget transfer differences
         # between Jupyter kernel/manager versions. It remains a real SVG image.
         self.focus_image = w.HTML(layout=w.Layout(width='100%', max_width='none', height='auto', margin='0', overflow='visible'))
@@ -36,11 +39,11 @@ class PlotView:
         self.focus = w.VBox([
             w.HBox([self.back, self.choice, self.zoom, self.fit],
                    layout=w.Layout(flex_flow='row wrap', grid_gap='8px', align_items='center')),
-            w.HTML('Zoom enlarges the image only; scroll to inspect it. Axes and exports are unchanged.'),
+            w.HTML(help_html('Enlarging previews', 'Zoom enlarges the image only; scroll to inspect it. Axes and exports are unchanged.')),
             self.viewport,
         ], layout=w.Layout(display='none', width='100%'))
         self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', grid_gap='12px'))
-        self.hint = w.HTML('Click a plot to enlarge it. Vector previews stay sharp at any size.')
+        self.hint = w.HTML(help_html('Viewing plots', 'Click a plot to enlarge it. Vector previews stay sharp at any size.'))
         self.ui = w.VBox([self.toolbar, self.hint, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
         self.ui.add_class(self._scope)
         self.back.on_click(lambda _: self.close_focus())

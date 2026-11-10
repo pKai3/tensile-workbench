@@ -42,7 +42,7 @@ html[data-tw-app][data-tw-theme="dark"] #loading {
   color: var(--tw-text);
 }
 html[data-tw-app][data-tw-theme="dark"] :is(.voila-skeleton-line,.voila-skeleton-avatar) {
-  background: var(--tw-control-bg);
+  background-color: var(--tw-control-bg);
 }
 html[data-tw-theme="dark"] .tw-coupon-pop text {fill: var(--tw-warning-text);}
 
@@ -114,7 +114,7 @@ html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
   .jupyter-button:not(.tw-plot-thumbnail,.tw-review-key) {
   border: 1px solid var(--tw-control-border);
   border-radius: 5px;
-  background: var(--tw-control-bg);
+  background-color: var(--tw-control-bg);
   color: var(--tw-control-text);
   box-shadow: none;
 }
@@ -124,17 +124,17 @@ html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
 }
 html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
   :is(.jupyter-button.mod-primary,.jupyter-button.mod-info,.jupyter-button.mod-success) {
-  background: #275f61; border-color: #439496; color: #edf5fc;
+  background-color: #275f61; border-color: #439496; color: #edf5fc;
 }
 html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher)
   :is(.jupyter-button.mod-active,.jupyter-button:active:enabled):not(.tw-plot-thumbnail,.tw-review-key) {
-  background: var(--tw-selected-bg); border-color: var(--tw-accent);
+  background-color: var(--tw-selected-bg); border-color: var(--tw-accent);
 }
 html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .jupyter-button.mod-danger {
-  background: var(--tw-danger-bg); border-color: #845451; color: var(--tw-danger-text);
+  background-color: var(--tw-danger-bg); border-color: #845451; color: var(--tw-danger-text);
 }
 html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .jupyter-button.mod-warning {
-  background: var(--tw-warning-bg); border-color: var(--tw-warning-border); color: var(--tw-warning-text);
+  background-color: var(--tw-warning-bg); border-color: var(--tw-warning-border); color: var(--tw-warning-text);
 }
 
 /* Interactive figure styles are applied through Plotly; static/export artwork
@@ -154,19 +154,30 @@ html[data-tw-theme="light"] .tw-themed-plot:not(.tw-theme-light):not(.tw-theme-f
 .tw-plot-count {font-weight:600;}
 .tw-plot-card {
   box-sizing:border-box;padding:12px;border:1px solid var(--tw-border,#d5dde6);
-  border-radius:8px;background:var(--tw-panel-bg,#fff);
+  border-radius:8px;background:var(--tw-panel-bg,#fff);cursor:pointer;
 }
+.tw-plot-card:hover {border-color:var(--tw-accent,#2879b8);}
+.tw-plot-card:has(.tw-plot-choice input:focus-visible) {outline:2px solid var(--tw-accent,#2879b8);outline-offset:2px;}
+.tw-plot-card-settings {cursor:auto;}
+.tw-plot-actions {margin:20px 0 10px;align-items:center;row-gap:10px !important;column-gap:12px !important;}
+.tw-plot-status {margin:0 0 12px;}
+.tw-help {margin:2px 0 6px;color:var(--tw-muted,#64748b);font-size:13px;line-height:1.5;white-space:normal;}
+.tw-help>summary {display:inline-block;cursor:help;list-style:none;padding:2px 0;}
+.tw-help>summary::-webkit-details-marker {display:none;}
+.tw-help>summary:hover,.tw-help>summary:focus-visible {color:var(--tw-accent,#167a9c);}
+.tw-help[open]>summary {color:var(--tw-text,#203650);}
+.tw-help-content {max-width:800px;padding:10px 12px;margin:4px 0 8px;background:var(--tw-surface-alt,#f2f6fa);border:1px solid var(--tw-border,#dce3e9);border-radius:6px;}
+.tw-settings-overlay {position:fixed!important;inset:0;z-index:9000;background:#0009;align-items:center;justify-content:center;}
+.tw-settings-dialog {background:var(--tw-panel-bg,#fff);color:var(--tw-text,#203650);border:1px solid var(--tw-border,#dce3e9);border-radius:12px;box-shadow:0 12px 50px #0006;}
 .tw-plot-card.tw-plot-selected {
   border-color:var(--tw-accent,#2879b8);
   box-shadow:inset 3px 0 0 var(--tw-accent,#2879b8);
 }
-.tw-plot-card.tw-plot-expanded {grid-column:1 / -1;}
 .tw-plot-choice.widget-checkbox {height:auto;min-height:28px;max-width:100%;}
 .tw-plot-choice.widget-checkbox label {
   white-space:normal;line-height:1.35;height:auto;min-width:0;align-items:flex-start;font-weight:600;
 }
 .tw-plot-choice.widget-checkbox input {flex-shrink:0;margin-top:3px;}
-.tw-plot-description {color:var(--tw-muted,#536476);line-height:1.4;font-size:13px;margin:2px 0 6px;}
 .tw-plot-card-settings.widget-accordion {margin:8px 0 0;}
 .tw-plot-sketch {display:block;width:112px;height:74px;}
 .tw-sketch-axis {color:var(--tw-muted,#8b9aab);stroke-width:1;opacity:.7;}

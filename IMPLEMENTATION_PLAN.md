@@ -2,6 +2,30 @@
 
 ## Change notes — 2026-11-11
 
+### Compact help, illustrated views and review acknowledgements — implemented
+
+- Make plot-card bodies clickable while keeping Settings separate. Open settings
+  in a popup with keyboard focus handling, Escape, outside-click and Done dismissal.
+  Preserve existing controls, autosave and saved definitions.
+- Replace permanent instruction blocks with hover help and expandable ⓘ labels
+  across the workspace, tables, variables, inspectors and plot settings/gallery.
+  Keep active checks and result status visible. Avoid widget-container tooltips,
+  which trigger a JavaScript error in the installed widget frontend.
+- Illustrate group Measured/Landmark-aligned and inspector Yield/Failure/Full
+  selectors; start all group property markers enabled. Preserve SVG backgrounds
+  in dark buttons and give the plot action row proper spacing.
+- Bound Plotly zoom/pan to each initial view; refresh the limits when changing
+  inspector views or shared yield-fit axes. No measurement processing changes.
+- Save reversible acknowledgements per specimen, bound to source/summary hashes,
+  calculated results and checks. Remove acknowledged notifications from review
+  counts and filters; preserve diagnostics in the inspector and Excel Audit.
+  Carry saved acknowledgements through confirmed group moves. Changed checks
+  require review again; numerical results and inclusion are unaffected.
+- Verification: focused UI, inspector, theme, migration, export, acknowledgement
+  and zoom-bound checks pass. Browser review with synthetic data confirms card
+  selection, illustrated dark-theme controls, popup rendering and keyboard
+  dismissal. No research data or saved analyses were changed.
+
 ### Plot selection and control guidance — implemented
 
 - Open specimen properties by default. Keep its existing collapse control and

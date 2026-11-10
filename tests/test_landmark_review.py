@@ -135,7 +135,10 @@ class LandmarkReviewTests(unittest.TestCase):
         self.assertFalse(view.axis.disabled)
         self.assertEqual(view.axis.value, 'time')
         self.assertTrue(view.markers['YS'].value)
+        self.assertTrue(view.markers['EL'].value)
+        view.view.value = 'aligned'
         self.assertFalse(view.markers['EL'].value)
+        view.view.value = 'measured'
         self.assertEqual(sum(t.meta['kind'] == 'curve' for t in view.figure.data), 3)
         self.assertEqual(self.session.project, project)
 
@@ -148,7 +151,8 @@ class LandmarkReviewTests(unittest.TestCase):
         self.assertIn('unresolved specimens', view.notice.value)
         self.assertEqual(len(view._legend_buttons), 3)
         view.view.value = 'measured'
-        self.assertEqual(len(view.figure.data), 3)
+        self.assertEqual(sum(t.meta['kind'] == 'curve' for t in view.figure.data), 3)
+        self.assertEqual(sum(t.meta['kind'] == 'marker' for t in view.figure.data), 9)
 
     def test_shape_exclusion_retains_properties_pairs_comparisons_and_exports(self):
         baseline = self.frames()

@@ -1,5 +1,6 @@
 """Plotly view of already-calculated Matplotlib artists; no analysis or file I/O."""
 from html import escape
+from tensile_help import help_html
 import textwrap
 import numpy as np
 from matplotlib.colors import to_hex
@@ -8,11 +9,29 @@ from tensile_display import preview_indices
 from tensile_plot_theme import apply_plot_theme
 
 
+def limit_zoom(figure, ranges=None):
+    """Set native Plotly pan/zoom bounds from a deliberate full-view range."""
+    with figure.batch_update():
+        for name in figure.layout:
+            if not (name.startswith('xaxis') or name.startswith('yaxis')):
+                continue
+            axis = figure.layout[name]
+            values = ranges.get(name) if ranges is not None else axis.range
+            if values is not None and len(values) == 2:
+                try:
+                    low, high = sorted(map(float, values))
+                except (ValueError, TypeError):
+                    continue
+                if np.isfinite([low, high]).all() and low < high:
+                    axis.minallowed, axis.maxallowed = low, high
+
+
 def width_probe(on_resize, *, on_theme=None, charts=()):
     """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
     for chart in charts:
+        limit_zoom(chart)
         chart.add_class('tw-themed-plot')
     class WidthProbe(anywidget.AnyWidget):
         pixels = traitlets.Int(0).tag(sync=True)
@@ -36,10 +55,23 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
           let fallback, paint, drawing;
+          const bounded = new WeakSet();
           const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
           const painted = () => {
             const theme=document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
-            plots().forEach(plot => {
+            plots().forEach((plot, index) => {
+              // Autoranged plots have their full bounds only after the first draw.
+              const graph=plot.matches('.js-plotly-plot') ? plot : plot.querySelector('.js-plotly-plot');
+              if(graph?._fullLayout && !bounded.has(graph)) {
+                const axes={};
+                for(const [name, axis] of Object.entries(graph._fullLayout)) {
+                  if(/^([xy])axis[0-9]*$/.test(name) && axis.range?.length === 2 &&
+                     axis.range.every(Number.isFinite) && axis.minallowed == null && axis.maxallowed == null)
+                    axes[name]=axis.range.slice();
+                }
+                bounded.add(graph);
+                if(Object.keys(axes).length) model.send({action:'zoom_bounds', index, axes});
+              }
               const svg=plot.querySelector('.main-svg');
               const background=svg && getComputedStyle(svg).backgroundColor;
               const expected=theme === 'dark' ? 'rgb(18, 28, 40)' : 'rgb(255, 255, 255)';
@@ -78,6 +110,19 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
         }};
         """
     probe = WidthProbe()
+    def bounds_message(_, content, buffers):
+        if content.get('action') != 'zoom_bounds':
+            return
+        index = content.get('index')
+        if isinstance(index, int) and 0 <= index < len(charts):
+            chart = charts[index]
+            # A delayed first paint must not overwrite a newly selected detail view.
+            ranges = {name: values for name, values in content.get('axes', {}).items()
+                      if name in chart.layout and chart.layout[name].minallowed is None
+                      and chart.layout[name].maxallowed is None}
+            if ranges:
+                limit_zoom(chart, ranges)
+    probe.on_msg(bounds_message)
     probe.observe(lambda change: on_resize(change['new']) if change['new'] > 150 else None, names='pixels')
     if on_theme is not None:
         probe.observe(lambda change: on_theme(change['new']), names='theme')
@@ -379,9 +424,9 @@ class PlotlyView:
         self._items, self._owned, self._charts, self._frames = [], [], {}, {}
         self._focused_key = None
         self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', grid_gap='12px'))
-        self.hint = w.HTML('Drag to zoom; use the plot toolbar to pan or reset. Click legend entries to hide/show groups. '
+        self.hint = w.HTML(help_html('Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
                           'Dense lines show every Nth reading; use the specimen inspector for full detail. '
-                          'Calculations and publication exports use the full data.')
+                          'Calculations and publication exports use the full data.'))
         self.empty = w.HTML('Choose plots and click Update plots.')
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
         self.board.add_class('tw-plot-board')

@@ -16,11 +16,14 @@ class MoveReview:
         self.summary = widgets.HTML()
         self.message = widgets.HTML()
         self.rows = widgets.VBox(layout=widgets.Layout(width='100%'))
-        self.check = widgets.Button(description='Check for moved groups', layout=widgets.Layout(width='auto'))
+        self.check = widgets.Button(description='Check for moved groups', icon='folder-open',
+            tooltip='Reload the data folders and look for moved groups. Review each proposed settings transfer before applying it.', layout=widgets.Layout(width='auto'))
         self.check.on_click(lambda _: reload_data())
         self.forget_message = widgets.HTML()
         self.confirm_forget = widgets.Button(description='Confirm forget', button_style='danger')
         self.cancel_forget = widgets.Button(description='Cancel')
+        self.confirm_forget.icon, self.confirm_forget.tooltip = 'trash', 'Clear the removed group’s saved settings and tracking. Source files are kept.'
+        self.cancel_forget.icon, self.cancel_forget.tooltip = 'times', 'Keep the group’s saved settings and close this confirmation.'
         self.confirm_forget.on_click(lambda _: self._forget())
         self.cancel_forget.on_click(lambda _: self._cancel_forget())
         self.confirmation = widgets.VBox([self.forget_message,
@@ -85,7 +88,8 @@ class MoveReview:
             if proposal['blocked']:
                 detail += '<br><b>Blocked:</b> ' + escape(proposal['blocked'])
             text = self.w.HTML(detail)
-            button = self.w.Button(description='OK, migrate settings', button_style='warning',
+            button = self.w.Button(description='OK, migrate settings', button_style='warning', icon='exchange',
+                                   tooltip='Transfer the reviewed group’s saved settings to the matched new location. This does not move source files.',
                                    disabled=bool(proposal['blocked']), layout=self.w.Layout(width='auto', align_self='flex-start'))
             button.on_click(lambda _, p=proposal, b=button: self._approve(p, b))
             row = self.w.VBox([text, button], layout=self.w.Layout(
@@ -96,7 +100,7 @@ class MoveReview:
             notice = self.w.HTML(escape(warning))
             controls = [notice]
             if group is not None:
-                forget = self.w.Button(description='Forget group',
+                forget = self.w.Button(description='Forget group', icon='trash',
                     tooltip='Clear this removed group’s saved references and tracking; asks for confirmation',
                     layout=self.w.Layout(width='auto', align_self='flex-start'))
                 forget.on_click(lambda _, g=group: self._ask_forget(g))

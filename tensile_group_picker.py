@@ -73,7 +73,8 @@ class GroupCheckboxes:
         self._syncing = False
         self._scope = 'tensile-groups-' + uuid.uuid4().hex
         self.summary = widgets.HTML(layout=widgets.Layout(width='100%', min_width='0'))
-        self.clear_button = widgets.Button(description='Clear selection', layout=widgets.Layout(width='auto'))
+        self.clear_button = widgets.Button(description='Clear selection', icon='times',
+            tooltip='Deselect all sample groups in this analysis. Saved variables and specimen overrides are kept.', layout=widgets.Layout(width='auto'))
         self.grid = widgets.VBox(layout=widgets.Layout(width='100%', min_width='0', max_width='980px'))
         compact = widgets.HTML('<style>.' + self._scope + '{column-width:180px;column-gap:16px;column-fill:balance;}'
             '.' + self._scope + '>.widget-checkbox{break-inside:avoid;page-break-inside:avoid;'

@@ -15,6 +15,7 @@ from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_plot_picker import PlotPicker
+from tensile_help import help_html
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
 from tensile_override_view import SavedOverridesView
@@ -458,6 +459,7 @@ class PreviewSession:
             'selection': self.selection_signature(groups, spec), 'fit': self.fit_signature(groups),
             'gauge': {g: group_policy(state, spec, g) for g in groups},
             'locations': {ident: value for ident, value in locations.items() if ident in ids},
+            'reviewed': {ident: value for ident, value in self.project.get('specimen_review_acknowledgements', {}).items() if ident in ids},
             'counts': {g: counts.get(g) for g in groups}}, sort_keys=True)
 
     def property_tables(self, state, spec):
@@ -1050,8 +1052,8 @@ class TensileWorkbench:
         self.display_order_down.on_click(lambda _: self._move_display_order(1))
         self.display_order_select.observe(lambda _: self._sync_display_order_buttons(), names='value')
         self.display_order_panel = w.Accordion(children=[w.VBox([
-            w.HTML('Top to bottom in group legends and tables, and left to right on the YS/UTS/EL-by-sample plot. '
-                   'Select a group, then move it. Saved for this analysis; colours stay unchanged.'),
+            w.HTML(help_html('Group order', 'Top to bottom in group legends and tables, and left to right on categorical plots. '
+                   'Select a group, then move it. Saved for this analysis; colours stay unchanged.')),
             self.display_order_select,
             self._row([self.display_order_up, self.display_order_down])
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
@@ -1123,11 +1125,11 @@ class TensileWorkbench:
         self.gauge_panel = w.Accordion(children=[w.VBox([
             w.Box([self.gauge_grid], layout=w.Layout(width='100%', overflow='auto')),
             self.gauge_message,
-            w.HTML('Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
+            w.HTML(help_html('Reconstruction controls', 'Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
                    'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
                    'overlay in the specimen inspector. Longer targets are allowed and reduce reconstructed EL; '
-                   'all reconstructed results remain derived estimates.'),
-            w.HTML(gauge_model_help(expanded=True))])], selected_index=None)
+                   'all reconstructed results remain derived estimates.')),
+            w.HTML(gauge_model_help(expanded=False))])], selected_index=None)
         self.gauge_panel.set_title(0, 'Gauge reconstruction · per sample group')
         self.update_button = w.Button(description="Update plots", button_style="primary")
         self.reload_button = w.Button(description="Reload data")
@@ -1136,6 +1138,7 @@ class TensileWorkbench:
         self.board = self.viewer.board
         self.details = w.Textarea(disabled=True, layout=w.Layout(width="98%", height="180px"))
         self.tables = PropertyTablesView(w, on_selection=self._specimen_changed,
+                                        on_review=self._review_specimen_checks,
                                         inspect_loader=self._inspect_specimen, on_fit_apply=self._apply_specimen_fit,
                                         on_threshold=self._change_fit_threshold, on_failure_apply=self._apply_specimen_failure,
                                         group_loader=lambda group: self.session.group_review_records(group, self._current()['definition']),
@@ -1182,9 +1185,9 @@ class TensileWorkbench:
             get_defaults=lambda: {LOCATION: self._specimen_numbers},
             on_scope_change=lambda: self._refresh_specimen_variables(redraw=True))
         self.custom_variable_tabs = w.Tab(children=[w.VBox([
-            w.HTML('<b>Specimen count</b> shows <span style="color:var(--tw-muted,#667085)">X tested of</span> an editable total. '
+            w.HTML(help_html('Specimen count', '<b>Specimen count</b> shows <span style="color:var(--tw-muted,#667085)">X tested of</span> an editable total. '
                    'Enter the whole-number total tested + untested. The grey count comes from imported specimens, including excluded ones. '
-                   'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.'),
+                   'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.')),
             self.group_variables.ui.children[0]]), self.specimen_variables.ui.children[0]])
         self.custom_variable_tabs.set_title(0, 'Sample groups')
         self.custom_variable_tabs.set_title(1, 'Individual specimens')
@@ -1214,30 +1217,30 @@ class TensileWorkbench:
                 local.insert(1, self.controls['properties_by_group_x_variable'])
                 local.insert(2, self._row([self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')]))
                 label_settings = w.Accordion(children=[w.VBox([
-                    w.HTML('Short x-axis labels for this plot only. Leave blank to use the usual display name. '
-                           'Line breaks are allowed. Other plots and tables keep their existing names.'),
+                    w.HTML(help_html('Short labels', 'Short x-axis labels for this plot only. Leave blank to use the usual display name. '
+                           'Line breaks are allowed. Other plots and tables keep their existing names.')),
                     self.group_labels_box])], selected_index=None)
                 label_settings.set_title(0, 'X-axis labels · this plot only')
                 self.group_plot_label_settings = label_settings
-                local += [w.HTML('Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
+                local += [w.HTML(help_html('X-axis values', 'Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
                                  'with their actual spacing. Missing values omit that group from this plot only. '
-                                 'Edit values in <b>Custom variables</b> below the sample selector.'),
+                                 'Edit values in <b>Custom variables</b> below the sample selector.')),
                           self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
                           self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
-                          w.HTML('Connecting lines join values, not a fitted trend. YS and UTS use the left axis; EL uses the right '
+                          w.HTML(help_html('Properties and axes', 'Connecting lines join values, not a fitted trend. YS and UTS use the left axis; EL uses the right '
                                  '(or the only axis when shown alone). '
                                  'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
                                  'Show individuals adds faint specimen points. '
-                                 'For individual locations, use the separate YS/UTS/EL by specimen section.')]
+                                 'For individual locations, use the separate YS/UTS/EL by specimen section.'))]
             if property_plot:
                 local += [self.controls[family + '_mean_population'], self.controls['property_error_bars'],
-                          w.HTML('EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
+                          w.HTML(help_html('Means and error bars', 'EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
                                  'Group means use calculated specimen properties, not an average curve. '
                                  'Paired specimens uses the same specimens for both means and SDs. All eligible values '
                                  'uses each property’s own eligible values, matching the summary, with separate counts. '
                                  'Individual dots always require both values; independent means need not centre on those dots. '
-                                 'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.')]
+                                 'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.'))]
             if family in ("landmark", "comparison", "work_hardening_landmark", "work_hardening_comparison"):
                 local.append(self.controls["landmark_points"])
             if family in ("landmark", "comparison"):
@@ -1266,15 +1269,19 @@ class TensileWorkbench:
         self.plot_selectors = self.plot_picker.cards
         self.plot_options = self.plot_picker.ui
         self._add_control_help()
+        plot_actions = self._row([self.update_button, self.reload_button, self.controls['live_update']])
+        plot_actions.add_class('tw-plot-actions')
+        self.status.add_class('tw-plot-status')
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.analysis_ui = w.VBox([
-            w.HTML("<h2>Analysis workspace</h2><p>Choose an analysis and its sample groups. Changes save automatically; export when you are ready.</p>"),
+            w.HTML('<h2>Analysis workspace</h2>' + help_html('Using the workspace',
+                'Choose an analysis and its sample groups. Settings save automatically. Update plots to generate results; Export saves them to your output folder.')),
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
-            w.HTML("Expand folders to choose individual sample groups, or tick a folder to select everything below it. "
-                   "A mixed tick means only some groups are selected. Groups are still analysed separately."),
+            w.HTML(help_html('Selecting sample groups', 'Expand folders to choose individual groups, or tick a folder to select everything below it. '
+                   'A mixed tick means only some groups are selected. Groups are still analysed separately.')),
             self.move_review.ui,
             self.display_order_panel,
             self.custom_variables_panel,
@@ -1282,10 +1289,8 @@ class TensileWorkbench:
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
             self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
-            w.HTML("Choose plot types below. The small sketches illustrate each type; your results appear below after <b>Update plots</b>. "
-                   "Shared averaging parameters and axis ranges stay linked between related plots."),
             self.plot_options,
-            self._row([self.update_button, self.reload_button, self.controls["live_update"]]),
+            plot_actions,
             self.status, general, self.viewer.ui,
             self._row([self.export_button, self.controls["export_tables"]]), log,
         ], layout=w.Layout(width="100%", min_width="0"))
@@ -2370,7 +2375,35 @@ class TensileWorkbench:
 
     def _inspect_specimen(self, ident):
         with redirect_stdout(io.StringIO()):
-            return self.session.specimen_inspection(self.state(), self._current()['definition'], ident)
+            payload = self.session.specimen_inspection(self.state(), self._current()['definition'], ident)
+            samples = self.session.property_tables(self.state(), self._current()['definition'])['tensile_samples']
+            matches = samples.loc[samples['Specimen ID'] == ident]
+            if not matches.empty:
+                payload['review'] = matches.iloc[0][['Checks', 'Reviewed checks', 'Review fingerprint', 'Needs review']].to_dict()
+            return payload
+
+    def _review_specimen_checks(self, ident, fingerprint, accepted):
+        payload = self._inspect_specimen(ident)
+        review = payload.get('review', {})
+        if review.get('Review fingerprint') != fingerprint:
+            raise ValueError('The checks changed. Inspect the updated checks before marking them reviewed.')
+        if accepted and not review.get('Needs review'):
+            raise ValueError('There are no pending checks to mark reviewed.')
+        if accepted and hashlib.sha256(Path(payload['source_file']).read_bytes()).hexdigest() != payload['source_sha256']:
+            raise ValueError('The source file changed. Reload data and inspect it again.')
+        project = deepcopy(self.store.data)
+        saved = project.setdefault('specimen_review_acknowledgements', {})
+        if accepted:
+            saved[ident] = {'fingerprint': fingerprint, 'checks': review['Checks'],
+                            'saved_at': datetime.now().isoformat(timespec='seconds')}
+        else:
+            saved.pop(ident, None)
+        self.store.save(project)
+        self.session.set_project(self.store.data)
+        # Keep the inspected specimen available after it leaves the review-only list.
+        self.tables.review_only.value = False
+        self._refresh_properties()
+        self.tables.inspector.select(ident)
 
     @busy('Calculating specimen properties and tables…')
     def _refresh_properties(self):

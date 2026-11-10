@@ -1,6 +1,7 @@
 """On-demand specimen inspection and explicitly applied fit-override previews."""
 from copy import deepcopy
 from html import escape
+from tensile_help import help_html
 from pathlib import Path
 
 import numpy as np
@@ -451,13 +452,19 @@ def inspection_checks(payload, *, preview=False):
     failures = specimen_check_failures(payload['calculation']['properties'], payload['reference'], gauge,
                                       payload.get('data_mode', 'all'))
     failures = '\n'.join(dict.fromkeys(filter(None, [*failures.splitlines(), *payload.get('additional_checks', [])])))
+    reviewed = '' if preview else payload.get('review', {}).get('Reviewed checks', '')
+    reviewed_lines = set(reviewed.splitlines())
+    failures = '\n'.join(line for line in failures.splitlines() if line not in reviewed_lines)
+    note = ('<details style="padding:8px 12px;color:var(--tw-muted,#64748b)">'
+            '<summary>✓ Reviewed checks</summary><div style="white-space:pre-line">'
+            + escape(reviewed) + '</div></details>') if reviewed else ''
     if not failures:
-        return ''
+        return note
     title = 'Specimen checks' + (' · unsaved preview' if preview else '')
     return ('<div role="status" style="font:13px/1.5 Arial,sans-serif;white-space:normal;'
             'overflow-wrap:anywhere;padding:8px 12px;background:var(--tw-warning-bg, #fff4dc);'
             'color:var(--tw-warning-text, inherit);border-left:3px solid var(--tw-warning-border, #d97706)">'
-            '<b>' + title + '</b><div style="white-space:pre-line">' + escape(failures) + '</div></div>')
+            '<b>' + title + '</b><div style="white-space:pre-line">' + escape(failures) + '</div></div>' + note)
 
 
 def inspection_summary(payload):
@@ -710,10 +717,11 @@ def inspection_summary(payload):
 
 class SpecimenInspector:
     """Create one disposable interactive figure only when a specimen is selected."""
-    def __init__(self, widgets, loader=None, on_apply=None, on_failure_apply=None):
+    def __init__(self, widgets, loader=None, on_apply=None, on_failure_apply=None, on_review=None):
         self.w, self.loader = widgets, loader
         self.on_apply = on_apply
         self.on_failure_apply = on_failure_apply
+        self.on_review = on_review
         self._failure_sync, self._failure_draft = False, None
         self._painting, self._editing, self._draft = False, False, None
         self._updating, self._payload, self.chart, self._probe = False, None, None, None
@@ -725,11 +733,23 @@ class SpecimenInspector:
         self.next = w.Button(description='Next', icon='arrow-right', tooltip='Inspect the next specimen in the current table order.', layout=w.Layout(width='auto'), disabled=True)
         self.view = w.ToggleButtons(options=[('Yield detail', 'yield'), ('Failure detail', 'failure'),
                                             ('Full curve', 'full')], value='yield')
+        self.view.add_class('tw-inspector-view-switch')
+        self.view.tooltips = ['Zoom to the elastic fit and 0.2% yield intersection.',
+                              'Zoom to the selected failure endpoint and surrounding readings.',
+                              'Show the complete measured stress–strain curve.']
         self.reset = w.Button(description='Reset zoom', icon='home', tooltip='Restore the default axes for the selected detail view.', layout=w.Layout(width='auto'))
         self.gauge_overlay = w.Checkbox(description='Overlay measured / reconstructed', value=False, indent=False,
                                        layout=w.Layout(width='auto'))
         self.gauge_status = w.HTML()
         self.checks = w.HTML(layout=w.Layout(width='100%', min_width='0', display='none'))
+        self.mark_reviewed = w.Button(description='Mark checks reviewed', icon='check',
+            tooltip='Clear this specimen’s current review flags in all analyses. Keep the checks for reference; calculations and data use are unchanged.',
+            layout=w.Layout(width='auto'))
+        self.reopen_checks = w.Button(description='Reopen checks', icon='undo',
+            tooltip='Put this specimen’s acknowledged checks back into the needs-review list.',
+            layout=w.Layout(width='auto'))
+        self.review_actions = w.HBox([self.mark_reviewed, self.reopen_checks],
+            layout=w.Layout(display='none', flex_flow='row wrap', grid_gap='8px', margin='0 0 8px'))
         self.status = w.HTML('Click a specimen name in the Specimens table, or choose one above.')
         self.summary = w.HTML(layout=w.Layout(width='100%', min_width='0'))
         self.chart_box = w.VBox(layout=w.Layout(width='100%', min_width='0'))
@@ -741,7 +761,7 @@ class SpecimenInspector:
                                '.tw-inspector-layer.widget-checkbox label {white-space:normal;line-height:1.3;'
                                'height:auto;min-width:0}'
                                '</style>'
-                               '<b>Show on plot</b> · display only; tick items to show or hide them.')
+                               '<b title="Display only: tick items to show or hide them. Calculations are unchanged.">Show on plot ⓘ</b>')
         self.layers_panel = w.VBox([
             w.HBox([layer_heading, self.reset_layers], layout=w.Layout(flex_flow='row wrap', grid_gap='12px', align_items='center')),
             self.layer_groups,
@@ -756,9 +776,9 @@ class SpecimenInspector:
         self.y1 = w.FloatText(description='End stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
         self.fit_pick = w.ToggleButtons(options=[('Not picking', ''), ('Set start', 'start'), ('Set end', 'end')],
                                         value='', description='Click curve:', style={'description_width': 'initial'})
-        self.fit_pick_hint = w.HTML('Choose Set start or Set end, then click a measured point. '
+        self.fit_pick_hint = w.HTML(help_html('Picking a fit', 'Choose Set start or Set end, then click a measured point. '
             'Manual range takes strain only; Manual line takes strain and stress. '
-            'Start advances to End; after End, picking stops. Nothing is saved until Apply.')
+            'Start advances to End; after End, picking stops. Nothing is saved until Apply.'))
         self.line_fields = w.HBox([self.y0, self.y1], layout=w.Layout(flex_flow='row wrap', display='none'))
         self.reason = w.Text(description='Reason:', placeholder='Why is the fit being adjusted?', continuous_update=True,
                              layout=w.Layout(width='min(100%, 800px)'))
@@ -785,10 +805,10 @@ class SpecimenInspector:
         self.failure_restore = w.Button(description='Restore automatic EL', layout=w.Layout(width='auto'), disabled=True)
         self.failure_status = w.HTML('Select a specimen to adjust failure elongation.')
         self.failure_editor = w.Accordion(children=[w.VBox([
-            w.HTML('Enter measured EL (%) or click the measured curve while editing. EL snaps to a recorded '
+            w.HTML(help_html('Picking failure EL', 'Enter measured EL (%) or click the measured curve while editing. EL snaps to a recorded '
                    'post-peak point; the row selector distinguishes repeated strain readings. '
                    'Choose the endpoint before any unwanted fracture/unloading tail. '
-                   'Reconstruction is applied afterwards; do not enter reconstructed EL here.'),
+                   'Reconstruction is applied afterwards; do not enter reconstructed EL here.')),
             self.failure_enabled, w.HBox([self.failure_el, self.failure_row], layout=w.Layout(flex_flow='row wrap')),
             self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
                                        layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
@@ -815,16 +835,22 @@ class SpecimenInspector:
         ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,
             layout=w.Layout(width='100%', min_width='0'))
         self.details_panel.set_title(0, 'Inspector controls and calculation details')
-        self.ui = w.VBox([w.HBox([self.choice, self.previous, self.next],
+        from tensile_plot_picker import review_selector_css
+        selector_style = w.HTML(review_selector_css('tw-inspector-view-switch',
+            ('detail_yield', 'detail_failure', 'detail_full')), layout=w.Layout(height='0', margin='0'))
+        self.ui = w.VBox([selector_style, w.HBox([self.choice, self.previous, self.next],
                                 layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
                           self.status,
-                          w.HBox([self.view, self.reset, self.gauge_overlay], layout=w.Layout(flex_flow='row wrap')),
-                          self.gauge_status, self.checks, self.editor, self.failure_editor,
+                          w.HBox([self.view, self.reset, self.gauge_overlay],
+                                 layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='10px', margin='4px 0 10px')),
+                          self.gauge_status, self.checks, self.review_actions, self.editor, self.failure_editor,
                           self.chart_box, self.layers_panel,
                           self.details_panel], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
         self.view.observe(self._view_changed, names='value')
         self.reset.on_click(lambda _: self._reset_zoom())
+        self.mark_reviewed.on_click(lambda _: self._review_checks(True))
+        self.reopen_checks.on_click(lambda _: self._review_checks(False))
         self.reset_layers.on_click(self._reset_layers)
         self.gauge_overlay.observe(self._overlay_changed, names='value')
         self.previous.on_click(lambda _: self._step(-1))
@@ -860,6 +886,16 @@ class SpecimenInspector:
         self.gauge_status.value = ''
         self.checks.value = ''
         self.checks.layout.display = 'none'
+        self.review_actions.layout.display = 'none'
+
+    def _review_checks(self, accepted):
+        button = self.mark_reviewed if accepted else self.reopen_checks
+        if not self.on_review or not self._payload or button.disabled:
+            return
+        try:
+            self.on_review(self.choice.value, self._payload['review']['Review fingerprint'], accepted)
+        except Exception as error:
+            self.status.value = '<b>Review status not saved:</b> ' + escape(str(error))
 
     def _clear_layers(self):
         self.layer_groups.children = ()
@@ -1026,8 +1062,10 @@ class SpecimenInspector:
             self._seed_editor(payload)
             self._seed_failure_editor(payload)
             self._paint(payload)
-            self.status.value = ('Read-only until Apply override · drag to zoom; use Reset zoom to return. '
-                                 'Fit and EL overrides apply to this specimen in every analysis.')
+            self.status.value = help_html('Inspecting and adjusting',
+                'Drag to zoom; Reset zoom restores this view. Adjustments remain previews until Apply override. '
+                'Saved fit and EL overrides apply to this specimen in every analysis. '
+                'Mark checks reviewed clears the current notifications; changed data or calculations require review again.')
             self.edit_status.value = 'Choose Manual range or Manual line to start an unsaved preview.'
         except Exception as error:
             self._dispose()
@@ -1286,8 +1324,9 @@ class SpecimenInspector:
     @busy('Drawing specimen inspector…')
     def _paint(self, payload, edit=None, keep_zoom=False):
         import plotly.graph_objects as go
-        from tensile_plotly import width_probe
+        from tensile_plotly import width_probe, limit_zoom
         fig = inspection_figure(payload, self.view.value, edit=edit, show_gauge=self.gauge_overlay.value)
+        full_ranges = {'xaxis': fig.layout.xaxis.range, 'yaxis': fig.layout.yaxis.range}
         self._painting = True
         try:
             if self.chart is None:
@@ -1307,6 +1346,7 @@ class SpecimenInspector:
                     self.chart.layout.annotations = fig.layout.annotations
                     self.chart.update_xaxes(range=fig.layout.xaxis.range, autorange=False)
                     self.chart.update_yaxes(range=fig.layout.yaxis.range, autorange=False)
+                limit_zoom(self.chart, full_ranges)
             self._payload = payload
             for trace in self.chart.data:
                 if (trace.meta or {}).get('inspector_layer') in ('measured', 'fit_points'):
@@ -1316,6 +1356,13 @@ class SpecimenInspector:
             self.summary.value = inspection_summary(payload)
             self.checks.value = inspection_checks(payload, preview=bool(edit or self._failure_draft))
             self.checks.layout.display = '' if self.checks.value else 'none'
+            review = payload.get('review', {})
+            has_pending = bool(review.get('Needs review'))
+            has_reviewed = bool(review.get('Reviewed checks'))
+            self.review_actions.layout.display = '' if self.on_review and (has_pending or has_reviewed) else 'none'
+            self.mark_reviewed.layout.display = '' if has_pending else 'none'
+            self.reopen_checks.layout.display = '' if has_reviewed else 'none'
+            self.mark_reviewed.disabled = self.reopen_checks.disabled = bool(edit or self._failure_draft)
             preview = payload.get('gauge_preview')
             audit = preview['_gauge'] if preview else {}
             self.gauge_status.value = ''

@@ -117,11 +117,15 @@ and exports retain their original colours and white backgrounds.
 1. **Choose an analysis.** Select an existing analysis, duplicate one, or choose **＋ Create new analysis…**. Give it a useful name and tick the exact sample groups. Changes save automatically.
 2. **Review the data.** **Specimen properties · tables and calculation inspector** opens expanded. Summary shows group statistics; Specimens shows individual results and check messages. Click a specimen name to inspect its curve, elastic fit and fracture endpoint. Collapse the section when you want more room for plots.
 3. **Resolve questionable results.** Use **Group curve review** to overlay one group's raw specimen curves, or **Group yield fits** for an array of yield-detail plots with each specimen's fitted line and R². Preview and save manual yield-fit or failure-elongation overrides in the inspector when needed. Use **Data use** to exclude an entire specimen or only properties affected by AVE failure. Exclusions are global unless you explicitly select an analysis-only exception. Original data files are not altered.
-4. **Choose plots.** Select **Static plots** or **Interactive Plotly**. The plot cards are grouped into **Tensile response**, **Work hardening**, and **Properties & trends**, with small sketches illustrating each type. Tick the required types, then open **⚙ Settings** on a selected card for axes and plot-specific options. Choose whether to show individuals or both versions. Hover over controls for help with what they change.
-5. **Click Update plots.** Live preview is off by default because recalculation can be slow. Set layout and size in the plot-view area. Static plots can be enlarged; Plotly supports zoom, pan and hover.
+4. **Choose plots.** Select **Static plots** or **Interactive Plotly**. Click an illustrated card to select or deselect that plot type. Its separate **⚙ Settings** button opens a popup for axes and plot-specific options. Changes save automatically; **Done**, Escape or clicking outside closes it. Hover over controls or **ⓘ** help labels for instructions; click a help label to keep the explanation open.
+5. **Click Update plots.** Live preview is off by default because recalculation can be slow. Set layout and size in the plot-view area. Static plots can be enlarged; Plotly supports zoom, pan and hover. Interactive zoom-out is bounded by the initial view. Reset zoom restores the selected view.
 6. **Export.** Use **Export plot set** for generated views, optionally with Excel tables. Use **Export tables only** when you do not need plots. Outputs go into analysis-specific subfolders of your chosen output folder.
 
 ### Which view should I choose?
+
+The inspector has illustrated **Yield detail**, **Failure detail** and **Full curve** selectors. Group curve review has illustrated **Measured** and **Landmark-aligned** selectors, with YS, UTS and EL markers initially enabled.
+
+After inspecting a flagged specimen, use **Mark checks reviewed** above its inspector plot to clear its current notifications. Its checks remain available under **Reviewed checks** and in the exported Audit sheet. **Reopen checks** restores them to the review list. Acknowledgements save with the project and stop applying when data, calculated results or check messages change. They do not change calculations or specimen inclusion.
 
 | View | Use it for |
 |---|---|

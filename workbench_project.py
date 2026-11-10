@@ -27,6 +27,15 @@ def validate_project(project):
     validate_tracking(project)
     validate_disabled(project)
     validate_threshold(project.get('yield_r2_warning', .98))
+    reviewed = project.get('specimen_review_acknowledgements', {})
+    if not isinstance(reviewed, dict):
+        raise ValueError('Reviewed specimen checks must be a mapping.')
+    for ident, entry in reviewed.items():
+        if (not valid_specimen_id(ident) or not isinstance(entry, dict)
+                or not isinstance(entry.get('fingerprint'), str) or len(entry['fingerprint']) != 64
+                or any(c not in '0123456789abcdef' for c in entry['fingerprint'])
+                or not isinstance(entry.get('checks'), str) or not isinstance(entry.get('saved_at'), str)):
+            raise ValueError('Invalid specimen review acknowledgement.')
     validate_variables(project.get('group_variables', {}))
     validate_variables(project.get('specimen_variables', {}), scope='specimen')
     modes = project.get('specimen_data_modes', {})

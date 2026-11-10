@@ -178,7 +178,7 @@ class InspectorIntegrationTests(unittest.TestCase):
             self.inspect_event()
             self.assertIs(self.app.tables.tabs.children[self.app.tables.tabs.selected_index], self.inspector.ui)
             self.assertIsNotNone(self.inspector.chart)
-            self.assertIn('Read-only', self.inspector.status.value)
+            self.assertIn('previews until Apply override', self.inspector.status.value)
             self.inspector.view.value = 'full'
             self.assertGreater(self.inspector.chart.layout.xaxis.range[1], 17)
             self.inspector._step(1)

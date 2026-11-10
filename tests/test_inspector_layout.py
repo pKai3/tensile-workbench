@@ -57,7 +57,7 @@ class InspectorLayoutTests(unittest.TestCase):
     def test_editors_below_checks_above_plot_and_outside_details_fold(self):
         children = list(self.inspector.ui.children)
         start = children.index(self.inspector.checks)
-        self.assertEqual(children[start:start + 4], [self.inspector.checks, self.inspector.editor,
+        self.assertEqual(children[start:start + 5], [self.inspector.checks, self.inspector.review_actions, self.inspector.editor,
                                                    self.inspector.failure_editor, self.inspector.chart_box])
         self.assertIs(children[children.index(self.inspector.chart_box) + 1], self.inspector.layers_panel)
         self.assertEqual(self.inspector.layers_panel.layout.display, '')
