@@ -80,8 +80,9 @@ class PropertyVariantsView:
         self.choice = w.Dropdown(description='Edit plot:', layout=w.Layout(width='450px', max_width='100%'))
         self.name = w.Text(description='Plot name:', continuous_update=False,
                            style={'description_width': 'initial'}, layout=w.Layout(width='450px', max_width='100%'))
-        self.add = w.Button(description='Add plot variant', layout=w.Layout(width='auto'))
-        self.remove = w.Button(description='Remove this plot', layout=w.Layout(width='auto'))
+        self.add = w.Button(description='Add plot variant', icon='plus', tooltip='Copy this plot into a separate variant with its own settings.', layout=w.Layout(width='auto'))
+        self.remove = w.Button(description='Remove this plot', icon='trash', tooltip='Remove this plot variant from the current analysis.', layout=w.Layout(width='auto'))
+        self.choice.tooltip = 'Choose which separate plot variant to edit. Other variants retain their settings.'
         self.ui = w.VBox([w.HTML('All variants below are plotted separately. Each has its own X-axis, properties, title and styling. '
                                 'Adding a variant copies the current plot; removal affects only this analysis.'),
                           self.choice, w.HBox([self.add, self.remove], layout=w.Layout(flex_flow='row wrap')), self.name])

@@ -147,3 +147,36 @@ html[data-tw-theme="dark"] .js-plotly-plot {color-scheme:dark;}
    A browser-side five-second timeout restores visibility if communication fails. */
 html[data-tw-theme="dark"] .tw-themed-plot:not(.tw-theme-dark):not(.tw-theme-fallback),
 html[data-tw-theme="light"] .tw-themed-plot:not(.tw-theme-light):not(.tw-theme-fallback) {visibility:hidden;}
+
+/* Data-independent plot sketches keep the selector quick, even for large tests. */
+.tw-plot-picker {color:var(--tw-text,#24354a);}
+.tw-plot-section-title {margin:18px 0 4px;font-size:16px;font-weight:650;}
+.tw-plot-count {font-weight:600;}
+.tw-plot-card {
+  box-sizing:border-box;padding:12px;border:1px solid var(--tw-border,#d5dde6);
+  border-radius:8px;background:var(--tw-panel-bg,#fff);
+}
+.tw-plot-card.tw-plot-selected {
+  border-color:var(--tw-accent,#2879b8);
+  box-shadow:inset 3px 0 0 var(--tw-accent,#2879b8);
+}
+.tw-plot-card.tw-plot-expanded {grid-column:1 / -1;}
+.tw-plot-choice.widget-checkbox {height:auto;min-height:28px;max-width:100%;}
+.tw-plot-choice.widget-checkbox label {
+  white-space:normal;line-height:1.35;height:auto;min-width:0;align-items:flex-start;font-weight:600;
+}
+.tw-plot-choice.widget-checkbox input {flex-shrink:0;margin-top:3px;}
+.tw-plot-description {color:var(--tw-muted,#536476);line-height:1.4;font-size:13px;margin:2px 0 6px;}
+.tw-plot-card-settings.widget-accordion {margin:8px 0 0;}
+.tw-plot-sketch {display:block;width:112px;height:74px;}
+.tw-sketch-axis {color:var(--tw-muted,#8b9aab);stroke-width:1;opacity:.7;}
+.tw-sketch-blue {color:#2776b7;}
+.tw-sketch-orange {color:#db8c27;}
+.tw-sketch-green {color:#159775;}
+.tw-sketch-label {fill:var(--tw-muted,#536476);stroke:none;font:9px sans-serif;}
+html[data-tw-theme="dark"] .tw-sketch-blue {color:#62b1e2;}
+html[data-tw-theme="dark"] .tw-sketch-orange {color:#efae61;}
+html[data-tw-theme="dark"] .tw-sketch-green {color:#62cfac;}
+@media (max-width:480px) {
+  .tw-plot-card {padding:8px;}
+}

@@ -1,5 +1,22 @@
 # Implementation record
 
+## Change notes — 2026-11-11
+
+### Plot selection and control guidance — implemented
+
+- Open specimen properties by default. Keep its existing collapse control and
+  calculation behaviour.
+- Replace the long plot-selector stack with three categories of responsive
+  cards, each with a lightweight SVG sketch and short description. Retain the
+  existing selection widgets, saved definitions, shared controls and plot order.
+  Expand one settings card to the full row at a time.
+- Add labelled action icons, gear-labelled plot settings and native tooltips
+  across analysis editing, import/export, custom variables and specimen review.
+  Keep text labels alongside icons and fit button widths to their contents.
+- Verification: 33 focused existing checks pass, covering analysis persistence,
+  group order, variants, inspector layout, themes, variables and deployment
+  preflight. Visual review uses a separate synthetic-data preview.
+
 ## Change notes — 2026-11-06
 
 ### Explicit platform names for installation and launch — implemented

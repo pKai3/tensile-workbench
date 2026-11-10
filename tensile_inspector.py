@@ -721,11 +721,11 @@ class SpecimenInspector:
         w = widgets
         self.choice = w.Dropdown(description='Specimen:', options=[('Choose a specimen…', '')],
                                  layout=w.Layout(width='min(100%, 720px)'))
-        self.previous = w.Button(description='Previous', layout=w.Layout(width='95px'), disabled=True)
-        self.next = w.Button(description='Next', layout=w.Layout(width='75px'), disabled=True)
+        self.previous = w.Button(description='Previous', icon='arrow-left', tooltip='Inspect the previous specimen in the current table order.', layout=w.Layout(width='auto'), disabled=True)
+        self.next = w.Button(description='Next', icon='arrow-right', tooltip='Inspect the next specimen in the current table order.', layout=w.Layout(width='auto'), disabled=True)
         self.view = w.ToggleButtons(options=[('Yield detail', 'yield'), ('Failure detail', 'failure'),
                                             ('Full curve', 'full')], value='yield')
-        self.reset = w.Button(description='Reset zoom', layout=w.Layout(width='110px'))
+        self.reset = w.Button(description='Reset zoom', icon='home', tooltip='Restore the default axes for the selected detail view.', layout=w.Layout(width='auto'))
         self.gauge_overlay = w.Checkbox(description='Overlay measured / reconstructed', value=False, indent=False,
                                        layout=w.Layout(width='auto'))
         self.gauge_status = w.HTML()
@@ -771,7 +771,7 @@ class SpecimenInspector:
             w.HBox([self.x0, self.x1], layout=w.Layout(flex_flow='row wrap')), self.line_fields, self.reason,
             w.HBox([self.apply_button, self.cancel_button, self.restore_button], layout=w.Layout(flex_flow='row wrap')),
             self.edit_status])], selected_index=None)
-        self.editor.set_title(0, 'Adjust elastic fit · preview before applying')
+        self.editor.set_title(0, '✎ Adjust elastic fit · preview before applying')
         self.failure_enabled = w.Checkbox(description='Edit failure EL', value=False, indent=False)
         self.failure_el = w.FloatText(description='Failure EL (%)', continuous_update=False,
                                      style={'description_width': 'initial'})
@@ -792,7 +792,24 @@ class SpecimenInspector:
             self.failure_enabled, w.HBox([self.failure_el, self.failure_row], layout=w.Layout(flex_flow='row wrap')),
             self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
                                        layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
-        self.failure_editor.set_title(0, 'Adjust failure elongation · preview before applying')
+        self.failure_editor.set_title(0, '✎ Adjust failure elongation · preview before applying')
+        for button, icon, help_text in (
+            (self.reset_layers, 'undo', 'Restore the display defaults for this view; calculations are unchanged.'),
+            (self.apply_button, 'check', 'Save this manual elastic fit for the specimen across all analyses.'),
+            (self.cancel_button, 'times', 'Discard the unsaved fit preview and display the current saved fit.'),
+            (self.restore_button, 'undo', 'Remove this specimen’s manual fit override and use the automatic fit in all analyses.'),
+            (self.failure_apply, 'check', 'Save this failure endpoint for the specimen across all analyses.'),
+            (self.failure_cancel, 'times', 'Discard the unsaved endpoint preview and display the current saved endpoint.'),
+            (self.failure_restore, 'undo', 'Remove this specimen’s manual EL override and use automatic detection in all analyses.'),
+        ):
+            button.icon, button.tooltip = icon, help_text
+            button.layout.width = 'auto'
+        self.choice.tooltip = 'Choose a specimen to inspect its curve, checks, elastic fit and failure endpoint.'
+        self.mode.tooltip = 'Manual range fits the readings between two strains. Manual line uses two strain/stress points. Preview first, then Apply to save.'
+        self.gauge_overlay.tooltip = 'Compare measured and reconstructed curves. This display toggle does not enable reconstruction for the analysis.'
+        self.failure_enabled.tooltip = 'Enable endpoint picking on the measured curve. Changes are previews until Apply.'
+        self.failure_el.tooltip = 'Measured failure strain before gauge reconstruction; snaps to a recorded post-peak point.'
+        self.failure_row.tooltip = 'Choose the acquisition row when multiple readings share the same strain.'
         self.details_panel = w.Accordion(children=[w.VBox([
             self.summary, w.HTML(fracture_detection_help()),
         ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,

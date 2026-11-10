@@ -585,10 +585,12 @@ class PropertyTablesView:
                                      tooltip='Fit, fracture/EL, gauge reconstruction and Instron checks. Does not exclude specimens.',
                                      layout=w.Layout(width='auto'))
         self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
+        self.filter.tooltip = 'Filter the displayed rows by name or filename. This does not change specimen inclusion.'
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
                               'UTS (MPa)'], layout=w.Layout(width='300px'))
         self.sort.tooltip = 'Group follows Sample group order, directly below the sample selector. Other sorts override it.'
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
+        self.descending.tooltip = 'Reverse the selected table sort order. Plot ordering is unchanged.'
         self.panels = [w.HTML(layout=w.Layout(width='100%', min_width='0', max_width='100%', overflow='hidden', margin='0')) for _ in range(2)]
         for panel in self.panels:
             panel.add_class('tw18-table-panel')

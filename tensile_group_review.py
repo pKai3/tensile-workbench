@@ -97,8 +97,11 @@ class GroupCurveReview:
         self.markers = {name: widgets.Checkbox(value=False, description=label, indent=False,
                         layout=widgets.Layout(width='auto'))
                         for name, label in [('YS', '○ YS'), ('UTS', '△ UTS'), ('EL', '× EL')]}
-        self.inspect = widgets.Button(description='Inspect highlighted specimen', disabled=True,
+        self.inspect = widgets.Button(description='Inspect highlighted specimen', icon='search', disabled=True,
+                                      tooltip='Open calculation details and manual fit or failure controls for the highlighted curve.',
                                       layout=widgets.Layout(width='auto'))
+        self.group.tooltip = 'Review the specimen curves in one sample group at a time.'
+        self.axis.tooltip = 'Compare strain curves, or use time to inspect acquisition and tracking behaviour.'
         self.status = widgets.HTML()
         self.notice = widgets.HTML()
         self.marker_heading = widgets.HTML('<b>Markers:</b>')

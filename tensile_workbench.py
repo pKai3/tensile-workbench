@@ -14,6 +14,7 @@ from pathlib import Path
 from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
+from tensile_plot_picker import PlotPicker
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
 from tensile_override_view import SavedOverridesView
@@ -1153,7 +1154,7 @@ class TensileWorkbench:
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
             self._row([self.tables_reload_button, self.tables_update_button, self.table_export_button]), self.tables.ui
-        ], layout=w.Layout(width='100%', min_width='0'))], selected_index=None,
+        ], layout=w.Layout(width='100%', min_width='0'))], selected_index=0,
             layout=w.Layout(width='100%', min_width='0'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
         general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
@@ -1198,8 +1199,6 @@ class TensileWorkbench:
                 settings = w.Accordion(children=[self.specimen_charts.ui], selected_index=None)
                 settings.set_title(0, 'Settings')
                 self.plot_settings[family] = settings
-                self.plot_selectors[family] = w.VBox([self.family_boxes[family], settings],
-                    layout=w.Layout(width='100%', min_width='0'))
                 continue
             local = [self.title_inputs[family]]
             wh = family.startswith("work_hardening")
@@ -1263,8 +1262,10 @@ class TensileWorkbench:
             settings = w.Accordion(children=[w.VBox(local)], selected_index=None)
             settings.set_title(0, "Settings")
             self.plot_settings[family] = settings
-            self.plot_selectors[family] = w.VBox([self.family_boxes[family], settings], layout=w.Layout(width="100%", min_width="0"))
-        self.plot_options = w.VBox(list(self.plot_selectors.values()), layout=w.Layout(width="100%", max_width="980px", grid_gap="8px"))
+        self.plot_picker = PlotPicker(w, self.family_boxes, self.plot_settings)
+        self.plot_selectors = self.plot_picker.cards
+        self.plot_options = self.plot_picker.ui
+        self._add_control_help()
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.analysis_ui = w.VBox([
@@ -1281,7 +1282,8 @@ class TensileWorkbench:
             self.fit_review_bar, self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.controls["renderer"],
             self._row([self.controls["show_individuals"], self.controls["show_both_versions"]]),
-            w.HTML("Choose plots below. Each selector has its own settings. Shared averaging parameters and axis ranges stay linked between related plots."),
+            w.HTML("Choose plot types below. The small sketches illustrate each type; your results appear below after <b>Update plots</b>. "
+                   "Shared averaging parameters and axis ranges stay linked between related plots."),
             self.plot_options,
             self._row([self.update_button, self.reload_button, self.controls["live_update"]]),
             self.status, general, self.viewer.ui,
@@ -1352,6 +1354,69 @@ class TensileWorkbench:
 
     def _row(self, children):
         return self.w.HBox(children, layout=self.w.Layout(flex_flow="row wrap", grid_gap="6px"))
+
+    def _add_control_help(self):
+        """Keep action icons and native hover help consistent across the workspace."""
+        actions = (
+            ('new_button', 'plus', 'Create an empty analysis. Existing analyses are kept.'),
+            ('duplicate_button', 'copy', 'Copy this analysis, including its sample groups and plot settings.'),
+            ('delete_button', 'trash', 'Remove this saved analysis after confirmation. Specimen data and global overrides are kept.'),
+            ('undo_delete_button', 'undo', 'Restore the most recently deleted analysis.'),
+            ('confirm_delete_button', 'trash', 'Delete the analysis shown in the confirmation message.'),
+            ('cancel_delete_button', 'times', 'Keep this analysis and close the confirmation.'),
+            ('saved_button', 'refresh', 'Reload saved analysis definitions from disk. This does not reread specimen data.'),
+            ('override_button', 'check', 'Save the displayed group overrides for this analysis.'),
+            ('update_button', 'line-chart', 'Generate the selected plots using the current data and settings.'),
+            ('reload_button', 'refresh', 'Reread specimen and summary files from disk, then refresh tables and plots.'),
+            ('export_button', 'download', 'Export the generated plot set to the output folder. Tick the Excel option to include tables.'),
+            ('review_fits', 'search', 'Show specimens with checks requiring review. This does not exclude them.'),
+            ('tables_update_button', 'table', 'Refresh property tables with the current settings, without generating plots.'),
+            ('tables_reload_button', 'refresh', 'Reread specimen and summary files, refresh tables, and clear old plots. No page refresh needed.'),
+            ('table_export_button', 'download', 'Export the property tables to Excel without exporting plots.'),
+        )
+        for name, icon, help_text in actions:
+            button = getattr(self, name)
+            button.icon, button.tooltip = icon, help_text
+            button.layout.width = 'auto'
+            button.layout.flex = '0 0 auto'
+        self.graph.tooltip = 'Switch saved analyses, or choose Create new analysis at the end of the list. Changes save automatically.'
+        self.name.tooltip = 'Rename this analysis. The name is saved automatically.'
+        self.override_group.tooltip = 'Choose which sample group to edit in the controls below.'
+        self.override_name.tooltip = 'Optional label for plot legends in this analysis. Tables retain the formal sample group name.'
+        self.override_color_enabled.tooltip = 'Use a fixed colour for this group instead of its palette colour.'
+        self.override_rep.tooltip = 'Choose the specimen shown by the Representative tensile curves plot.'
+        self.display_order_up.tooltip = 'Move this group earlier in legends and tables, and leftward on categorical plots.'
+        self.display_order_down.tooltip = 'Move this group later in legends and tables, and rightward on categorical plots.'
+        help_texts = {
+            'renderer': 'Interactive Plotly supports zoom and hover. Static previews use the publication plotting style.',
+            'show_individuals': 'Add individual specimen curves or points to group plots. This changes display, not inclusion.',
+            'show_both_versions': 'Generate two versions of each selected plot: with and without individual specimens.',
+            'landmark_error_bars': 'Show one sample standard deviation around each group landmark; these are not confidence intervals.',
+            'property_error_bars': 'Show one sample standard deviation in strength and EL around each group mean.',
+            'properties_by_group_error_bars': 'Show one sample standard deviation for each property, using its eligible specimens.',
+            'properties_by_group_x_variable': 'Use ordered sample group names, or plot against a saved numeric custom variable.',
+            'properties_by_group_line_style': 'Choose how neighbouring means are connected. These lines are not fitted trends.',
+            'color_palette': 'Set the group colours for this analysis. Explicit group colour overrides take precedence.',
+            'export_tables': 'Include Excel property tables and curve data with the exported plot set.',
+            'columns': 'Choose how many plot panels fit across the results area. Exported figures are unchanged.',
+            'plot_width': 'Set the preferred preview width. Panels also adapt to the space available.',
+            'landmark_points': 'Number of plotting-grid points in each aligned curve stage; raw measurements are retained.',
+            'pointwise_points': 'Number of strain-grid points used for the pointwise tensile average.',
+            'wh_points': 'Number of points on the common true plastic-strain grid for work hardening.',
+            'modulus_gpa': 'Elastic modulus used to calculate plastic strain for work hardening; does not change specimen elastic fits.',
+            'min_plastic_strain': 'Start work-hardening plots at this true plastic strain, in percent.',
+            'tail_enabled': 'Extend the pointwise tensile mean using the fitted terminal segment. Does not change specimen fracture selections.',
+        }
+        for key, help_text in help_texts.items():
+            self.controls[key].tooltip = help_text
+        for family in PROPERTY_FAMILIES:
+            self.controls[family + '_mean_population'].tooltip = (
+                'All eligible values uses each property’s own specimens. Paired specimens uses only specimens with both strength and EL.')
+        for auto, lo, hi, _ in self.axes.values():
+            auto.tooltip = 'Fit this axis to the plotted data. Untick to use the limits below.'
+            lo.tooltip, hi.tooltip = 'Lower axis limit when Automatic is off.', 'Upper axis limit when Automatic is off.'
+        for title in self.title_inputs.values():
+            title.tooltip = 'Leave blank to use the automatic title. Use _2 or ^2 for subscripts or superscripts.'
 
     def _check(self, key, label):
         self.controls[key] = self.w.Checkbox(description=label, indent=False, layout=self.w.Layout(width="auto"))

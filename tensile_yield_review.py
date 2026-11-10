@@ -67,7 +67,10 @@ class GroupYieldReview:
                                      layout=w.Layout(width='auto'))
         self.columns = w.Dropdown(description='Columns:', options=[1, 2, 3], value=3,
                                   layout=w.Layout(width='150px'))
-        self.reset = w.Button(description='Reset zoom', layout=w.Layout(width='auto'))
+        self.reset = w.Button(description='Reset zoom', icon='home', tooltip='Restore the yield-detail axes for all specimens in this view.', layout=w.Layout(width='auto'))
+        self.group.tooltip = 'Compare elastic fits and yield selections for every specimen in this group.'
+        self.shared_axes.tooltip = 'Use identical strain and stress ranges to compare specimen fits directly.'
+        self.show_excluded.tooltip = 'Show excluded specimens for review without changing their inclusion.'
         self.status = w.HTML()
         legend = ' &nbsp; '.join(layer_swatch(color, symbol, dash) + ' ' + label for label, color, symbol, dash in [
             ('Measured CSV', '#334155', None, None), ('Fit points', '#16a085', 'circle', None),
@@ -221,7 +224,8 @@ class GroupYieldReview:
                 content.append(w.HTML('<b>Fit unavailable:</b> ' + escape(failures[row['id']])))
             heading = w.HTML('<div style="line-height:1.45;overflow-wrap:anywhere">' + info + '</div>',
                              layout=w.Layout(width='100%', min_width='0', height='84px', overflow='auto', margin='0'))
-            button = w.Button(description='Inspect / adjust', disabled=self.on_inspect is None,
+            button = w.Button(description='Inspect / adjust', icon='search', disabled=self.on_inspect is None,
+                              tooltip='Open this specimen in the calculation inspector to review checks or preview a manual fit.',
                               layout=w.Layout(width='auto', align_self='flex-start'))
             def inspect(_, ident=row['id'], generation=token):
                 if generation == self.generation and self.on_inspect:

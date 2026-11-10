@@ -92,13 +92,13 @@ class WebAppTests(unittest.TestCase):
         self.assertFalse(hasattr(app, 'range_button'))
         self.assertFalse(hasattr(app, 'range_from'))
         self.assertEqual(app.controls['renderer'].options[0], ('Static plots', 'static'))
-        self.assertIsNone(app.properties_panel.selected_index)
+        self.assertEqual(app.properties_panel.selected_index, 0)
         content = app.properties_panel.children[0]
         self.assertIn(app.tables.ui, content.children)
         self.assertTrue(any(app.table_export_button in getattr(child, 'children', ()) for child in content.children))
         with patch.object(app, '_refresh_properties') as calculate:
-            app.properties_panel.selected_index = 0
             app.properties_panel.selected_index = None
+            app.properties_panel.selected_index = 0
         calculate.assert_not_called()
 
     def test_advanced_notebook_mode_is_still_available(self):

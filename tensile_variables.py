@@ -163,6 +163,11 @@ class GroupVariablesView:
                                  layout=w.Layout(width='auto'))
         self.discard = w.Button(description='Discard draft edits', layout=w.Layout(width='auto'),
                                 tooltip='Reload the latest saved variables. Does not change saved values.')
+        self.add.icon, self.add.tooltip = 'plus', 'Add a numeric variable column. Enter its name, unit and values, then Save all variables.'
+        self.save_all.icon, self.save_all.tooltip = 'save', 'Save the edited custom variables for use by all analyses.'
+        self.discard.icon = 'undo'
+        self.delete_confirm.icon, self.delete_confirm.tooltip = 'trash', 'Delete the variable named in the confirmation. This applies to all analyses.'
+        self.delete_cancel.icon, self.delete_cancel.tooltip = 'times', 'Keep the variable and close the confirmation.'
         self.table_ui = w.VBox([
             w.HTML('Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
                    'Paste CSV/TSV or an Excel block into a cell; extra columns are added automatically. '
