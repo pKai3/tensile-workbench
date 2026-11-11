@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.13
 
 - Bring TEM Workbench's rounded controls, panels and consistent spacing into
   both light and dark themes. Align table buttons and filters, keep text spacing
