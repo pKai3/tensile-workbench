@@ -174,8 +174,8 @@ class PreviewSession:
         self._previews = OrderedDict()
         self.reload_data()
 
-    def reload_data(self, *, preserve_groups=()):
-        if not self.data_dir.is_dir() and not self._explicit_sources:
+    def reload_data(self, *, preserve_groups=(), sample_visibility_only=False):
+        if not sample_visibility_only and not self.data_dir.is_dir() and not self._explicit_sources:
             raise FileNotFoundError(f"Tensile data directory not found: {self.data_dir}")
         # This is the existing script's scoped data-folder discovery, not a
         # search of the user's home or thesis directories.
@@ -184,7 +184,17 @@ class PreviewSession:
         from tensile_sources import prefix
         research, roots, directories, owners, issues = {}, {}, {}, {}, []
         namespaces = {}
-        for source in self.sources:
+        if sample_visibility_only:
+            # Revealing bundled examples is not a reload of experimental data.
+            # Reuse its inventory and results, including temporarily offline roots.
+            research = {g: paths for g, paths in self.files.items() if not g.startswith(SAMPLE_GROUP_PREFIX)}
+            roots = {g: self.source_roots[g] for g in research}
+            directories = {g: self.source_directories[g] for g in research}
+            owners = {g: self.group_sources[g] for g in research}
+            namespaces = {g: self.source_prefixes[g] for g in research}
+            issues = list(self._research_discovery_issues)
+            preserve_groups = set(research)
+        for source in (() if sample_visibility_only else self.sources):
             root = Path(source['path'])
             if not root.is_dir():
                 issues.append(f'{source["name"]}: source folder unavailable. Saved work is retained; reconnect it in Projects.')
@@ -209,14 +219,16 @@ class PreviewSession:
         instron = InstronSummaries(self.data_dir, directories)
         # Finish discovery before replacing a usable catalogue. An interrupted
         # network read must not leave half the session pointing at new sources.
-        counts = {group: len({row['_export_test_key'] for row in instron.catalogue(group, paths,
+        counts = {g: self.imported_counts[g] for g in research} if sample_visibility_only else {}
+        counts.update({group: len({row['_export_test_key'] for row in instron.catalogue(group, paths,
             self.engine.STRAIN_COLS, self.engine.STRESS_COLS + self.engine.FORCE_COLS)})
-            for group, paths in files.items()}
+            for group, paths in files.items() if group not in counts})
         project = reconcile_specimen_counts(self.project, counts)
         self.files, self.source_roots = files, roots
         self.source_prefixes = namespaces
         self.source_directories = directories
         self.group_sources = owners
+        self._research_discovery_issues = issues
         self.discovery_issues = issues + list(getattr(samples, 'warnings', []))
         preserved = set(preserve_groups) & set(files)
         self.import_issues = {g: rows for g, rows in getattr(self, 'import_issues', {}).items() if g in preserved}
@@ -1697,6 +1709,16 @@ class TensileWorkbench:
         except Exception as error:
             self.specimen_variables.status.value = '<b>Could not load specimen locations:</b> ' + escape(str(error))
 
+    def _refresh_group_choices(self, groups):
+        """Update the picker without resetting the analysis or displayed results."""
+        choices = sorted(set(self.session.files) | set(self.session.visible_groups(groups)))
+        def group_label(group):
+            label = (group[len(SAMPLE_GROUP_PREFIX):].removeprefix('Demo_') + ' (sample)'
+                     if group.startswith(SAMPLE_GROUP_PREFIX) else group)
+            return label if group in self.session.files else label + ' (unavailable)'
+        self.controls['groups'].options = [(group_label(g), g) for g in choices]
+        self.controls['groups'].value = tuple(self.session.visible_groups(groups))
+
     def _apply_graph(self, ident):
         self._cancel_delete_graph()
         old, self._paused = self._paused, True
@@ -1707,12 +1729,7 @@ class TensileWorkbench:
             self._color_slots = dict(state.get(COLOR_SLOTS, {}))
             self.name.value = graph["name"]
             # Preserve missing groups rather than silently dropping them on save.
-            choices = sorted(set(self.session.files) | set(self.session.visible_groups(state["groups"])))
-            def group_label(group):
-                label = (group[len(SAMPLE_GROUP_PREFIX):].removeprefix('Demo_') + ' (sample)'
-                         if group.startswith(SAMPLE_GROUP_PREFIX) else group)
-                return label if group in self.session.files else label + ' (unavailable)'
-            self.controls["groups"].options = [(group_label(g), g) for g in choices]
+            self._refresh_group_choices(state['groups'])
             self._variable_options(state.get('properties_by_group_x_variable', ''))
             for key, control in self.controls.items():
                 value = state.get(key, {"color_palette": DEFAULT_PALETTE, "export_tables": False, "live_update": False, "plot_width": 640, "renderer": "static", **PROPERTY_DEFAULTS, **GROUP_DEFAULTS}.get(key, control.value))
@@ -2414,18 +2431,20 @@ class TensileWorkbench:
         if self._paused:
             return
         previous = self.session.show_sample_data
+        selected = tuple(self.controls['groups'].value)
         self.sample_data_toggle.disabled = True
         try:
             if not self.save_current():
                 raise RuntimeError('Resolve the analysis-save warning before changing sample visibility.')
+            ready = bool(self._results) and self._signature == self._current_signature()
             self.session.show_sample_data = change['new']
-            self.session.reload_data()
+            self.session.reload_data(sample_visibility_only=True)
             self._save_reconciled_counts()
             folder_backup_warning = save_sample_data_visibility(self.project_dir, change['new'])
         except Exception as error:
             self.session.show_sample_data = previous
             try:
-                self.session.reload_data()
+                self.session.reload_data(sample_visibility_only=True)
             except Exception:
                 # The primary folder may have gone offline. Keep the preference
                 # and report the original failure instead of a second UI error.
@@ -2438,15 +2457,30 @@ class TensileWorkbench:
                 self._paused = old
             self.status.value = '<b>Sample visibility not changed:</b> ' + escape(str(error))
         else:
-            self._apply_graph(self.graph.value)
-            self._refresh_properties()
-            if self.controls['live_update'].value:
-                self.update(save=False)
+            groups = self._current()['settings']['groups']
+            if tuple(self.session.visible_groups(groups)) != selected:
+                # Previously selected examples really entered/left the analysis.
+                self._apply_graph(self.graph.value)
+                self._refresh_properties()
+                if self.controls['live_update'].value:
+                    self.update(save=False)
+                else:
+                    self.status.value = 'Sample selection changed. Click Update plots when ready.'
             else:
-                self.status.value = 'Sample visibility saved. Click Update plots when ready.'
+                old, self._paused = self._paused, True
+                try:
+                    self._refresh_group_choices(groups)
+                    self.group_variables.refresh(selected, order=self._display_order)
+                    self._refresh_specimen_variables(force=True)
+                finally:
+                    self._paused = old
+                # New example counts do not alter existing experimental plots.
+                if ready:
+                    self._signature = self._current_signature()
             if folder_backup_warning:
                 self.status.value += '<br><b>' + escape(folder_backup_warning) + '</b> Open Backups & restore to retry.'
         finally:
+            self._sample_data_note()
             self.sample_data_toggle.disabled = False
 
     def _current_signature(self):

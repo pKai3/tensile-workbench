@@ -1,5 +1,8 @@
 # Tensile Workbench — next update
 
+- **Show sample data** no longer reloads or recalculates experimental data.
+  Existing tables and plots stay ready unless selected examples actually enter
+  or leave the analysis, including when live preview is enabled.
 - Clarify every **Data use** exclusion mode: hover over the help icon for a
   side-by-side comparison of retained properties and curve contributions.
   Partial exclusions also show a short effect summary beneath the selector.

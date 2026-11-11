@@ -2,6 +2,20 @@
 
 ## Change notes — 2026-11-11
 
+### Sample visibility without experimental recalculation — implemented
+
+- Showing/hiding bundled examples refreshes only their inventory. Reuse the
+  experimental group inventory, loaded curves, calculated tables and previews;
+  do not rescan experimental folders or reread their CSVs for this action.
+- Refresh the group selector without resetting the current analysis. Keep
+  displayed plots, tables and export readiness when no contributing groups
+  change, including with live preview enabled. Previously selected examples
+  still enter/leave the analysis when revealed/hidden; preserve their saved
+  selection, exclusions and ordering.
+- Verification: 33 focused checks passed, including guarded CSV/discovery and
+  calculation calls, result-object retention, both live-preview states, sample
+  preference persistence/rollback, project watching and group ordering.
+
 ### Compact workspace and explicit data-use effects — implemented
 
 - Give analysis, name, title and group-label controls sensible maximum widths;

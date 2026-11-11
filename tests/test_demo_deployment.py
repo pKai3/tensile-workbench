@@ -145,6 +145,8 @@ class DemoDeploymentTests(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             app = TensileWorkbench(self.root)
             app.save_current()
+        self.addCleanup(app.close)
+        research_records = app.session._load('Alloy A')
         saved = project_path.read_bytes()
         color = app.session.color_map(app.state(), {})['Alloy A']
         self.assertIn(group, app.state()['groups'])
@@ -159,6 +161,7 @@ class DemoDeploymentTests(unittest.TestCase):
         self.assertNotIn(group, app.group_picker.boxes)
         self.assertEqual(app.session.color_map(app.state(), {})['Alloy A'], color)
         self.assertEqual(set(app.tables.frames['tensile_samples']['Group']), {'Alloy A'})
+        self.assertIs(app.session._load('Alloy A'), research_records)
         self.assertEqual(sample_data_settings(self.root)['show_sample_data'], False)
         paths = json.loads((self.root / SETTINGS_NAME).read_text())
         self.assertEqual(paths['data_directory'], './data')
@@ -176,6 +179,60 @@ class DemoDeploymentTests(unittest.TestCase):
         self.assertEqual(sample_rows['Included'].tolist(), [False, True, True])
         self.assertEqual(reopened.session.data_dir, self.root / 'data')
         self.assertTrue(sample_data_settings(self.root)['show_sample_data'])
+        self.addCleanup(reopened.close)
+
+    def test_unselected_sample_visibility_keeps_results_without_research_io_or_calculation(self):
+        from selection_fixture import make_fixture
+        from tensile_instron import InstronSummaries
+        make_fixture(self.root)
+        save_folders(self.root, DEFAULT_FOLDERS)
+        save_sample_data_visibility(self.root, False)
+        with redirect_stdout(io.StringIO()):
+            app = TensileWorkbench(self.root)
+            app.family_boxes['landmark'].value = True
+        self.addCleanup(app.close)
+        discover = app.session.engine.find_sample_groups
+        catalogue = InstronSummaries.catalogue
+        def samples_only(root):
+            self.assertEqual(root, self.root / 'examples/data')
+            return discover(root)
+        def sample_catalogue(reader, group, *args):
+            self.assertTrue(group.startswith(SAMPLE_GROUP_PREFIX))
+            return catalogue(reader, group, *args)
+        for live in (False, True):
+            with redirect_stdout(io.StringIO()):
+                app.controls['live_update'].value = live
+                app.update()
+            self.assertTrue(app._results)
+            frames, results = app.tables.frames, app._results
+            records = app.session._load('Alloy A')
+            table_cache = dict(app.session._property_frames)
+            previews = dict(app.session._previews)
+            message = app.status.value
+            with (patch.object(app.session.engine, 'find_sample_groups', side_effect=samples_only),
+                  patch.object(InstronSummaries, 'catalogue', autospec=True, side_effect=sample_catalogue),
+                  patch.object(app.session.engine, 'read_tensile_csv_table', side_effect=AssertionError('CSV reread')) as read,
+                  patch.object(app, '_refresh_properties', side_effect=AssertionError('Property refresh')) as properties,
+                  patch.object(app, 'update', side_effect=AssertionError('Plot refresh')) as plots):
+                for visible in (True, False):
+                    with self.subTest(live=live, visible=visible), redirect_stdout(io.StringIO()):
+                        app.sample_data_toggle.value = visible
+                        self.assertEqual(sample_data_settings(self.root)['show_sample_data'], visible)
+                        self.assertEqual(any(g.startswith(SAMPLE_GROUP_PREFIX) for g in app.group_picker.boxes), visible)
+                        self.assertEqual(app.state()['groups'], ['Alloy A'])
+                        self.assertIs(app.tables.frames, frames)
+                        self.assertIs(app._results, results)
+                        self.assertIs(app.session._load('Alloy A'), records)
+                        self.assertEqual(app.status.value, message)
+                        self.assertFalse(app.export_button.disabled)
+                        self.assertEqual(app._signature, app._current_signature())
+                        for key, value in table_cache.items():
+                            self.assertIs(app.session._property_frames[key], value)
+                        for key, value in previews.items():
+                            self.assertIs(app.session._previews[key], value)
+                read.assert_not_called()
+                properties.assert_not_called()
+                plots.assert_not_called()
 
     def test_hidden_samples_are_not_read_and_names_cannot_merge_with_research(self):
         sample = self.root / 'examples' / 'data' / 'Demo_Ductile' / 'specimen_1.csv'
