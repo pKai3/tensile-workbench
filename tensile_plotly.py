@@ -1,6 +1,6 @@
 """Plotly view of already-calculated Matplotlib artists; no analysis or file I/O."""
 from html import escape
-from tensile_help import help_html
+from tensile_help import help_widget, control_row
 import textwrap
 import numpy as np
 from matplotlib.colors import to_hex
@@ -423,10 +423,10 @@ class PlotlyView:
         w = widgets
         self._items, self._owned, self._charts, self._frames = [], [], {}, {}
         self._focused_key = None
-        self.toolbar = w.HBox([columns, plot_width], layout=w.Layout(flex_flow='row wrap', grid_gap='12px'))
-        self.hint = w.HTML(help_html('Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
+        self.hint = help_widget(w, 'Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
                           'Dense lines show every Nth reading; use the specimen inspector for full detail. '
-                          'Calculations and publication exports use the full data.'))
+                          'Calculations and publication exports use the full data.')
+        self.toolbar = control_row(w, [columns, plot_width, self.hint])
         self.empty = w.HTML('Choose plots and click Update plots.')
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
         self.board.add_class('tw-plot-board')
@@ -435,7 +435,7 @@ class PlotlyView:
         self.focus_content = w.VBox(layout=w.Layout(width='100%'))
         self.focus = w.VBox([w.HBox([self.back, self.choice], layout=w.Layout(flex_flow='row wrap')),
                             self.focus_content], layout=w.Layout(display='none', width='100%'))
-        self.ui = w.VBox([self.toolbar, self.hint, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
+        self.ui = w.VBox([self.toolbar, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
         self.back.on_click(lambda _: self.close_focus())
         self.choice.observe(self._choose, names='value')
         self._selecting = False

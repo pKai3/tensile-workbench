@@ -1,6 +1,6 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
 from html import escape
-from tensile_help import help_html
+from tensile_help import help_html, help_widget, control_row
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -637,10 +637,10 @@ class PropertyTablesView:
         self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
         self.source_status = w.HTML()
-        self.ui = w.VBox([w.HTML(help_html('Tables and filters', 'Tables are independent of plot selection. Group statistics use sample SD and valid n. '
+        table_help = help_widget(w, 'Tables and filters', 'Tables are independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons prefer CSV summaries, with PDF reports as a fallback. '
-                                'Search and sort change the view only; Data use changes analysis contributions.')),
-                          w.HBox([self.filter, self.sort, self.descending, self.review_only], layout=w.Layout(flex_flow='row wrap')),
+                                'Search and sort change the view only; Data use changes analysis contributions.')
+        self.ui = w.VBox([control_row(w, [self.filter, self.sort, self.descending, self.review_only, table_help]),
                           self.status, self.source_status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
         for control in (self.filter, self.sort, self.descending, self.review_only):
             control.observe(lambda _: self.render(), names='value')

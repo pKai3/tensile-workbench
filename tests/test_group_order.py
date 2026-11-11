@@ -49,7 +49,7 @@ class GroupOrderTests(unittest.TestCase):
         app = self.app
         children = list(app.analysis_ui.children)
         panel = app.display_order_panel
-        self.assertEqual(children.index(app.workspace_tools), children.index(app.group_picker.ui) + 3)
+        self.assertEqual(children.index(app.workspace_tools), children.index(app.group_picker.ui) + 2)
         self.assertIs(children[children.index(app.workspace_tools) - 1], app.move_review.ui)
         self.assertLess(children.index(app.workspace_tools), children.index(app.properties_panel))
         self.assertIsNone(panel.selected_index)

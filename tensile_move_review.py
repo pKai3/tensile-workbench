@@ -16,8 +16,8 @@ class MoveReview:
         self.summary = widgets.HTML()
         self.message = widgets.HTML()
         self.rows = widgets.VBox(layout=widgets.Layout(width='100%'))
-        self.check = widgets.Button(description='Check for moved groups', icon='folder-open',
-            tooltip='Reload the data folders and look for moved groups. Review each proposed settings transfer before applying it.', layout=widgets.Layout(width='auto'))
+        self.check = widgets.Button(description='Check now', icon='refresh',
+            tooltip='Moves are checked automatically at startup and after project-folder changes settle while the page is visible and idle. Check now forces an immediate reload. Review each proposed settings transfer before applying it.', layout=widgets.Layout(width='auto'))
         self.check.on_click(lambda _: reload_data())
         self.forget_message = widgets.HTML()
         self.confirm_forget = widgets.Button(description='Confirm forget', button_style='danger')

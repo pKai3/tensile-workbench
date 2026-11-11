@@ -1,6 +1,6 @@
 """Lazy measured/aligned curve review. Display controls never change analysis policy."""
 from html import escape
-from tensile_help import help_html
+from tensile_help import help_widget, control_row
 import uuid
 import re
 import numpy as np
@@ -116,9 +116,7 @@ class GroupCurveReview:
         self.table = SpecimenTable(on_selection=on_selection, on_inspect=self.select,
                                    layout=widgets.Layout(width='100%'))
         from tensile_plot_picker import review_selector_css
-        self.ui = widgets.VBox([
-            widgets.HTML(review_selector_css(), layout=widgets.Layout(height='0', margin='0')),
-            widgets.HTML(help_html('Curve review and markers', '<p>Click a curve or specimen name to highlight it, not exclude it. '
+        review_help = help_widget(widgets, 'Curve review and markers', '<p>Click a curve or specimen name to highlight it, not exclude it. '
                          'Use <b>Data use</b> in the table below to change analysis contributions. '
                          'Line styles and labels show exclusions.</p>'
                          '<p>'
@@ -135,8 +133,10 @@ class GroupCurveReview:
                          'have to pass through the group-mean stresses. Stage boundaries are not bridged if that adjustment '
                          'creates a discontinuity in an individual contribution. Group-mean markers default to on. '
                          'Property-only and fully excluded specimens remain listed without an aligned curve. '
-                         'Gauge reconstruction, when enabled for this group, is applied before alignment.</p>')),
-            self.view,
+                         'Gauge reconstruction, when enabled for this group, is applied before alignment.</p>')
+        self.ui = widgets.VBox([
+            widgets.HTML(review_selector_css(), layout=widgets.Layout(height='0', margin='0')),
+            control_row(widgets, [self.view, review_help]),
             widgets.HBox([self.group, self.axis, self.show_excluded], layout=widgets.Layout(flex_flow='row wrap')),
             widgets.HBox([self.marker_heading, *self.markers.values()],
                          layout=widgets.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),

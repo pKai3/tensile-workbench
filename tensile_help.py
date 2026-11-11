@@ -10,6 +10,17 @@ def help_html(label, body):
             + '<div class="tw-help-content" hidden>' + body + '</div></div>')
 
 
+def help_widget(widgets, label, body):
+    """Natural-width help that can sit beside its related controls."""
+    return widgets.HTML(help_html(label, body), layout=widgets.Layout(width='auto', flex='0 1 auto'))
+
+
+def control_row(widgets, children):
+    """Keep related controls and help together, wrapping only when necessary."""
+    return widgets.HBox(children, layout=widgets.Layout(
+        flex_flow='row wrap', align_items='center', grid_gap='6px 12px', width='100%', min_width='0'))
+
+
 class HelpTooltips(anywidget.AnyWidget):
     """One delegated help bubble, including dynamically created controls."""
     _esm = """

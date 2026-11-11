@@ -1,18 +1,11 @@
-# Tensile Workbench 1.0.10
+# Tensile Workbench — next update
 
-- Manage independent named projects under **Projects · source and output folders**,
-  with Browse buttons, Add/Remove controls and optional project output folders.
-- Combine groups from several projects in one analysis. Filter the group selector
-  by project or search text without clearing hidden selections.
-- Watch project folders while the page is visible and idle. New/changed CSVs and
-  summaries refresh the catalogue after two stable checks. Affected results prompt
-  you to update; background watching does not rerun expensive calculations.
-- Detect unchanged-content moves across project folders. Review each proposed
-  settings transfer before approving it; ambiguous copies remain flagged.
-- Keep missing-project settings for reconnection, and preserve existing specimen
-  identities in the original data folder.
-- Include project folders in existing automatic backups, with protected snapshots
-  before folder changes and approved migrations.
+- Reduce scrolling by putting help prompts beside their related controls across
+  plot galleries, table filters, group reviews, the inspector and variable editors.
+  Controls wrap naturally on smaller screens.
+- Clarify automatic move checking: **Check now** forces an immediate check;
+  startup and settled project-folder changes already check automatically.
+  Moving saved settings still requires your approval.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.

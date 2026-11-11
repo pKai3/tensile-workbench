@@ -1,6 +1,6 @@
 """Lazy, read-only group overview of the same fits used by the inspector."""
 from html import escape
-from tensile_help import help_html
+from tensile_help import help_widget, control_row
 import re
 import uuid
 
@@ -80,12 +80,12 @@ class GroupYieldReview:
         self.grid = w.GridBox(layout=w.Layout(width='100%', min_width='0', grid_gap='14px',
                                               grid_template_columns='repeat(3, minmax(0, 1fr))'))
         self.plot = w.VBox(layout=w.Layout(width='100%', min_width='0'))
-        self.ui = w.VBox([
-            w.HTML(help_html('Reviewing yield fits', '<p>Compare the saved yield fits for one sample group. R² describes agreement inside the '
+        review_help = help_widget(w, 'Reviewing yield fits', '<p>Compare the saved yield fits for one sample group. R² describes agreement inside the '
                    'selected interval; check the fitted line against the surrounding curve too. '
                    'Use <b>Inspect / adjust</b> to open the specimen inspector. '
-                   'Exclusions remain visible for review and are labelled on each card.</p>')),
-            w.HBox([self.group, self.show_excluded], layout=w.Layout(flex_flow='row wrap', align_items='center')),
+                   'Exclusions remain visible for review and are labelled on each card.</p>')
+        self.ui = w.VBox([
+            control_row(w, [self.group, self.show_excluded, review_help]),
             w.HBox([self.shared_axes, self.columns, self.reset],
                    layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
             w.HTML('<div class="tw-plot-key-surface" style="padding:4px 6px;border-radius:3px">'

@@ -16,7 +16,7 @@ from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_plot_picker import PlotPicker, review_selector_css
 from tensile_popup import SettingsPopup
-from tensile_help import help_html, HelpTooltips
+from tensile_help import help_html, help_widget, control_row, HelpTooltips
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
 from tensile_override_view import SavedOverridesView
@@ -1058,6 +1058,9 @@ class TensileWorkbench:
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
+        self.group_picker.ui.children[0].value = '<b>Sample groups</b> ' + help_html('Selecting sample groups',
+            'Expand folders to choose individual groups, or tick a folder to select everything below it. '
+            'A mixed tick means only some groups are selected. Groups are still analysed separately.')
         self.move_review = MoveReview(w, self.store, self.session, before_apply=self.save_current,
             after_apply=self._move_applied, reload_data=lambda: self._reload_data(plots=False),
             after_forget=lambda: self._move_applied('Removed group forgotten'))
@@ -1114,11 +1117,11 @@ class TensileWorkbench:
         self.display_order_up.on_click(lambda _: self._move_display_order(-1))
         self.display_order_down.on_click(lambda _: self._move_display_order(1))
         self.display_order_select.observe(lambda _: self._sync_display_order_buttons(), names='value')
+        order_help = help_widget(w, 'Group order', 'Top to bottom in group legends and tables, and left to right on categorical plots. '
+                   'Select a group, then move it. Saved for this analysis; colours stay unchanged.')
         self.display_order_panel = w.Accordion(children=[w.VBox([
-            w.HTML(help_html('Group order', 'Top to bottom in group legends and tables, and left to right on categorical plots. '
-                   'Select a group, then move it. Saved for this analysis; colours stay unchanged.')),
             self.display_order_select,
-            self._row([self.display_order_up, self.display_order_down])
+            control_row(w, [self.display_order_up, self.display_order_down, order_help])
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
         self.display_order_panel.set_title(0, 'Sample group order · tables and plots')
         self._check("live_update", "Live preview (may be very slow)")
@@ -1202,14 +1205,14 @@ class TensileWorkbench:
             grid_template_columns='minmax(140px, 1fr) 140px 110px', grid_gap='2px 12px',
             align_items='center', width='100%', min_width='420px', max_width='700px'))
         self.gauge_message = w.HTML()
+        self.gauge_help = ('Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
+            'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
+            'overlay in the specimen inspector. Longer targets are allowed and reduce reconstructed EL; '
+            'all reconstructed results remain derived estimates.')
         from tensile_inspector import gauge_model_help
         self.gauge_panel = w.Accordion(children=[w.VBox([
             w.Box([self.gauge_grid], layout=w.Layout(width='100%', overflow='auto')),
             self.gauge_message,
-            w.HTML(help_html('Reconstruction controls', 'Changes save automatically. Enter a target, then tick Reconstruct to apply it to that group. '
-                   'Each specimen uses its own AVE Strain 1 gauge length. Leave Reconstruct unticked to preview the '
-                   'overlay in the specimen inspector. Longer targets are allowed and reduce reconstructed EL; '
-                   'all reconstructed results remain derived estimates.')),
             w.HTML(gauge_model_help(expanded=False))])], selected_index=None)
         self.gauge_panel.set_title(0, 'Gauge reconstruction · per sample group')
         self.update_button = w.Button(description="Update plots", button_style="primary")
@@ -1265,11 +1268,11 @@ class TensileWorkbench:
             required=REQUIRED_VARIABLES['specimen'],
             get_defaults=lambda: {LOCATION: self._specimen_numbers},
             on_scope_change=lambda: self._refresh_specimen_variables(redraw=True))
-        self.custom_variable_tabs = w.Tab(children=[w.VBox([
-            w.HTML(help_html('Specimen count', '<b>Specimen count</b> shows <span style="color:var(--tw-muted,#667085)">X tested of</span> an editable total. '
+        self.group_variables.scope_row.children += (
+            help_widget(w, 'Specimen count', '<b>Specimen count</b> shows <span style="color:var(--tw-muted,#667085)">X tested of</span> an editable total. '
                    'Enter the whole-number total tested + untested. The grey count comes from imported specimens, including excluded ones. '
-                   'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.')),
-            self.group_variables.ui.children[0]]), self.specimen_variables.ui.children[0]])
+                   'Startup and Reload data keep the total at least this count, preserving larger totals for untested locations.'),)
+        self.custom_variable_tabs = w.Tab(children=[self.group_variables.ui.children[0], self.specimen_variables.ui.children[0]])
         self.custom_variable_tabs.set_title(0, 'Sample groups')
         self.custom_variable_tabs.set_title(1, 'Individual specimens')
         self.custom_variables_panel = w.Accordion(children=[self.custom_variable_tabs], selected_index=None,
@@ -1312,33 +1315,32 @@ class TensileWorkbench:
             local.append(axes)
             if family == GROUP_FAMILY:
                 local.insert(0, self.property_variants.ui)
-                local.insert(1, self.controls['properties_by_group_x_variable'])
-                local.insert(2, self._row([self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')]))
+                local.insert(1, control_row(w, [self.controls['properties_by_group_x_variable'],
+                    help_widget(w, 'X-axis values', 'Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
+                        'with their actual spacing. Missing values omit that group from this plot only. '
+                        'Edit values in <b>Custom variables</b> below the sample selector.')]))
+                local.insert(2, control_row(w, [*[self.controls['properties_by_group_show_' + key] for key in ('ys', 'uts', 'el')],
+                    help_widget(w, 'Properties and axes', 'Connecting lines join values, not a fitted trend. YS and UTS use the left axis; EL uses the right '
+                        '(or the only axis when shown alone). Each property uses its available included specimens. '
+                        'EL follows the group’s gauge reconstruction setting. Show individuals adds faint specimen points. '
+                        'For individual locations, use the separate YS/UTS/EL by specimen section.')]))
                 label_settings = w.Accordion(children=[w.VBox([
                     w.HTML(help_html('Short labels', 'Short x-axis labels for this plot only. Leave blank to use the usual display name. '
                            'Line breaks are allowed. Other plots and tables keep their existing names.')),
                     self.group_labels_box])], selected_index=None)
                 label_settings.set_title(0, 'X-axis labels · this plot only')
                 self.group_plot_label_settings = label_settings
-                local += [w.HTML(help_html('X-axis values', 'Sample names follow the shared <b>Sample group order</b>. Numeric variables use increasing X values '
-                                 'with their actual spacing. Missing values omit that group from this plot only. '
-                                 'Edit values in <b>Custom variables</b> below the sample selector.')),
-                          self.controls['properties_by_group_line_style'], label_settings,
+                local += [self.controls['properties_by_group_line_style'], label_settings,
                           self.controls['properties_by_group_error_bars'],
-                          self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')]),
-                          w.HTML(help_html('Properties and axes', 'Connecting lines join values, not a fitted trend. YS and UTS use the left axis; EL uses the right '
-                                 '(or the only axis when shown alone). '
-                                 'Each property uses its available included specimens. EL follows the group’s gauge reconstruction setting. '
-                                 'Show individuals adds faint specimen points. '
-                                 'For individual locations, use the separate YS/UTS/EL by specimen section.'))]
+                          self._row([self.controls[f'properties_by_group_{key}_color'] for key in ('ys', 'uts', 'el')])]
             if property_plot:
-                local += [self.controls[family + '_mean_population'], self.controls['property_error_bars'],
-                          w.HTML(help_html('Means and error bars', 'EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
+                local += [self.controls[family + '_mean_population'], control_row(w, [self.controls['property_error_bars'],
+                          help_widget(w, 'Means and error bars', 'EL uses Calc (CSV-detected fracture) or Reconstruct when gauge reconstruction is enabled. '
                                  'Group means use calculated specimen properties, not an average curve. '
                                  'Paired specimens uses the same specimens for both means and SDs. All eligible values '
                                  'uses each property’s own eligible values, matching the summary, with separate counts. '
                                  'Individual dots always require both values; independent means need not centre on those dots. '
-                                 'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.'))]
+                                 'Show individuals adds specimen points; SD bars show specimen scatter, not confidence intervals.')])]
             if family in ("landmark", "comparison", "work_hardening_landmark", "work_hardening_comparison"):
                 local.append(self.controls["landmark_points"])
             if family in ("landmark", "comparison"):
@@ -1373,13 +1375,12 @@ class TensileWorkbench:
         log = w.Accordion(children=[self.details], selected_index=None)
         log.set_title(0, "Calculation details and warnings")
         self.analysis_ui = w.VBox([
-            w.HTML('<h2>Analysis workspace</h2>' + help_html('Using the workspace',
-                'Choose an analysis and its sample groups. Settings save automatically. Update plots to generate results; Export saves them to your output folder.')),
+            control_row(w, [w.HTML('<h2>Analysis workspace</h2>', layout=w.Layout(width='auto')),
+                help_widget(w, 'Using the workspace', 'Choose an analysis and its sample groups. Settings save automatically. '
+                    'Update plots to generate results; Export saves them to your output folder.')]),
             self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
             self.delete_confirmation, self.name,
             self.save_status, self.group_picker.ui,
-            w.HTML(help_html('Selecting sample groups', 'Expand folders to choose individual groups, or tick a folder to select everything below it. '
-                   'A mixed tick means only some groups are selected. Groups are still analysed separately.')),
             self.move_review.ui,
             self.workspace_tools,
             self.fit_review_bar, self.properties_panel,
@@ -2146,6 +2147,7 @@ class TensileWorkbench:
         previous = self.gauge_grid.children
         try:
             cells = [w.HTML('<b>' + title + '</b>') for title in ('Sample group', 'Target (mm)', 'Reconstruct')]
+            cells[2].value = help_html('Reconstruct', self.gauge_help)
             self._gauge_rows = {}
             self._gauge_graph_id = graph['id']
             for group in groups:

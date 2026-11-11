@@ -1,7 +1,7 @@
 """On-demand specimen inspection and explicitly applied fit-override previews."""
 from copy import deepcopy
 from html import escape
-from tensile_help import help_html
+from tensile_help import help_html, help_widget, control_row
 from pathlib import Path
 
 import numpy as np
@@ -776,9 +776,9 @@ class SpecimenInspector:
         self.y1 = w.FloatText(description='End stress (MPa)', continuous_update=False, style={'description_width': 'initial'})
         self.fit_pick = w.ToggleButtons(options=[('Not picking', ''), ('Set start', 'start'), ('Set end', 'end')],
                                         value='', description='Click curve:', style={'description_width': 'initial'})
-        self.fit_pick_hint = w.HTML(help_html('Picking a fit', 'Choose Set start or Set end, then click a measured point. '
+        self.fit_pick_hint = help_widget(w, 'Picking a fit', 'Choose Set start or Set end, then click a measured point. '
             'Manual range takes strain only; Manual line takes strain and stress. '
-            'Start advances to End; after End, picking stops. Nothing is saved until Apply.'))
+            'Start advances to End; after End, picking stops. Nothing is saved until Apply.')
         self.line_fields = w.HBox([self.y0, self.y1], layout=w.Layout(flex_flow='row wrap', display='none'))
         self.reason = w.Text(description='Reason:', placeholder='Why is the fit being adjusted?', continuous_update=True,
                              layout=w.Layout(width='min(100%, 800px)'))
@@ -787,7 +787,7 @@ class SpecimenInspector:
         self.cancel_button = w.Button(description='Cancel preview', disabled=True)
         self.restore_button = w.Button(description='Restore automatic fit', layout=w.Layout(width='auto'), disabled=True)
         self.edit_status = w.HTML('Select a specimen to review or adjust its elastic fit.')
-        self.editor = w.Accordion(children=[w.VBox([self.mode, self.fit_pick, self.fit_pick_hint,
+        self.editor = w.Accordion(children=[w.VBox([self.mode, control_row(w, [self.fit_pick, self.fit_pick_hint]),
             w.HBox([self.x0, self.x1], layout=w.Layout(flex_flow='row wrap')), self.line_fields, self.reason,
             w.HBox([self.apply_button, self.cancel_button, self.restore_button], layout=w.Layout(flex_flow='row wrap')),
             self.edit_status])], selected_index=None)
@@ -804,12 +804,12 @@ class SpecimenInspector:
         self.failure_cancel = w.Button(description='Cancel EL preview', layout=w.Layout(width='auto'), disabled=True)
         self.failure_restore = w.Button(description='Restore automatic EL', layout=w.Layout(width='auto'), disabled=True)
         self.failure_status = w.HTML('Select a specimen to adjust failure elongation.')
-        self.failure_editor = w.Accordion(children=[w.VBox([
-            w.HTML(help_html('Picking failure EL', 'Enter measured EL (%) or click the measured curve while editing. EL snaps to a recorded '
+        failure_help = help_widget(w, 'Picking failure EL', 'Enter measured EL (%) or click the measured curve while editing. EL snaps to a recorded '
                    'post-peak point; the row selector distinguishes repeated strain readings. '
                    'Choose the endpoint before any unwanted fracture/unloading tail. '
-                   'Reconstruction is applied afterwards; do not enter reconstructed EL here.')),
-            self.failure_enabled, w.HBox([self.failure_el, self.failure_row], layout=w.Layout(flex_flow='row wrap')),
+                   'Reconstruction is applied afterwards; do not enter reconstructed EL here.')
+        self.failure_editor = w.Accordion(children=[w.VBox([
+            control_row(w, [self.failure_enabled, failure_help]), w.HBox([self.failure_el, self.failure_row], layout=w.Layout(flex_flow='row wrap')),
             self.failure_reason, w.HBox([self.failure_apply, self.failure_cancel, self.failure_restore],
                                        layout=w.Layout(flex_flow='row wrap')), self.failure_status])], selected_index=None)
         self.failure_editor.set_title(0, '✎ Adjust failure elongation · preview before applying')
@@ -838,9 +838,8 @@ class SpecimenInspector:
         from tensile_plot_picker import review_selector_css
         selector_style = w.HTML(review_selector_css('tw-inspector-view-switch',
             ('detail_yield', 'detail_failure', 'detail_full')), layout=w.Layout(height='0', margin='0'))
-        self.ui = w.VBox([selector_style, w.HBox([self.choice, self.previous, self.next],
-                                layout=w.Layout(flex_flow='row wrap', grid_gap='6px')),
-                          self.status,
+        self.status.layout.width = 'auto'
+        self.ui = w.VBox([selector_style, control_row(w, [self.choice, self.previous, self.next, self.status]),
                           w.HBox([self.view, self.reset, self.gauge_overlay],
                                  layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='10px', margin='4px 0 10px')),
                           self.gauge_status, self.checks, self.review_actions, self.editor, self.failure_editor,

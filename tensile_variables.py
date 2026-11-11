@@ -133,7 +133,7 @@ class GroupVariablesView:
                  *, scope='group', row_label=None, on_scope_change=None, required=None,
                  get_defaults=None):
         # Project validation is also used before the UI dependencies are loaded.
-        from tensile_help import help_html
+        from tensile_help import help_widget, control_row
         from tensile_variable_table import VariableTable
         self.get_variables, self.get_groups = get_variables, get_groups
         self.on_save_all = on_save_all
@@ -170,16 +170,15 @@ class GroupVariablesView:
         self.discard.icon = 'undo'
         self.delete_confirm.icon, self.delete_confirm.tooltip = 'trash', 'Delete the variable named in the confirmation. This applies to all analyses.'
         self.delete_cancel.icon, self.delete_cancel.tooltip = 'times', 'Keep the variable and close the confirmation.'
-        self.table_ui = w.VBox([
-            w.HTML(help_html('Editing and pasting', 'Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
+        paste_help = help_widget(w, 'Editing and pasting', 'Row 1: name · Row 2: unit · Rows 3 onward: ' + entity + '. '
                    'Paste CSV/TSV or an Excel block into a cell; extra columns are added automatically. '
                    'Paste variable cells only, without the row labels. Blank cells clear values. '
-                   'Edits are applied with Save all variables; deletion requires separate confirmation.')),
-            w.HBox([self.add, self.save_all, self.discard], layout=w.Layout(flex_flow='row wrap')),
+                   'Edits are applied with Save all variables; deletion requires separate confirmation.')
+        self.table_ui = w.VBox([
+            control_row(w, [self.add, self.save_all, self.discard, paste_help]),
             self.table], layout=w.Layout(width='100%', min_width='0'))
         self.status = w.HTML()
-        self.ui = w.Accordion(children=[w.VBox([
-            w.HTML(help_html('Custom variables', 'Numeric values attached to ' + entity + ', shared by all analyses. Create as many variables as needed. '
+        variable_help = help_widget(w, 'Custom variables', 'Numeric values attached to ' + entity + ', shared by all analyses. Create as many variables as needed. '
                    'Rows follow this analysis’s sample group order. '
                    'Leave unknown values blank; zero is a valid value. Unsaved edits are preserved when switching analyses or reloading.'
                    + (' Specimen rows use operator labels when available; hover a row label for its stable CSV identity. '
@@ -187,8 +186,10 @@ class GroupVariablesView:
                       'Automatic locations appear after the group loads and passes name/UTS verification. '
                       'Unselected rows can be browsed without loading curves; their candidate labels do not yet supply defaults. '
                       'CSV row numbers are never used as locations. '
-                      'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else ''))),
-            self.all_groups, self.delete_panel, self.table_ui, self.status
+                      'Within each group, rows are sorted by specimen name.' if scope == 'specimen' else ''))
+        self.scope_row = control_row(w, [self.all_groups, variable_help])
+        self.ui = w.Accordion(children=[w.VBox([
+            self.scope_row, self.delete_panel, self.table_ui, self.status
         ])], selected_index=None, layout=w.Layout(width='100%', min_width='0'))
         self.ui.set_title(0, 'Custom variables · shared by all analyses')
         self.all_groups.observe(self._scope_changed, names='value')

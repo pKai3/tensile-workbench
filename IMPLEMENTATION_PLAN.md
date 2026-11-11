@@ -2,6 +2,18 @@
 
 ## Change notes — 2026-11-11
 
+### Inline contextual help — implemented
+
+- Place help beside related controls in plot galleries, table filters, group
+  reviews, the inspector, variable editors and settings. Keep responsive wrapping
+  for narrow windows, without reserving a separate row for each help prompt.
+- Rename the manual move-check action to **Check now**; its tooltip explains that
+  startup and settled folder changes trigger checks automatically. Migration
+  approval remains explicit.
+- Verification: 58 focused checks passed; synthetic browser checks confirmed
+  inline gallery help and compact variable controls, with no JavaScript errors.
+  The isolated preview and its kernel were stopped afterwards.
+
 ### Plot-control grouping and consistent card sizing — implemented
 
 - Separate display mode and specimen visibility into labelled rows.
