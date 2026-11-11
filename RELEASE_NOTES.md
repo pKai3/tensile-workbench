@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.12
 
 - **Show sample data** no longer reloads or recalculates experimental data.
   Existing tables and plots stay ready unless selected examples actually enter
