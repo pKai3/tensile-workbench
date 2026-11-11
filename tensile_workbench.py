@@ -16,7 +16,7 @@ from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
 from tensile_plot_picker import PlotPicker, review_selector_css
 from tensile_popup import SettingsPopup
-from tensile_help import help_html, help_widget, control_row, HelpTooltips
+from tensile_help import help_html, help_widget, control_row, notice_widget, HelpTooltips
 from tensile_move_review import MoveReview
 from tensile_overrides import clear_disabled
 from tensile_override_view import SavedOverridesView
@@ -1040,46 +1040,46 @@ class TensileWorkbench:
         self._results, self._signature = [], None
         self._pending_delete = None
         self.controls, self.axes, self.title_inputs = {}, {}, {}
-        self.graph = w.Dropdown(description="Saved analyses:", style={'description_width': '120px'},
-                                layout=w.Layout(width="98%"))
-        self.name = w.Text(description="Analysis name:", style={'description_width': '120px'},
-                           continuous_update=False, layout=w.Layout(width="98%"))
+        self.graph = w.Dropdown(description="Analysis:", style={'description_width': '65px'},
+                                layout=w.Layout(width='460px', max_width='100%'))
+        self.name = w.Text(description="Name:", style={'description_width': '65px'},
+                           continuous_update=False, layout=w.Layout(width='460px', max_width='100%'))
         self.new_button = w.Button(description="New analysis", layout=w.Layout(width='auto'))
-        self.duplicate_button = w.Button(description="Duplicate analysis", layout=w.Layout(width='auto'))
-        self.delete_button = w.Button(description='Delete analysis', button_style='danger', layout=w.Layout(width='auto'))
-        self.undo_delete_button = w.Button(description='Undo delete', disabled=True)
+        self.duplicate_button = w.Button(description="Duplicate", layout=w.Layout(width='auto'))
+        self.delete_button = w.Button(description='Delete', button_style='danger', layout=w.Layout(width='auto'))
+        self.undo_delete_button = w.Button(description='Undo delete', disabled=True, layout=w.Layout(width='auto'))
         self.delete_message = w.HTML()
         self.confirm_delete_button = w.Button(description='Confirm delete', button_style='danger')
         self.cancel_delete_button = w.Button(description='Cancel')
         self.delete_confirmation = w.VBox([self.delete_message,
             self._row([self.confirm_delete_button, self.cancel_delete_button])], layout=w.Layout(display='none'))
-        self.saved_button = w.Button(description="Reload saved analyses", layout=w.Layout(width='auto'))
-        self.save_status = w.HTML()
+        self.saved_button = w.Button(description="Reload analyses", layout=w.Layout(width='auto'))
+        self.save_status = notice_widget(w)
         self.status = w.HTML()
         self.controls["groups"] = w.SelectMultiple(description="Groups:", rows=6, layout=w.Layout(width="98%"))
         self.group_picker = GroupCheckboxes(w, self.controls["groups"], self.store.data.get('display_names', {}))
         self.group_picker.ui.children[0].value = '<b>Sample groups</b> ' + help_html('Selecting sample groups',
             'Expand folders to choose individual groups, or tick a folder to select everything below it. '
-            'A mixed tick means only some groups are selected. Groups are still analysed separately.')
+            'A mixed tick means only some groups are selected. Groups are still analysed separately.', compact=True)
         self.move_review = MoveReview(w, self.store, self.session, before_apply=self.save_current,
             after_apply=self._move_applied, reload_data=lambda: self._reload_data(plots=False),
             after_forget=lambda: self._move_applied('Removed group forgotten'))
         self.sample_data_toggle = w.Checkbox(value=self.session.show_sample_data, description='Show sample data',
-            indent=False, tooltip='Show or hide bundled synthetic groups alongside your own data',
+            indent=False, tooltip='Show bundled synthetic examples alongside your data. Hiding them keeps their saved selections. These are not experimental measurements.',
             layout=w.Layout(width='auto'))
-        self.sample_data_note = w.HTML()
-        self.group_picker.ui.children = (self.group_picker.ui.children[0],
-            self._row([self.sample_data_toggle, self.sample_data_note]), *self.group_picker.ui.children[1:])
+        self.sample_data_note = notice_widget(w)
         self.project_filter = w.Dropdown(description='Project:', options=[('All projects', ''),
             *((source['name'], source['id']) for source in self.session.sources)],
-            layout=w.Layout(width='300px', max_width='100%'))
+            style={'description_width': 'initial'}, layout=w.Layout(width='280px', max_width='100%', margin='0'))
         self.group_search = w.Text(placeholder='Find sample group…', continuous_update=False,
             tooltip='Filter by group name or folder. Hidden selections remain selected.',
-            layout=w.Layout(width='300px', max_width='100%'))
-        self.folder_status = w.HTML('<small>Watching project folders while idle.</small>')
-        self.group_picker.ui.children = (*self.group_picker.ui.children[:2],
-            self._row([self.project_filter, self.group_search]), self.folder_status,
-            *self.group_picker.ui.children[2:])
+            layout=w.Layout(width='260px', max_width='100%', margin='0'))
+        self.folder_status = notice_widget(w)
+        self.group_toolbar = control_row(w, [self.project_filter, self.group_search,
+            self.sample_data_toggle, self.move_review.check])
+        self.group_toolbar.add_class('tw-group-toolbar')
+        self.group_picker.ui.children = (self.group_picker.ui.children[0], self.group_toolbar,
+            self.sample_data_note, self.folder_status, *self.group_picker.ui.children[1:])
         self.project_filter.observe(self._filter_groups, names='value')
         self.group_search.observe(self._filter_groups, names='value')
         self.family_boxes = {family: w.Checkbox(description=label, indent=False, layout=w.Layout(width="auto")) for label, family in FAMILIES}
@@ -1187,18 +1187,18 @@ class TensileWorkbench:
             self.axes[key] = (auto, lo, hi, row)
         for label, family in FAMILIES:
             self.title_inputs[family] = w.Text(description=label, continuous_update=False,
-                style={"description_width": "initial"}, layout=w.Layout(width="98%"))
-        self.override_group = w.Dropdown(description="Group:", layout=w.Layout(width="98%"))
+                style={"description_width": "65px"}, layout=w.Layout(width='700px', max_width='100%'))
+        self.override_group = w.Dropdown(description="Group:", style={'description_width': '90px'}, layout=w.Layout(width='560px', max_width='100%'))
         self.controls['color_palette'] = w.Dropdown(description='Palette:', options=PALETTE_OPTIONS,
-            value=DEFAULT_PALETTE, layout=w.Layout(width='98%'))
+            value=DEFAULT_PALETTE, style={'description_width': '90px'}, layout=w.Layout(width='420px', max_width='100%'))
         self.palette_swatches = w.HTML()
         self.override_name = w.Text(description="Legend label:", continuous_update=False,
-                                    style={"description_width": "initial"}, layout=w.Layout(width="98%"))
+                                    style={"description_width": "90px"}, layout=w.Layout(width='700px', max_width='100%'))
         self.override_color_enabled = w.Checkbox(description='Override colour for this analysis', indent=False)
         self.override_color = w.ColorPicker(description='Colour:', value='#1f77b4', concise=False)
         self.override_e_enabled = w.Checkbox(description="Use a group-specific WH modulus", indent=False)
         self.override_e = w.BoundedFloatText(value=115, min=1, max=1000, description="E (GPa):")
-        self.override_rep = w.Dropdown(description="Representative:", style={"description_width": "initial"}, layout=w.Layout(width="98%"))
+        self.override_rep = w.Dropdown(description="Representative:", style={"description_width": "initial"}, layout=w.Layout(width='560px', max_width='100%'))
         self.override_button = w.Button(description="Apply group overrides")
         self._gauge_rows, self._gauge_graph_id, self._gauge_sync = {}, None, False
         self.gauge_grid = w.GridBox(layout=w.Layout(
@@ -1228,13 +1228,15 @@ class TensileWorkbench:
                                         group_loader=lambda group: self.session.group_review_records(group, self._current()['definition']),
                                         aligned_group_loader=lambda group: self.session.group_review_landmark(
                                             group, self.state(), self._current()['definition']))
-        self.fit_warning = w.HTML(layout=w.Layout(width='100%'))
+        self.fit_warning = notice_widget(w)
+        self.fit_warning.layout.flex = '1 1 auto'
         self.review_fits = w.Button(description='Review specimens', layout=w.Layout(width='145px', flex='0 0 145px'), disabled=True)
         self.review_fits.on_click(self._review_fits)
         self.fit_review_bar = w.VBox([
             self._row([self.tables.threshold, self.tables.threshold_status]),
             w.HBox([self.fit_warning, self.review_fits], layout=w.Layout(width='100%'))
         ], layout=w.Layout(width='100%'))
+        self.review_fits.layout.display = 'none'
         self.tables_update_button = w.Button(description='Update tables')
         self.tables_reload_button = w.Button(description='Reload data',
             tooltip='Reread CSVs and summary files, refresh tables, and clear old plots. No page refresh needed.')
@@ -1378,9 +1380,9 @@ class TensileWorkbench:
             control_row(w, [w.HTML('<h2>Analysis workspace</h2>', layout=w.Layout(width='auto')),
                 help_widget(w, 'Using the workspace', 'Choose an analysis and its sample groups. Settings save automatically. '
                     'Update plots to generate results; Export saves them to your output folder.')]),
-            self.graph, self._row([self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
-            self.delete_confirmation, self.name,
-            self.save_status, self.group_picker.ui,
+            control_row(w, [self.graph, self.duplicate_button, self.delete_button, self.undo_delete_button, self.saved_button]),
+            self.delete_confirmation, control_row(w, [self.name, self.save_status]),
+            self.group_picker.ui,
             self.move_review.ui,
             self.workspace_tools,
             self.fit_review_bar, self.properties_panel,
@@ -1454,10 +1456,10 @@ class TensileWorkbench:
         if self.controls["live_update"].value:
             self.update()
         else:
-            self.status.value = "Saved definitions restored. Click <b>Update plots</b> when ready."
+            self.status.value = ''
 
     def _row(self, children):
-        return self.w.HBox(children, layout=self.w.Layout(flex_flow="row wrap", grid_gap="6px"))
+        return self.w.HBox(children, layout=self.w.Layout(flex_flow="row wrap", align_items='center', grid_gap="6px"))
 
     def _add_control_help(self):
         """Keep action icons and native hover help consistent across the workspace."""
@@ -1544,8 +1546,8 @@ class TensileWorkbench:
             self._paused = old
 
     def _show_saved(self):
-        detail = 'Revision ' + str(self.store.data['revision']) + ' · ' + self.store.path.name
-        self.save_status.value = '<span title="' + escape(detail, quote=True) + '">✓ Changes saved automatically</span>'
+        detail = 'Changes save automatically. Revision ' + str(self.store.data['revision']) + ' · ' + self.store.path.name
+        self.save_status.value = '<span title="' + escape(detail, quote=True) + '">✓ Saved</span>'
         if self.store.backup_warning:
             self.save_status.value += '<br><b>' + escape(self.store.backup_warning) + '</b> Open Backups & restore to retry.'
         deleted = self.store.data.get('deleted_graphs', [])
@@ -2319,6 +2321,7 @@ class TensileWorkbench:
         from tensile_sources import FolderChanges, folder_snapshot
         try:
             self._folder_changes = FolderChanges(folder_snapshot(self.session.sources))
+            self.folder_status.value = ''
         except OSError as error:
             self._folder_changes = FolderChanges({})
             self.folder_status.value = '<small>Folder watch will retry: ' + escape(str(error)) + '</small>'
@@ -2365,8 +2368,8 @@ class TensileWorkbench:
                 self._invalidate_watched_outputs()
             self._folder_changes.accept(current)
             missing = [s['name'] for s in self.session.sources if not Path(s['path']).is_dir()]
-            self.folder_status.value = '<small>Project folders refreshed automatically. Saved selections are retained.' + (
-                ' Unavailable: ' + escape(', '.join(missing)) + '.' if missing else '') + '</small>'
+            self.folder_status.value = ('<small>Project folder unavailable: ' + escape(', '.join(missing))
+                + '. Reconnect it in Projects.</small>') if missing else ''
         except Exception as error:
             self.folder_status.value = '<small>Folder refresh will retry: ' + escape(str(error)) + '</small>'
 
@@ -2400,13 +2403,11 @@ class TensileWorkbench:
         self.session.set_project(self.store.data)
 
     def _sample_data_note(self):
-        if not self.session.sample_data_dir.is_dir():
+        if self.session.show_sample_data and not self.session.sample_data_dir.is_dir():
             message = 'Bundled samples unavailable; your own data is unaffected.'
-        elif not self.session.show_sample_data:
-            message = 'Synthetic samples hidden; saved selections are retained.'
         else:
-            message = 'Synthetic examples only—not experimental measurements.'
-        self.sample_data_note.value = '<small>' + escape(message) + '</small>'
+            message = ''
+        self.sample_data_note.value = '<small>' + escape(message) + '</small>' if message else ''
 
     @busy('Loading sample groups…')
     def _sample_data_changed(self, change):
@@ -2593,9 +2594,11 @@ class TensileWorkbench:
         if samples is None or samples.empty:
             self.fit_warning.value = import_note
             self.review_fits.disabled = not issues
+            self.review_fits.layout.display = '' if issues else 'none'
             return
         flagged = samples[specimen_review_mask(samples)]
         self.review_fits.disabled = flagged.empty and not issues
+        self.review_fits.layout.display = 'none' if self.review_fits.disabled else ''
         included = int(flagged['Included'].sum())
         withheld = int(flagged['Duplicate review'].ne('').sum()) if 'Duplicate review' in flagged else 0
         excluded = len(flagged) - included - withheld
@@ -2607,7 +2610,7 @@ class TensileWorkbench:
             'border-left:3px solid var(--tw-warning-border,#d97706)">'
             f'<b>{len(flagged)} {"specimen needs" if len(flagged) == 1 else "specimens need"} review</b> · {included} included; {excluded} excluded. '
             + duplicate_note + f'Fit, fracture/EL, reconstruction or Instron checks. R² threshold {threshold:.5f}. {review_note}</div>'
-            if len(flagged) else f'Specimen checks: no review items. R² threshold {threshold:.5f}.')
+            if len(flagged) else '')
         self.fit_warning.value += import_note
 
     def _inspect_specimen(self, ident):

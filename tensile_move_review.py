@@ -4,6 +4,7 @@ from html import escape
 
 from tensile_moves import scan_moves, migrate_settings, references, forget_group
 from tensile_activity import busy
+from tensile_help import notice_widget
 
 
 class MoveReview:
@@ -13,8 +14,8 @@ class MoveReview:
         self.after_forget = after_forget or after_apply
         self._pending_forget = None
         self._owned = []
-        self.summary = widgets.HTML()
-        self.message = widgets.HTML()
+        self.summary = notice_widget(widgets)
+        self.message = notice_widget(widgets)
         self.rows = widgets.VBox(layout=widgets.Layout(width='100%'))
         self.check = widgets.Button(description='Check now', icon='refresh',
             tooltip='Moves are checked automatically at startup and after project-folder changes settle while the page is visible and idle. Check now forces an immediate reload. Review each proposed settings transfer before applying it.', layout=widgets.Layout(width='auto'))
@@ -29,9 +30,7 @@ class MoveReview:
         self.confirmation = widgets.VBox([self.forget_message,
             widgets.HBox([self.confirm_forget, self.cancel_forget])], layout=widgets.Layout(display='none'))
         self.ui = widgets.VBox([
-            widgets.HBox([self.summary, self.check], layout=widgets.Layout(
-                flex_flow='row wrap', align_items='center', grid_gap='8px')),
-            self.message, self.confirmation, self.rows], layout=widgets.Layout(width='100%'))
+            self.summary, self.message, self.confirmation, self.rows], layout=widgets.Layout(width='100%', display='none', margin='0'))
 
     @busy('Checking for moved sample groups…')
     def refresh(self):
@@ -51,6 +50,7 @@ class MoveReview:
             self._draw(proposals, warnings)
             self.message.value = ''
         except Exception as error:
+            self.ui.layout.display = ''
             self.summary.value = '<b>Move check unavailable.</b>'
             self.message.value = escape(str(error)) + ' No relocation settings were applied.'
             self._clear_rows()
@@ -72,8 +72,9 @@ class MoveReview:
                    for warning in warnings]
         count = len(proposals)
         self.summary.value = (f'<b>{count} moved group(s) need your OK.</b> No settings migrated yet.' if count
-                              else 'Move protection: no pending migrations.' if not notices
+                              else '' if not notices
                               else '<b>Move protection: review needed.</b> No settings migrated.')
+        self.ui.layout.display = '' if count or notices else 'none'
         children = []
         for proposal in proposals:
             old, new = escape(proposal['old']), escape(proposal['new'])

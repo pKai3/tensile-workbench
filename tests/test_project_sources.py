@@ -194,6 +194,7 @@ class ProjectSourcesTests(unittest.TestCase):
         self.assertEqual(app.controls['groups'].value, selected)
         self.assertIs(app.session._load('Alloy A'), first)
         self.assertEqual(app.project_filter.value, 'partner')
-        self.assertIn('refreshed automatically', app.folder_status.value)
+        self.assertEqual(app.folder_status.value, '')
+        self.assertEqual(app.folder_status.layout.display, 'none')
         app.close()
         self.assertFalse(app._folder_watch.enabled)

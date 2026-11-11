@@ -29,12 +29,12 @@ class BackupPanel:
                                    layout=w.Layout(display='none'))
         self.message = w.HTML()
         self.location = w.HTML()
-        self.content = w.VBox([
-            w.HTML('<p>Automatic history covers settings only—not data or exported plots. '
+        self.file.tooltip = ('Automatic history covers settings only—not data or exported plots. '
                    'Keeps 20 latest changed versions, hourly checkpoints within 48 hours of saved history, and 30 daily checkpoints. '
                    'Manual, pre-migration and pre-restore copies are kept until you remove them yourself. '
                    'Back up now saves both settings files; Restore changes only the selected file. '
-                   'Unsaved editor drafts are not backed up.</p>'),
+                   'Unsaved editor drafts are not backed up.')
+        self.content = w.VBox([
             self.file, self.snapshots,
             w.HBox([self.backup_now, self.refresh_button, self.restore_button], layout=w.Layout(flex_flow='row wrap')),
             self.confirmation, self.message, self.location,

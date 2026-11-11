@@ -4,6 +4,7 @@ import uuid
 from tensile_settings import (GROUP_DEFAULTS, GROUP_FAMILY, validate_group_display, planned_positions,
                               SPECIMEN_TREND_KEY, SPECIMEN_GROUPS_KEY)
 from tensile_locations import LOCATION, SPECIMEN_COUNT
+from tensile_help import help_widget, control_row
 
 VARIANTS_KEY = 'properties_by_group_variants'
 SPECIMEN_FAMILY = 'properties_by_specimen'
@@ -83,9 +84,10 @@ class PropertyVariantsView:
         self.add = w.Button(description='Add plot variant', icon='plus', tooltip='Copy this plot into a separate variant with its own settings.', layout=w.Layout(width='auto'))
         self.remove = w.Button(description='Remove this plot', icon='trash', tooltip='Remove this plot variant from the current analysis.', layout=w.Layout(width='auto'))
         self.choice.tooltip = 'Choose which separate plot variant to edit. Other variants retain their settings.'
-        self.ui = w.VBox([w.HTML('All variants below are plotted separately. Each has its own X-axis, properties, title and styling. '
-                                'Adding a variant copies the current plot; removal affects only this analysis.'),
-                          self.choice, w.HBox([self.add, self.remove], layout=w.Layout(flex_flow='row wrap')), self.name])
+        self.ui = w.VBox([control_row(w, [self.choice,
+            help_widget(w, 'Plot variants', 'Each variant produces a separate plot with its own X-axis, properties, title and styling. '
+                'Adding a variant copies the current plot; removal affects only this analysis.')]),
+            control_row(w, [self.add, self.remove]), self.name])
         self.choice.observe(self._switch, names='value')
         self.name.observe(self._rename, names='value')
         self.add.on_click(self._add)

@@ -1,11 +1,13 @@
-# Tensile Workbench 1.0.11
+# Tensile Workbench — next update
 
-- Reduce scrolling by putting help prompts beside their related controls across
-  plot galleries, table filters, group reviews, the inspector and variable editors.
-  Controls wrap naturally on smaller screens.
-- Clarify automatic move checking: **Check now** forces an immediate check;
-  startup and settled project-folder changes already check automatically.
-  Moving saved settings still requires your approval.
+- Clarify every **Data use** exclusion mode: hover over the help icon for a
+  side-by-side comparison of retained properties and curve contributions.
+  Partial exclusions also show a short effect summary beneath the selector.
+- Make analysis fields and sample-group controls more compact and consistently
+  aligned, with sensible widths instead of stretching across the whole page.
+- Remove routine folder-watching and sample-visibility notices. Keep errors and
+  pending reviews visible, with ordinary guidance available through help icons
+  and tooltips.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.

@@ -233,7 +233,7 @@ class PlotPicker:
         self.status.value = (f'<span class="tw-plot-count">{count} plot type' + ('s' if count != 1 else '') +
                              ' selected</span>' + help_html('Selecting plots',
                              'Click a card to select or deselect it. Use its Settings gear to customise that plot. '
-                             'Update plots generates the results; related plots share averaging and axis settings.'))
+                             'Update plots generates the results; related plots share averaging and axis settings.', compact=True))
 
     def open_settings(self, family):
         if not self.boxes[family].value:

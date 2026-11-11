@@ -4,6 +4,7 @@ from tensile_locations import LOCATION
 from tensile_property_variants import PropertyVariantsView, SPECIMEN_DEFAULTS, TITLE_KEY
 from tensile_variables import property_chart_title, variable_label
 from tensile_settings import SPECIMEN_TREND_KEY, SPECIMEN_GROUPS_KEY, specimen_trend
+from tensile_help import help_widget, control_row
 
 
 class SpecimenChartsView:
@@ -48,21 +49,21 @@ class SpecimenChartsView:
         axis_panel = w.Accordion(children=[w.VBox([a[3] for a in self.axes.values()])], selected_index=None)
         axis_panel.set_title(0, 'Axes · this plot')
         self.variants = PropertyVariantsView(w, self.capture, self.apply, self._changed)
-        self.ui = w.VBox([
-            w.HTML('One grouped bar plot per chosen sample group, with individual YS/UTS/EL values. '
+        location_help = help_widget(w, 'Specimen locations', 'One grouped bar plot per chosen sample group, with individual YS/UTS/EL values. '
                    '<b>Location</b> defaults to the operator specimen number; edit overrides in '
                    '<b>Custom variables → Individual specimens</b>. Set the tested + untested total in '
-                   '<b>Custom variables → Sample groups → Specimen count</b>.'),
-            self.variants.ui, self.group_ui, self.controls[prefix + 'x_variable'],
-            w.HBox([self.controls[prefix + 'show_' + key] for key in ('ys', 'uts', 'el')]),
-            title, axis_panel, self.controls[SPECIMEN_TREND_KEY],
-            w.HBox([self.controls[prefix + key + '_color'] for key in ('ys', 'uts', 'el')],
-                   layout=w.Layout(flex_flow='row wrap')),
-            w.HTML('No group averages or SD bars. Excluded properties stay omitted; EL follows gauge reconstruction. '
+                   '<b>Custom variables → Sample groups → Specimen count</b>.')
+        trend_help = help_widget(w, 'Trendlines and excluded values', 'No group averages or SD bars. Excluded properties stay omitted; EL follows gauge reconstruction. '
                    'Specimen count keeps untested locations visible without adding measurements. '
-                   'Quadratic (order 2) trendlines are the default and need at least three distinct locations. '
+                   'Quadratic (order 2) trendlines need at least three distinct locations. '
                    'Trendlines use measured eligible values only: dashed within the measured range, dotted beyond it. '
-                   'Extrapolation is not a measured result or a validated prediction.')])
+                   'Extrapolation is not a measured result or a validated prediction.')
+        self.ui = w.VBox([
+            self.variants.ui, self.group_ui, control_row(w, [self.controls[prefix + 'x_variable'], location_help]),
+            w.HBox([self.controls[prefix + 'show_' + key] for key in ('ys', 'uts', 'el')]),
+            title, axis_panel, control_row(w, [self.controls[SPECIMEN_TREND_KEY], trend_help]),
+            w.HBox([self.controls[prefix + key + '_color'] for key in ('ys', 'uts', 'el')],
+                   layout=w.Layout(flex_flow='row wrap'))])
         for control in self.controls.values():
             control.observe(self._changed, names='value')
         self.title.observe(self._changed, names='value')
@@ -89,8 +90,7 @@ class SpecimenChartsView:
             count = sum(box.value for box in self.group_boxes.values())
             self.all_groups.value = self._selected_groups is None or bool(groups) and count == len(groups)
             self.all_groups.disabled = not groups
-            self.group_note.value = (f'{count} of {len(groups)} workspace groups selected for this plot variant. '
-                                     'Tables and specimen exclusions are unchanged.' if groups else
+            self.group_note.value = (f'{count} of {len(groups)} groups selected' if groups else
                                      'Select sample groups in the workspace above first.')
         finally:
             self.paused = old

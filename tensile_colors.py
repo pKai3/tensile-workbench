@@ -120,9 +120,7 @@ def palette_preview(palette, classic_colors=None):
         + '" style="display:inline-block;width:32px;height:19px;border:1px solid var(--tw-control-border,#0002);'
           'border-radius:4px;background:' + escape(color, quote=True) + '"></span>'
         for color in colors)
-    return ('<div style="display:flex;flex-wrap:wrap;gap:5px;margin:5px 0">' + swatches + '</div>'
-            '<div style="white-space:normal;line-height:1.4">'
-            f'{len(colors)} colours; only selected groups use a colour. '
-            'Removed groups free their colours for reuse; colours repeat only when needed. '
-            'Saved per analysis; individual group overrides take priority. '
-            'YS/UTS/EL plots keep their separate property colours.</div>')
+    explanation = (f'{len(colors)} colours. Only selected groups use a colour; removed groups free their colours for reuse. '
+                   'Saved per analysis; group overrides take priority. YS/UTS/EL plots use their separate property colours.')
+    return ('<div title="' + escape(explanation, quote=True)
+            + '" style="display:flex;flex-wrap:wrap;gap:5px;margin:5px 0">' + swatches + '</div>')

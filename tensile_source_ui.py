@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tensile_popup import SettingsPopup
 from tensile_sources import browse, new_source
+from tensile_help import notice_widget
 
 
 class SourceEditor:
@@ -54,7 +55,7 @@ class SourceEditor:
         name.tooltip = 'Project label. Renaming an added project prompts review before its saved settings are transferred.'
         path.tooltip = 'Source folder. Relink this path if the project has moved; files are never copied or modified.'
         output.tooltip = 'Optional output for analyses using only this project. Analyses spanning projects use the main output.'
-        status = w.HTML()
+        status = notice_widget(w)
         fields = dict(name=name, path=path, output=output)
         row = dict(source=source, fields=fields, status=status)
         paths = w.HBox([
@@ -69,7 +70,7 @@ class SourceEditor:
             from tensile_startup import resolve_folder
             try:
                 exists = resolve_folder(path.value, self.root).is_dir()
-                status.value = ('<small>Available</small>' if exists else
+                status.value = ('' if exists else
                     '<small>Unavailable · saved work is retained. Choose the folder when it is available.</small>')
             except ValueError:
                 status.value = '<small>Choose a source folder.</small>'

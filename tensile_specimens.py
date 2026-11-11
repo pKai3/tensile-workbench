@@ -1,7 +1,23 @@
 """Editable inclusion column; numerical properties stay read-only."""
 import anywidget
 import traitlets
-from tensile_selection import DATA_MODES
+from html import escape
+from tensile_selection import DATA_MODES, data_mode_effects
+from tensile_help import help_html
+
+
+def data_use_help():
+    rows = ''.join('<tr><th scope="row">' + escape(DATA_MODES[mode]) + '</th><td>'
+                   + escape(effect['keeps']) + '</td><td>' + escape(effect['shape']) + '</td></tr>'
+                   for mode, effect in data_mode_effects().items())
+    return help_html('Data use: what contributes',
+        '<div class="tw-data-mode-guide"><table><thead><tr><th>Option</th><th>Properties retained</th>'
+        '<th>Curve shape</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        '<p>E = fitted elastic modulus. EL = elongation. Only valid values contribute.</p>'
+        '<p>Retained properties still contribute to group means and landmark anchors, even when curve shape is excluded. '
+        'Without failure EL, the specimen is omitted from individual strength–EL pairs.</p>'
+        '<p>Property exclusions also apply to Instron comparisons. Source readings remain available for inspection. '
+        'Use <b>Applies to</b> to choose all analyses or just this analysis.</p></div>', compact=True)
 
 
 class SpecimenTable(anywidget.AnyWidget):
@@ -10,6 +26,8 @@ class SpecimenTable(anywidget.AnyWidget):
     rows = traitlets.List(traitlets.Dict()).tag(sync=True)
     context = traitlets.Unicode('').tag(sync=True)
     modes = traitlets.Dict(DATA_MODES).tag(sync=True)
+    mode_effects = traitlets.Dict(data_mode_effects()).tag(sync=True)
+    mode_help = traitlets.Unicode(data_use_help()).tag(sync=True)
 
     _css = """
     .tw-specimens {overflow:auto; max-height:510px; width:100%; min-width:0; max-width:100%; border:1px solid var(--tw-border, #cbd5e1); box-sizing:border-box;}
@@ -33,6 +51,7 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens input:focus-visible {outline:2px solid var(--tw-accent, #1767a5); outline-offset:2px;}
     .tw-specimens input:disabled {cursor:default; opacity:.65;}
     .tw-specimens select {font:inherit;padding:5px;min-width:135px;cursor:pointer;}
+    .tw-specimens .data-use-effect {display:block;max-width:255px;margin-top:5px;font-size:11px;line-height:1.4;color:var(--tw-muted, #526170);}
     .tw-specimens .selection-scope {text-align:left;white-space:nowrap;}
     .tw-specimens .selection-scope small {display:block;color:var(--tw-muted, #526170);}
     .tw-specimens .checks {white-space:pre-line;text-align:left;min-width:260px;max-width:420px;color:var(--tw-warning-text, #944900);}
@@ -66,6 +85,9 @@ class SpecimenTable(anywidget.AnyWidget):
         const subheader = grouped ? head.insertRow() : null;
         ['Data use','Group','Specimen','Applies to','Reason (optional)'].forEach(label => {
           const th = document.createElement('th'); th.textContent = label; th.scope='col';
+          if (label==='Data use') {
+            const guide=document.createElement('span'); guide.innerHTML=model.get('mode_help'); th.append(guide);
+          }
           th.rowSpan=grouped ? 2 : 1; header.append(th);
         });
         const propertyStarts = new Set();
@@ -92,12 +114,19 @@ class SpecimenTable(anywidget.AnyWidget):
           if (!row.included) tr.className='excluded';
           if (row.check_warning || row.fit_warning) tr.classList.add('fit-warning');
           const mode = document.createElement('select');
+          const effects=model.get('mode_effects');
           Object.entries(model.get('modes')).forEach(([value,label]) => {
-            const option=document.createElement('option'); option.value=value; option.textContent=label; mode.append(option);
+            const option=document.createElement('option'); option.value=value; option.textContent=label;
+            option.title=effects[value]?.description || ''; mode.append(option);
           });
           mode.value=row.mode || (row.included ? 'all' : 'exclude');
+          mode.title=effects[mode.value]?.description || '';
           mode.setAttribute('aria-label', 'Data use for ' + row.group + ' / ' + row.sample);
-          tr.insertCell().append(mode);
+          const dataUseCell=tr.insertCell(); dataUseCell.append(mode);
+          if (mode.value!=='all') {
+            const effect=document.createElement('small'); effect.className='data-use-effect';
+            effect.textContent=effects[mode.value]?.summary || ''; dataUseCell.append(effect);
+          }
           tr.insertCell().textContent=row.group;
           const inspect = document.createElement('button'); inspect.type='button'; inspect.className='inspect';
           inspect.textContent=(row.check_warning || row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';

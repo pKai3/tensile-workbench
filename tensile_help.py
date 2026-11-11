@@ -3,16 +3,24 @@ from html import escape
 import anywidget
 
 
-def help_html(label, body):
+def help_html(label, body, *, compact=False):
     """Body is trusted application markup; escape user values before passing it."""
-    return ('<div class="tw-help" tabindex="0" role="button" aria-label="Help: '
-            + escape(label, quote=True) + '">ⓘ ' + escape(label)
-            + '<div class="tw-help-content" hidden>' + body + '</div></div>')
+    return ('<div class="tw-help' + (' tw-help-icon' if compact else '')
+            + '" tabindex="0" role="button" aria-label="Help: '
+            + escape(label, quote=True) + '">ⓘ' + ('' if compact else ' ' + escape(label))
+            + '<div class="tw-help-content" hidden><b>' + escape(label) + '</b><br>' + body + '</div></div>')
 
 
 def help_widget(widgets, label, body):
     """Natural-width help that can sit beside its related controls."""
-    return widgets.HTML(help_html(label, body), layout=widgets.Layout(width='auto', flex='0 1 auto'))
+    return widgets.HTML(help_html(label, body, compact=True), layout=widgets.Layout(width='auto', flex='0 0 auto', margin='0'))
+
+
+def notice_widget(widgets):
+    """Reserve space only when there is an actual status or error to show."""
+    notice = widgets.HTML(layout=widgets.Layout(display='none', width='auto', max_width='100%'))
+    notice.observe(lambda change: setattr(notice.layout, 'display', '' if change['new'].strip() else 'none'), names='value')
+    return notice
 
 
 def control_row(widgets, children):

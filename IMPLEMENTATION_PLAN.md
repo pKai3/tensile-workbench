@@ -2,6 +2,26 @@
 
 ## Change notes — 2026-11-11
 
+### Compact workspace and explicit data-use effects — implemented
+
+- Give analysis, name, title and group-label controls sensible maximum widths;
+  align project filtering, search, sample visibility and refresh in one wrapping
+  toolbar. Keep healthy folder-watch, move-check and sample-visibility messages
+  out of permanent page rows. Errors and pending reviews remain visible.
+- Use compact inline help icons for routine guidance; move palette, backup,
+  plot-variant and location-chart explanations into contextual help. Keep save
+  status brief, with revision information available on hover.
+- Add a hover/focus comparison beside Data use showing retained properties and
+  curve contributions for every mode. Show a short effect summary below partial
+  exclusions and provide native help for each dropdown option. Derive the guide
+  from the existing property/curve eligibility rules; numerical behaviour is
+  unchanged. Explain that eligible properties still feed landmark anchors,
+  while omitted EL removes individual strength–EL pairs.
+- Verification: 71 focused synthetic checks passed. Browser verification covered
+  compact control alignment, hidden routine notices, saved partial exclusions
+  and the comparison guide. No JavaScript errors observed; the isolated preview
+  server and its kernel were stopped and checked for exit.
+
 ### Inline contextual help — implemented
 
 - Place help beside related controls in plot galleries, table filters, group

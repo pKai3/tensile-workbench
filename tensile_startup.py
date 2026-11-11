@@ -158,8 +158,6 @@ class WorkbenchLauncher:
         content = w.VBox([
             self.sources.ui,
             w.HBox([self.save_button, self.defaults_button], layout=w.Layout(flex_flow='row wrap')),
-            w.HTML('<small>Bundled sample data is available separately. Use Show sample data '
-                   'beside the sample-group selector; your data-folder path stays unchanged.</small>'),
             self.locations, self.message,
         ])
         self.folders = w.Accordion(children=[content], selected_index=0)

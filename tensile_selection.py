@@ -58,6 +58,26 @@ def curve_allowed(record, prepeak=False):
     return record_mode(record) in (('all', 'after_uts') if prepeak else ('all',))
 
 
+def data_mode_effects():
+    """Explain the same eligibility rules used by statistics and curve averaging."""
+    properties = [('ys', 'YS'), ('uts', 'UTS'), ('e', 'E'), ('uniform', 'uniform EL'),
+                  ('el', 'failure EL'), ('toughness', 'toughness')]
+    effects = {}
+    for mode in DATA_MODES:
+        kept = [label for field, label in properties if property_allowed(mode, field)]
+        omitted = [label for field, label in properties if not property_allowed(mode, field)]
+        shape = ('Tensile + work hardening' if curve_allowed({'_data_mode': mode}) else
+                 'Pre-UTS work hardening only' if curve_allowed({'_data_mode': mode}, prepeak=True) else 'None')
+        keeps = 'All valid properties' if not omitted else ', '.join(kept) or 'None'
+        effects[mode] = dict(keeps=keeps, omits=', '.join(omitted) or 'None', shape=shape,
+            summary=('No analysis contributions' if mode == 'exclude' else
+                     keeps + (' · no curve shape' if shape == 'None' else
+                              ' · pre-UTS curves only' if mode == 'after_uts' else '')),
+            description=f'Properties retained: {keeps}. Properties excluded: {", ".join(omitted) or "none"}. '
+                        f'Curve contributions: {shape}. E = fitted elastic modulus.')
+    return effects
+
+
 def analysis_properties(record, properties):
     result = dict(properties)
     for field in ('Yield (MPa)', 'Yield strain (%)', 'UTS (MPa)', 'Uniform elongation (%)',
