@@ -4,7 +4,6 @@ import uuid
 from tensile_settings import (GROUP_DEFAULTS, GROUP_FAMILY, validate_group_display, planned_positions,
                               SPECIMEN_TREND_KEY, SPECIMEN_GROUPS_KEY)
 from tensile_locations import LOCATION, SPECIMEN_COUNT
-from tensile_help import help_widget, control_row
 
 VARIANTS_KEY = 'properties_by_group_variants'
 SPECIMEN_FAMILY = 'properties_by_specimen'
@@ -76,6 +75,9 @@ def validate_variants(variants):
 class PropertyVariantsView:
     """One editor, many saved plots. Switching never discards the previous edit."""
     def __init__(self, w, capture, apply, changed):
+        # Saved-setting validation is also used by the lightweight launcher check.
+        from tensile_help import help_widget, control_row
+
         self.capture, self.apply, self.changed = capture, apply, changed
         self.variants, self.active, self.paused = [], None, False
         self.choice = w.Dropdown(description='Edit plot:', layout=w.Layout(width='450px', max_width='100%'))

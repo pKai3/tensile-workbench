@@ -2,6 +2,14 @@
 
 ## Change notes — 2026-11-11
 
+### Release startup-check dependency fix — implemented
+
+- Load contextual-help components only when constructing the property-plot
+  editor. Keep saved-setting validation and the launcher's quick check free of
+  interface dependencies; the compact workspace change had broken that boundary.
+- Verification: all 44 focused environment, web-interface and required-location
+  checks passed, including the nine preflight failures reported by release CI.
+
 ### Sample visibility without experimental recalculation — implemented
 
 - Showing/hiding bundled examples refreshes only their inventory. Reuse the
