@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.10
 
 - Manage independent named projects under **Projects · source and output folders**,
   with Browse buttons, Add/Remove controls and optional project output folders.
