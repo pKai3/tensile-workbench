@@ -1244,18 +1244,18 @@ class TensileWorkbench:
         self.fit_warning.layout.flex = '1 1 auto'
         self.review_fits = w.Button(description='Review specimens', layout=w.Layout(width='145px', flex='0 0 145px'), disabled=True)
         self.review_fits.on_click(self._review_fits)
-        self.fit_review_bar = w.VBox([
-            self._row([self.tables.threshold, self.tables.threshold_status]),
-            w.HBox([self.fit_warning, self.review_fits], layout=w.Layout(width='100%'))
-        ], layout=w.Layout(width='100%'))
+        self.fit_review_bar = control_row(w, [self.fit_warning, self.review_fits])
+        self.fit_review_bar.add_class('tw-review-notice')
+        self.fit_review_bar.layout.display = 'none'
         self.review_fits.layout.display = 'none'
         self.tables_update_button = w.Button(description='Update tables')
         self.tables_reload_button = w.Button(description='Reload data',
             tooltip='Reread CSVs and summary files, refresh tables, and clear old plots. No page refresh needed.')
         self.table_export_button = w.Button(description='Export tables only', disabled=True)
         self.properties_panel = w.Accordion(children=[w.VBox([
-            self._row([self.tables_reload_button, self.tables_update_button, self.table_export_button]), self.tables.ui
-        ], layout=w.Layout(width='100%', min_width='0'))], selected_index=0,
+            control_row(w, [self.tables_reload_button, self.tables_update_button, self.table_export_button,
+                            self.tables.review_settings]), self.fit_review_bar, self.tables.ui
+        ], layout=w.Layout(width='100%', min_width='0', grid_gap='14px'))], selected_index=0,
             layout=w.Layout(width='100%', min_width='0'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
         general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
@@ -1397,7 +1397,7 @@ class TensileWorkbench:
             self.group_picker.ui,
             self.move_review.ui,
             self.workspace_tools,
-            self.fit_review_bar, self.properties_panel,
+            self.properties_panel,
             w.HTML("<h3>Plot views</h3>"), self.plot_display_css, self.plot_display_options,
             self.plot_options,
             plot_actions,
@@ -2627,10 +2627,12 @@ class TensileWorkbench:
                        'See filenames and reasons in Specimen properties.</div>') if issues else ''
         if samples is None or samples.empty:
             self.fit_warning.value = import_note
+            self.fit_review_bar.layout.display = '' if issues else 'none'
             self.review_fits.disabled = not issues
             self.review_fits.layout.display = '' if issues else 'none'
             return
         flagged = samples[specimen_review_mask(samples)]
+        self.fit_review_bar.layout.display = '' if len(flagged) or issues else 'none'
         self.review_fits.disabled = flagged.empty and not issues
         self.review_fits.layout.display = 'none' if self.review_fits.disabled else ''
         included = int(flagged['Included'].sum())

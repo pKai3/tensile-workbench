@@ -2,6 +2,25 @@
 
 ## Change notes — 2026-11-11
 
+### Consistent controls and specimen review settings — implemented
+
+- Adopt TEM Workbench's control geometry: 6 px corners, 36 px control heights,
+  10 px panel corners, shared system typography, focus outlines and hover borders.
+  Apply it to both themes without replacing the illustrated selectors or the
+  compact controls within data tables.
+- Align the property toolbar and filters using a single spacing rule, natural
+  label widths and consistent row gaps. Wrap controls on narrow pages; keep tab
+  names readable with horizontal scrolling when needed. Give ordinary text its
+  own line spacing rather than inheriting the control height.
+- Move the R² warning threshold into a Review settings popup alongside specimen
+  table actions. Keep specimen warnings inside that section. Opening or closing
+  settings does not calculate properties; the existing global threshold and save
+  behaviour are unchanged.
+- Verification: 67 focused UI, theme, elastic-fit, layout and startup checks
+  passed. Synthetic browser checks covered both themes, rounded panels and
+  fields, aligned filter controls, narrow layouts and the relocated threshold;
+  no JavaScript errors observed.
+
 ### Release startup-check dependency fix — implemented
 
 - Load contextual-help components only when constructing the property-plot

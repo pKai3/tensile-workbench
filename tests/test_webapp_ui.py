@@ -99,6 +99,11 @@ class WebAppTests(unittest.TestCase):
         with patch.object(app, '_refresh_properties') as calculate:
             app.properties_panel.selected_index = None
             app.properties_panel.selected_index = 0
+            app.tables.review_settings.click()
+            self.assertEqual(app.tables.review_popup.overlay.layout.display, 'flex')
+            self.assertIn(app.tables.threshold, app.tables.review_popup.body.children)
+            app.tables.review_popup.done.click()
+            self.assertEqual(app.tables.review_popup.overlay.layout.display, 'none')
         calculate.assert_not_called()
 
     def test_illustrated_display_modes_keep_saved_settings_compatible(self):

@@ -25,8 +25,10 @@ def notice_widget(widgets):
 
 def control_row(widgets, children):
     """Keep related controls and help together, wrapping only when necessary."""
-    return widgets.HBox(children, layout=widgets.Layout(
-        flex_flow='row wrap', align_items='center', grid_gap='6px 12px', width='100%', min_width='0'))
+    row = widgets.HBox(children, layout=widgets.Layout(
+        flex_flow='row wrap', align_items='center', grid_gap='8px 12px', width='100%', min_width='0'))
+    row.add_class('tw-control-row')
+    return row
 
 
 class HelpTooltips(anywidget.AnyWidget):

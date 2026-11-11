@@ -1,6 +1,6 @@
 """Shared numeric tables for the viewer and Excel export. No plot dependencies."""
 from html import escape
-from tensile_help import help_html, help_widget, control_row
+from tensile_help import help_html, help_widget, control_row, notice_widget
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -589,6 +589,7 @@ class PropertyTablesView:
         from tensile_comparison import ComparisonView
         from tensile_group_review import GroupCurveReview
         from tensile_yield_review import GroupYieldReview
+        from tensile_popup import SettingsPopup
         w = widgets
         self.frames = {}
         self.color_map = {}
@@ -599,16 +600,26 @@ class PropertyTablesView:
         self.threshold = w.BoundedFloatText(value=.98, min=0, max=1, step=.001,
             description='R² warning threshold:', continuous_update=False, style={'description_width': 'initial'},
             tooltip='Flag fits below this R² for review in all analyses. Does not exclude specimens or change the fit.',
-            layout=w.Layout(width='300px'))
-        self.threshold_status = w.HTML()
+            layout=w.Layout(width='300px', max_width='100%'))
+        self.threshold_status = notice_widget(w)
         self.threshold.observe(self._threshold_changed, names='value')
+        self.review_popup = SettingsPopup(w, width='540px')
+        self.review_settings = w.Button(description='Review settings', icon='cog',
+            tooltip='Set the elastic-fit R² warning threshold for all analyses. Does not change calculations or exclude data.',
+            layout=w.Layout(width='auto'))
+        self.review_settings.on_click(lambda _: self.review_popup.open('Specimen review settings', [
+            self.threshold,
+            w.HTML('<p class="tw-settings-hint">Fits below this R² are flagged for review in all analyses. '
+                   'Calculations and specimen inclusion are unchanged.</p>'), self.threshold_status]))
         self.review_only = w.Checkbox(value=False, description='Only specimens needing review', indent=False,
                                      tooltip='Fit, fracture/EL, gauge reconstruction and Instron checks. Does not exclude specimens.',
                                      layout=w.Layout(width='auto'))
-        self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False)
+        self.filter = w.Text(description='Filter:', placeholder='Group, specimen or filename', continuous_update=False,
+                             style={'description_width': 'initial'}, layout=w.Layout(width='320px', max_width='100%'))
         self.filter.tooltip = 'Filter the displayed rows by name or filename. This does not change specimen inclusion.'
         self.sort = w.Dropdown(description='Sort:', options=['Group', 'Sample', '0.2% Offset Yield Strength (MPa)',
-                              'UTS (MPa)'], layout=w.Layout(width='300px'))
+                              'UTS (MPa)'], style={'description_width': 'initial'},
+                              layout=w.Layout(width='290px', max_width='100%'))
         self.sort.tooltip = 'Group follows Sample group order, directly below the sample selector. Other sorts override it.'
         self.descending = w.Checkbox(description='Descending', indent=False, layout=w.Layout(width='auto'))
         self.descending.tooltip = 'Reverse the selected table sort order. Plot ordering is unchanged.'
@@ -636,12 +647,15 @@ class PropertyTablesView:
         self.tabs.observe(lambda change: self.group_review.set_active(change['new'] == 2), names='selected_index')
         self.tabs.observe(lambda change: self.yield_review.set_active(change['new'] == 3), names='selected_index')
         self.status = w.HTML('Select sample groups to load property tables.')
-        self.source_status = w.HTML()
+        self.source_status = notice_widget(w)
         table_help = help_widget(w, 'Tables and filters', 'Tables are independent of plot selection. Group statistics use sample SD and valid n. '
                                 'Instron comparisons prefer CSV summaries, with PDF reports as a fallback. '
                                 'Search and sort change the view only; Data use changes analysis contributions.')
-        self.ui = w.VBox([control_row(w, [self.filter, self.sort, self.descending, self.review_only, table_help]),
-                          self.status, self.source_status, self.tabs], layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
+        self.filter_bar = control_row(w, [self.filter, self.sort, self.descending, self.review_only, table_help])
+        self.filter_bar.add_class('tw-table-filters')
+        self.status.add_class('tw-table-status')
+        self.ui = w.VBox([self.filter_bar, self.status, self.source_status, self.tabs, self.review_popup.ui],
+                         layout=w.Layout(width='100%', min_width='0', overflow='hidden', grid_gap='10px'))
         for control in (self.filter, self.sort, self.descending, self.review_only):
             control.observe(lambda _: self.render(), names='value')
 
