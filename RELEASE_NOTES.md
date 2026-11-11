@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.11
 
 - Reduce scrolling by putting help prompts beside their related controls across
   plot galleries, table filters, group reviews, the inspector and variable editors.
