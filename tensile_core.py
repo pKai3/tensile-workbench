@@ -941,23 +941,29 @@ def render_average_plot(models, records, out_path, family, show_individual,
         print(f"[WARN] No valid {family} curves for {out_path}")
         return
     ax.set(title=title, xlabel="Engineering strain (%)", ylabel="Engineering stress (MPa)", xlim=xlim, ylim=ylim)
-    ax.legend()
+    legend = ax.legend()
     ax.grid(True, ls="--", alpha=.6)
+    marker_key = "○ Mean YS   △ Mean UTS   × Mean failure elongation"
     if comparison:
         note = "Solid: pointwise; dotted: fitted tail; dashed: landmark-aligned."
     elif family == "landmark":
-        note = "○ Mean YS   △ Mean UTS   × Mean failure elongation"
+        note = marker_key
     else:
         note = "Solid: common-population pointwise mean.\nDotted: fitted tail; × at mean failure elongation." if projected else "Common-population pointwise mean; no fitted tail."
     show_bar_note = family in ("landmark", "comparison") and landmark_error_bars
     if show_bar_note:
         note += "\nLandmark bars: ±1 SD (n ≥ 2); endpoint stress is pre-break."
     print('[PLOT INFO] ' + note.replace('\n', ' '))
-    # Publication figures retain only the marker key, and only where all three
-    # landmark markers are drawn. Method/error-bar details stay in the log.
+    # Publication figures retain only the marker key where all three markers
+    # are drawn. Place it immediately above the rendered group legend.
     if family == "landmark" or (comparison and landmark_error_bars):
-        figure.text(.5, .01, "○ Mean YS   △ Mean UTS   × Mean failure elongation", ha="center")
-        figure.tight_layout(rect=(0, .05, 1, 1))
+        figure.tight_layout()
+        figure.canvas.draw()
+        bounds = legend.get_window_extent(figure.canvas.get_renderer())
+        left_aligned = bounds.x0 < figure.bbox.width / 2
+        figure.text((bounds.x0 if left_aligned else bounds.x1) / figure.bbox.width,
+                    (bounds.y1 + 4) / figure.bbox.height, marker_key,
+                    ha="left" if left_aligned else "right", va="bottom")
     else:
         figure.tight_layout()
     return finish_plot(figure, out_path, preview)

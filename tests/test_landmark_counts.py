@@ -91,6 +91,23 @@ class LandmarkCountTests(unittest.TestCase):
         figure = self.render(synthetic_landmark(), family='pointwise')
         self.assertEqual(figure.axes[0].get_legend_handles_labels()[1], ['Custom name (n=2)'])
 
+    def test_marker_key_sits_above_group_legend_when_landmarks_are_shown(self):
+        for family, bars in (('landmark', True), ('comparison', True),
+                             ('comparison', False), ('pointwise', True)):
+            figure = self.render(synthetic_landmark(), family=family, bars=bars)
+            key = [text for text in figure.texts if 'Mean YS' in text.get_text()]
+            if family == 'pointwise' or (family == 'comparison' and not bars):
+                self.assertEqual(key, [])
+                continue
+            self.assertEqual(len(key), 1)
+            figure.canvas.draw()
+            renderer = figure.canvas.get_renderer()
+            key_bounds = key[0].get_window_extent(renderer)
+            legend_bounds = figure.axes[0].get_legend().get_window_extent(renderer)
+            self.assertGreaterEqual(key_bounds.y0, legend_bounds.y1)
+            self.assertLessEqual(key_bounds.y1, figure.bbox.y1)
+            self.assertGreater(key_bounds.y0, figure.axes[0].bbox.y0)
+
     def test_coordinate_hover_with_and_without_sd_bars_including_singletons(self):
         for landmark in (synthetic_landmark(shape=2, ys=3, uts=3, el=3),
                          synthetic_landmark(shape=1, ys=2, uts=2, el=1, uniform=1)):
