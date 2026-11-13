@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.14
 
 - Anchor tensile-curve legends at the bottom right. In landmark and comparison
   plots, centre the mean YS, UTS and failure elongation marker key immediately
