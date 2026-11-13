@@ -95,18 +95,38 @@ class LandmarkCountTests(unittest.TestCase):
         for family, bars in (('landmark', True), ('comparison', True),
                              ('comparison', False), ('pointwise', True)):
             figure = self.render(synthetic_landmark(), family=family, bars=bars)
+            figure.canvas.draw()
+            renderer = figure.canvas.get_renderer()
+            legend_bounds = figure.axes[0].get_legend().get_window_extent(renderer)
+            axes_bounds = figure.axes[0].bbox
+            self.assertAlmostEqual(legend_bounds.x1, axes_bounds.x1, delta=15)
+            self.assertAlmostEqual(legend_bounds.y0, axes_bounds.y0, delta=15)
             key = [text for text in figure.texts if 'Mean YS' in text.get_text()]
             if family == 'pointwise' or (family == 'comparison' and not bars):
                 self.assertEqual(key, [])
                 continue
             self.assertEqual(len(key), 1)
-            figure.canvas.draw()
-            renderer = figure.canvas.get_renderer()
             key_bounds = key[0].get_window_extent(renderer)
-            legend_bounds = figure.axes[0].get_legend().get_window_extent(renderer)
             self.assertGreaterEqual(key_bounds.y0, legend_bounds.y1)
+            self.assertAlmostEqual((key_bounds.x0 + key_bounds.x1) / 2,
+                                   (legend_bounds.x0 + legend_bounds.x1) / 2, delta=1)
             self.assertLessEqual(key_bounds.y1, figure.bbox.y1)
             self.assertGreater(key_bounds.y0, figure.axes[0].bbox.y0)
+
+    def test_representative_tensile_legend_is_bottom_right(self):
+        record = dict(strain_pct=np.array([0., 1., 2.]),
+                      stress_mpa=np.array([0., 500., 400.]),
+                      failure_elongation_pct=2., sample='coupon_1',
+                      source_file='/synthetic/coupon_1.csv')
+        with redirect_stdout(io.StringIO()):
+            figure = core.render_representative_tensile_plot(
+                {'Alloy': [record]}, self.output, {'Alloy': '#336699'},
+                (0, 3), (0, 600), preview=True)
+        figure.canvas.draw()
+        legend_bounds = figure.axes[0].get_legend().get_window_extent(figure.canvas.get_renderer())
+        axes_bounds = figure.axes[0].bbox
+        self.assertAlmostEqual(legend_bounds.x1, axes_bounds.x1, delta=15)
+        self.assertAlmostEqual(legend_bounds.y0, axes_bounds.y0, delta=15)
 
     def test_coordinate_hover_with_and_without_sd_bars_including_singletons(self):
         for landmark in (synthetic_landmark(shape=2, ys=3, uts=3, el=3),

@@ -941,7 +941,7 @@ def render_average_plot(models, records, out_path, family, show_individual,
         print(f"[WARN] No valid {family} curves for {out_path}")
         return
     ax.set(title=title, xlabel="Engineering strain (%)", ylabel="Engineering stress (MPa)", xlim=xlim, ylim=ylim)
-    legend = ax.legend()
+    legend = ax.legend(loc="lower right")
     ax.grid(True, ls="--", alpha=.6)
     marker_key = "○ Mean YS   △ Mean UTS   × Mean failure elongation"
     if comparison:
@@ -960,10 +960,9 @@ def render_average_plot(models, records, out_path, family, show_individual,
         figure.tight_layout()
         figure.canvas.draw()
         bounds = legend.get_window_extent(figure.canvas.get_renderer())
-        left_aligned = bounds.x0 < figure.bbox.width / 2
-        figure.text((bounds.x0 if left_aligned else bounds.x1) / figure.bbox.width,
+        figure.text((bounds.x0 + bounds.x1) / (2 * figure.bbox.width),
                     (bounds.y1 + 4) / figure.bbox.height, marker_key,
-                    ha="left" if left_aligned else "right", va="bottom")
+                    ha="center", va="bottom")
     else:
         figure.tight_layout()
     return finish_plot(figure, out_path, preview)
@@ -1086,7 +1085,7 @@ def render_representative_tensile_plot(
     plt.xlabel("Strain (%)")
     plt.ylabel("Stress (MPa)")
     plt.title(title)
-    plt.legend()
+    plt.legend(loc="lower right")
     plt.xlim(xlim)
     plt.ylim(ylim)
     plt.grid(True, linestyle="--", alpha=0.6)
