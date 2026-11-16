@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.19
 
 - Open static and interactive plots in fitted, non-scrolling popups that closely
   wrap the chart. Escape, a click outside the chart or Close returns to the
