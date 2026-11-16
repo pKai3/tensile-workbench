@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.16
 
 - Add a three-panel synthetic schematic of landmark tensile averaging, showing
   specimen landmarks, equal-progress stage means and group-mean anchoring. The
