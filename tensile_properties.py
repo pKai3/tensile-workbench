@@ -32,7 +32,7 @@ EL_SOURCE_FIELDS = (
 def elongation_report(record, reference, measured_properties):
     """Report distinct endpoint sources without substituting one for another.
 
-    Analysis uses the selected endpoint, not the landmark shape-trimming point.
+    Analysis uses the selected endpoint; reconstruction is reported separately.
     """
     measured = record.get('_measured_record', record)
     meta = measured.get('_acquisition', {})
