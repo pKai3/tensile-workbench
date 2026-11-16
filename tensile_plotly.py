@@ -607,6 +607,12 @@ class PlotlyView:
         probe = width_probe(self._resize_popup,
                             on_theme=lambda theme: apply_plot_theme(chart, theme),
                             on_viewport=self._set_viewport_height, charts=(chart,))
+        for name in gallery.layout:
+            if name.startswith(('xaxis', 'yaxis')) and name in chart.layout:
+                source_axis, target_axis = gallery.layout[name], chart.layout[name]
+                if source_axis.minallowed is not None and source_axis.maxallowed is not None:
+                    target_axis.minallowed = source_axis.minallowed
+                    target_axis.maxallowed = source_axis.maxallowed
         title = text_block(self.w, figure.axes[0].get_title(), title=True)
         notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
         caption = text_block(self.w, notes)

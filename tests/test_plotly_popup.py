@@ -36,6 +36,10 @@ class PlotlyPopupTests(unittest.TestCase):
         self.assertEqual(view._popup_chart.data[0].line.color, original_colour)
         self.assertEqual(view._popup_chart.layout.paper_bgcolor, DARK_BACKGROUND)
         self.assertEqual(view._popup_chart.layout.xaxis.range, (.2, .8))
+        self.assertEqual(view._popup_chart.layout.xaxis.minallowed,
+                         view._charts['one'].layout.xaxis.minallowed)
+        self.assertEqual(view._popup_chart.layout.xaxis.maxallowed,
+                         view._charts['one'].layout.xaxis.maxallowed)
         view._popup_chart.data[0].line.color = '#FF6692'  # Simulate a frontend fallback.
         self.assertEqual(view._charts['one'].data[0].line.color, original_colour)
         self.assertEqual(view.focus_popup.body.layout.overflow, 'hidden')
