@@ -14,8 +14,8 @@ class PopupEvents(anywidget.AnyWidget):
       // A tab can change height between pointer-down and click. Dismiss only
       // when the press and release are both outside the popup's active image.
       const outsideMedia=target=>root()?.classList.contains('tw-dismiss-outside-media') &&
-        overlay()?.querySelector('.tw-static-plot-dialog')?.contains(target) &&
-        !target.closest?.('img,button,.widget-dropdown,select,input,option,label');
+        overlay()?.querySelector('.tw-media-dialog')?.contains(target) &&
+        !target.closest?.('img,.js-plotly-plot,button,.widget-dropdown,select,input,option,label');
       const down=event=>{backdropPress=event.target===overlay();blankPress=!!outsideMedia(event.target);};
       const click=event=>{if((backdropPress && event.target===overlay()) ||
         (blankPress && outsideMedia(event.target)))close();backdropPress=blankPress=false;};

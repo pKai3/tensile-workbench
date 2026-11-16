@@ -7,6 +7,7 @@ from matplotlib.colors import to_hex
 from matplotlib.container import ErrorbarContainer, BarContainer
 from tensile_display import preview_indices
 from tensile_plot_theme import apply_plot_theme
+from tensile_popup import SettingsPopup
 
 
 def limit_zoom(figure, ranges=None):
@@ -26,7 +27,7 @@ def limit_zoom(figure, ranges=None):
                     axis.minallowed, axis.maxallowed = low, high
 
 
-def width_probe(on_resize, *, on_theme=None, charts=()):
+def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
     """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
@@ -35,6 +36,7 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
         chart.add_class('tw-themed-plot')
     class WidthProbe(anywidget.AnyWidget):
         pixels = traitlets.Int(0).tag(sync=True)
+        viewport_height = traitlets.Int(0).tag(sync=True)
         theme = traitlets.Enum(['light', 'dark'], default_value='light').tag(sync=True)
         _esm = """
         export default {render({model, el}) {
@@ -47,13 +49,20 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
               const width = Math.floor(target.getBoundingClientRect().width);
+              const height = Math.floor(window.innerHeight);
+              let changed = false;
               if (width > 150 && width !== model.get('pixels')) {
-                model.set('pixels', width); model.save_changes();
+                model.set('pixels', width); changed = true;
               }
+              if (height > 0 && height !== model.get('viewport_height')) {
+                model.set('viewport_height', height); changed = true;
+              }
+              if (changed) model.save_changes();
             });
           };
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
+          window.addEventListener('resize', measure);
           let fallback, paint, drawing;
           const bounded = new WeakSet();
           const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
@@ -106,7 +115,7 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
           const themes = new MutationObserver(appearance);
           themes.observe(document.documentElement,{attributes:true,attributeFilter:['data-tw-theme']});
           appearance();
-          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback);};
+          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback); window.removeEventListener('resize',measure);};
         }};
         """
     probe = WidthProbe()
@@ -124,6 +133,8 @@ def width_probe(on_resize, *, on_theme=None, charts=()):
                 limit_zoom(chart, ranges)
     probe.on_msg(bounds_message)
     probe.observe(lambda change: on_resize(change['new']) if change['new'] > 150 else None, names='pixels')
+    if on_viewport is not None:
+        probe.observe(lambda change: on_viewport(change['new']), names='viewport_height')
     if on_theme is not None:
         probe.observe(lambda change: on_theme(change['new']), names='theme')
     return probe
@@ -188,7 +199,7 @@ def wrapped(text, width=75):
                       for part in (textwrap.wrap(line, width) or ['']))
 
 
-def resize_chart(chart, width, *, focused=False):
+def resize_chart(chart, width, *, focused=False, viewport_height=None):
     """Reserve actual pixel space for the axes and every wrapped legend row."""
     width = max(200, int(width))
     left, right, top = 85, (85 if 'yaxis2' in chart.layout else 25), 20
@@ -217,6 +228,10 @@ def resize_chart(chart, width, *, focused=False):
         legend_height = sum(max(legend_rows[start:start + legend_columns])
                             for start in range(0, len(legend_rows), legend_columns))
         bottom = axis_footer + legend_height + 14
+        if focused and viewport_height:
+            # Leave room for the popup header, plot selector, title and caption.
+            available = int(viewport_height * .9) - 180
+            plot_height = max(160, min(plot_height, available - top - bottom))
         chart.update_layout(width=width, height=plot_height + top + bottom,
             margin=dict(l=left, r=right, t=top, b=bottom),
             legend=dict(y=-axis_footer / plot_height, orientation='h',
@@ -417,12 +432,13 @@ def _axis_to_plotly(ax, *, width=640, allow_empty=False):
 
 
 class PlotlyView:
-    """Widget gallery with an enlarged view; navigation never reruns analysis."""
+    """Widget gallery with a fitted popup; navigation never reruns analysis."""
     def __init__(self, widgets, columns, plot_width):
         self.w, self.columns, self.plot_width = widgets, columns, plot_width
         w = widgets
         self._items, self._owned, self._charts, self._frames = [], [], {}, {}
         self._focused_key = None
+        self._viewport_height = 0
         self.hint = help_widget(w, 'Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
                           'Dense lines show every Nth reading; use the specimen inspector for full detail. '
                           'Calculations and publication exports use the full data.')
@@ -430,13 +446,21 @@ class PlotlyView:
         self.empty = w.HTML('Choose plots and click Update plots.')
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
         self.board.add_class('tw-plot-board')
-        self.back = w.Button(description='Back to all plots', layout=w.Layout(width='auto'))
         self.choice = w.Dropdown(description='Plot:', layout=w.Layout(width='min(100%, 650px)'))
-        self.focus_content = w.VBox(layout=w.Layout(width='100%'))
-        self.focus = w.VBox([w.HBox([self.back, self.choice], layout=w.Layout(flex_flow='row wrap')),
-                            self.focus_content], layout=w.Layout(display='none', width='100%'))
-        self.ui = w.VBox([self.toolbar, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
-        self.back.on_click(lambda _: self.close_focus())
+        self.focus_content = w.VBox(layout=w.Layout(width='100%', min_width='0', overflow='hidden'))
+        self.focus = w.VBox([self.choice, self.focus_content], layout=w.Layout(
+            width='100%', min_width='0', overflow='hidden', grid_gap='10px'))
+        self.focus_popup = SettingsPopup(w, on_close=self._focus_closed, width='1100px')
+        self.focus_popup.ui.add_class('tw-dismiss-outside-media')
+        self.focus_popup.done.description = 'Close'
+        self.focus_popup.done.tooltip = 'Return to all plots.'
+        self.focus_popup.dialog.add_class('tw-media-dialog')
+        self.focus_popup.dialog.add_class('tw-plotly-dialog')
+        self.focus_popup.dialog.layout.width = 'min(1100px, 92vw)'
+        self.focus_popup.dialog.layout.max_height = '90dvh'
+        self.focus_popup.dialog.layout.padding = '16px'
+        self.focus_popup.body.layout.overflow = 'hidden'
+        self.ui = w.VBox([self.toolbar, self.empty, self.board, self.focus_popup.ui], layout=w.Layout(width='100%'))
         self.choice.observe(self._choose, names='value')
         self._selecting = False
 
@@ -509,7 +533,8 @@ class PlotlyView:
                              'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
             self._charts[key] = chart
             probe = width_probe(lambda width: self._resize(key, width),
-                                on_theme=lambda theme: apply_plot_theme(chart, theme), charts=(chart,))
+                                on_theme=lambda theme: apply_plot_theme(chart, theme),
+                                on_viewport=self._set_viewport_height, charts=(chart,))
             title = text_block(self.w, figure.axes[0].get_title(), title=True)
             notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
             caption = text_block(self.w, notes)
@@ -538,7 +563,15 @@ class PlotlyView:
 
     def _resize(self, key, width):
         if key in self._charts:
-            resize_chart(self._charts[key], width, focused=key == self._focused_key)
+            resize_chart(self._charts[key], width, focused=key == self._focused_key,
+                         viewport_height=self._viewport_height)
+
+    def _set_viewport_height(self, height):
+        if height > 0 and height != self._viewport_height:
+            self._viewport_height = height
+            if self._focused_key in self._charts:
+                chart = self._charts[self._focused_key]
+                self._resize(self._focused_key, chart.layout.width or self.plot_width.value)
 
     def open_focus(self, key):
         if not self._ensure_chart(key):
@@ -549,15 +582,18 @@ class PlotlyView:
         self._selecting = False
         self.focus_content.children = (self._frames[key],)
         self.board.layout.display = self.toolbar.layout.display = 'none'
-        self.focus.layout.display = ''
+        if self.focus_popup.overlay.layout.display == 'none':
+            self.focus_popup.open('Interactive plot', [self.focus])
         self.apply_layout()
 
     def close_focus(self):
+        self.focus_popup.close()
+
+    def _focus_closed(self):
         self._focused_key = None
         self.focus_content.children = ()
         self.board.layout.display = 'grid'
         self.toolbar.layout.display = 'flex'
-        self.focus.layout.display = 'none'
         self.apply_layout()
 
     def _choose(self, _):

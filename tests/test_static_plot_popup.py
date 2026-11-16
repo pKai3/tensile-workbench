@@ -23,6 +23,8 @@ class StaticPlotPopupTests(unittest.TestCase):
         view.open_focus('one')
         self.assertEqual(view.focus_popup.overlay.layout.display, 'flex')
         self.assertNotEqual(view.board.layout.display, 'none')
+        self.assertIsNone(view.focus_popup.dialog.layout.height)
+        self.assertIn('calc(', view.focus_popup.dialog.layout.width)
         self.assertEqual(view.viewport.layout.overflow, 'hidden')
         self.assertEqual(view.focus_popup.body.layout.overflow, 'hidden')
         self.assertIn('object-fit:contain', view.focus_image.value)

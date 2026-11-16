@@ -28,19 +28,19 @@ class PlotView:
         self.choice.tooltip = 'Switch the enlarged plot without recalculating the results.'
         # A self-contained data URI avoids binary-widget transfer differences
         # between Jupyter kernel/manager versions. It remains a real SVG image.
-        self.focus_image = w.HTML(layout=w.Layout(width='100%', height='100%', min_height='0', margin='0', overflow='hidden'))
-        self.viewport = w.Box([self.focus_image], layout=w.Layout(width='100%', min_height='0',
-                              flex='1 1 0%', overflow='hidden', align_items='center', justify_content='center'))
+        self.focus_image = w.HTML(layout=w.Layout(width='100%', height='auto', margin='0', overflow='hidden'))
+        self.viewport = w.Box([self.focus_image], layout=w.Layout(width='100%',
+                              overflow='hidden', align_items='center', justify_content='center'))
         self.viewport.add_class('tw-static-plot-viewport')
         self.focus = w.VBox([self.choice, self.viewport], layout=w.Layout(
-            width='100%', min_width='0', min_height='0', flex='1 1 0%', overflow='hidden', grid_gap='10px'))
+            width='100%', min_width='0', overflow='hidden', grid_gap='10px'))
         self.focus_popup = SettingsPopup(w, on_close=self._focus_closed, width='1600px')
         self.focus_popup.ui.add_class('tw-dismiss-outside-media')
         self.focus_popup.done.description = 'Close'
         self.focus_popup.done.tooltip = 'Return to all plots.'
+        self.focus_popup.dialog.add_class('tw-media-dialog')
         self.focus_popup.dialog.add_class('tw-static-plot-dialog')
-        self.focus_popup.dialog.layout.width = 'min(1600px, 96vw)'
-        self.focus_popup.dialog.layout.max_height = '92dvh'
+        self.focus_popup.dialog.layout.max_height = '90dvh'
         self.focus_popup.dialog.layout.padding = '16px'
         self.focus_popup.body.layout.overflow = 'hidden'
         self.hint = help_widget(w, 'Viewing plots', 'Click a plot to enlarge it. Vector previews stay sharp at any size.')
@@ -140,13 +140,17 @@ class PlotView:
         try:
             self.choice.value = key
             source = b64encode(item['result']['svg']).decode('ascii')
+            width, height = item['result']['figure'].get_size_inches()
+            ratio = float(width) / float(height)
+            self.focus_popup.dialog.layout.width = (
+                f'min(92vw, calc({88 * ratio:.2f}dvh - {160 * ratio - 32:.0f}px))')
             self.focus_image.value = ('<img alt="' + escape(item['label'], quote=True) +
                 '" src="data:image/svg+xml;base64,' + source +
-                '" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;margin:auto;">')
+                '" style="display:block;width:100%;height:auto;max-height:calc(90dvh - 130px);object-fit:contain;margin:auto;">')
         finally:
             self._setting_focus = False
         if self.focus_popup.overlay.layout.display == 'none':
-            self.focus_popup.open('Static plot preview', [self.focus], height='92dvh')
+            self.focus_popup.open('Static plot preview', [self.focus])
 
     def close_focus(self):
         self.focus_popup.close()

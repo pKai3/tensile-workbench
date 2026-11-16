@@ -1,7 +1,8 @@
-# Tensile Workbench 1.0.18
+# Tensile Workbench — next update
 
-- Open static plots in a fitted, non-scrolling popup. Escape, a click outside
-  the image or Close returns to the plot gallery without recalculating.
+- Open static and interactive plots in fitted, non-scrolling popups that closely
+  wrap the chart. Escape, a click outside the chart or Close returns to the
+  plot gallery without recalculating.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.
