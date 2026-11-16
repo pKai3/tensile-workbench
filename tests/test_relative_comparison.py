@@ -189,7 +189,7 @@ class RelativeComparisonTests(unittest.TestCase):
             with patch.object(app.session.instron, 'match', side_effect=with_values):
                 app.session._property_frames.clear()
                 app._refresh_properties()
-                self.assertIs(app.tables.tabs.children[0].children[1], app.tables.comparison.ui)
+                self.assertIs(app.tables.tabs.children[0].children[-1], app.tables.comparison.ui)
                 expected = app.tables.comparison.summary
                 self.assertFalse(expected.empty)
                 self.assertFalse(app.tables.comparison.charts)
