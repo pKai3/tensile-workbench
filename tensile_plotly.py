@@ -436,7 +436,7 @@ class PlotlyView:
     def __init__(self, widgets, columns, plot_width):
         self.w, self.columns, self.plot_width = widgets, columns, plot_width
         w = widgets
-        self._items, self._owned, self._charts, self._frames = [], [], {}, {}
+        self._items, self._owned, self._charts, self._frames, self._frame_cards = [], [], {}, {}, {}
         self._focused_key = None
         self._viewport_height = 0
         self.hint = help_widget(w, 'Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
@@ -473,7 +473,7 @@ class PlotlyView:
         self._selecting = False
         for widget in reversed(self._owned):
             widget.close()
-        self._owned, self._items, self._charts, self._frames = [], [], {}, {}
+        self._owned, self._items, self._charts, self._frames, self._frame_cards = [], [], {}, {}, {}
         self.empty.value = escape(message)
         self.empty.layout.display = ''
 
@@ -508,6 +508,8 @@ class PlotlyView:
                 body.insert(1, warning)
                 self._owned.append(warning)
             card = self.w.VBox(body, layout=self.w.Layout(width='100%', min_width='0'))
+            if item['key'] in self._frames:
+                self._frame_cards[item['key']] = (card, body.index(self._frames[item['key']]))
             self._owned.append(card)
             cards.append(card)
         self.board.children = tuple(cards)
@@ -576,11 +578,17 @@ class PlotlyView:
     def open_focus(self, key):
         if not self._ensure_chart(key):
             return
+        if key == self._focused_key and self.focus_popup.overlay.layout.display != 'none':
+            return
+        self._restore_focused_frame()
         self._focused_key = key
         self._selecting = True
         self.choice.value = key
         self._selecting = False
-        self.focus_content.children = (self._frames[key],)
+        frame = self._frames[key]
+        card, _ = self._frame_cards[key]
+        card.children = tuple(child for child in card.children if child is not frame)
+        self.focus_content.children = (frame,)
         self.board.layout.display = self.toolbar.layout.display = 'none'
         if self.focus_popup.overlay.layout.display == 'none':
             self.focus_popup.open('Interactive plot', [self.focus])
@@ -589,9 +597,22 @@ class PlotlyView:
     def close_focus(self):
         self.focus_popup.close()
 
-    def _focus_closed(self):
-        self._focused_key = None
+    def _restore_focused_frame(self):
+        key = self._focused_key
+        if key is None:
+            return
         self.focus_content.children = ()
+        if key in self._frames and key in self._frame_cards:
+            frame = self._frames[key]
+            card, index = self._frame_cards[key]
+            if frame not in card.children:
+                children = list(card.children)
+                children.insert(min(index, len(children)), frame)
+                card.children = tuple(children)
+
+    def _focus_closed(self):
+        self._restore_focused_frame()
+        self._focused_key = None
         self.board.layout.display = 'grid'
         self.toolbar.layout.display = 'flex'
         self.apply_layout()
