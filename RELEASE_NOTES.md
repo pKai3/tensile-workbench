@@ -1,8 +1,8 @@
-# Tensile Workbench 1.0.16
+# Tensile Workbench — next update
 
-- Add a three-panel synthetic schematic of landmark tensile averaging, showing
-  specimen landmarks, equal-progress stage means and group-mean anchoring. The
-  vector SVG and high-resolution PNG are in `docs/figures` for reports and papers.
+- Add a **Selectable summary table** button. It shows the existing group
+  statistics with Mean, sample SD and n in separate cells. Select a rectangular
+  range like a spreadsheet and copy CSV or TSV at full numeric precision.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.

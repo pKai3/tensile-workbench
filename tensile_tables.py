@@ -10,6 +10,7 @@ import json
 import hashlib
 from tensile_selection import specimen_id, selection_state, DATA_MODES, property_allowed, analysis_properties
 from tensile_specimens import SpecimenTable
+from tensile_summary_copy import SummaryCopyTable, summary_copy_rows
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 from tensile_fit import fit_display_places
 from tensile_order import sort_group_frame
@@ -604,6 +605,16 @@ class PropertyTablesView:
         self.threshold_status = notice_widget(w)
         self.threshold.observe(self._threshold_changed, names='value')
         self.review_popup = SettingsPopup(w, width='540px')
+        self.summary_data_popup = SettingsPopup(w, width='1100px')
+        self.summary_copy = SummaryCopyTable()
+        self.summary_copy_help = w.HTML('<p class="tw-settings-hint">The same groups and properties as Summary, '
+            'with each Mean, sample SD and n in its own numeric cell. Drag across cells to select a rectangle; '
+            'Ctrl/Cmd+C copies selected cells as TSV. The buttons copy selected cells or the full visible table as CSV/TSV. '
+            'Missing values remain blank and copying retains full precision.</p>')
+        self.summary_data_button = w.Button(description='Selectable summary table', icon='table',
+            disabled=True, tooltip='Open a spreadsheet-style Summary with separate mean, SD and n cells and CSV/TSV copying.',
+            layout=w.Layout(width='auto'))
+        self.summary_data_button.on_click(self._open_summary_data)
         self.review_settings = w.Button(description='Review settings', icon='cog',
             tooltip='Set the elastic-fit R² warning threshold for all analyses. Does not change calculations or exclude data.',
             layout=w.Layout(width='auto'))
@@ -637,7 +648,8 @@ class PropertyTablesView:
         self.group_review = GroupCurveReview(w, loader=group_loader, aligned_loader=aligned_group_loader,
                                            on_selection=on_selection, on_inspect=self.open_inspector)
         self.yield_review = GroupYieldReview(w, loader=group_loader, on_inspect=self.open_inspector)
-        summary_panel = w.VBox([self.panels[0], self.comparison.ui], layout=w.Layout(width='100%', min_width='0'))
+        summary_panel = w.VBox([w.HBox([self.summary_data_button]), self.panels[0], self.comparison.ui],
+                               layout=w.Layout(width='100%', min_width='0'))
         self.tabs = w.Tab(children=[summary_panel, specimen_panel, self.group_review.ui,
                                    self.yield_review.ui, self.inspector.ui],
                           layout=w.Layout(width='100%', min_width='0', margin='0'))
@@ -654,7 +666,8 @@ class PropertyTablesView:
         self.filter_bar = control_row(w, [self.filter, self.sort, self.descending, self.review_only, table_help])
         self.filter_bar.add_class('tw-table-filters')
         self.status.add_class('tw-table-status')
-        self.ui = w.VBox([self.filter_bar, self.status, self.source_status, self.tabs, self.review_popup.ui],
+        self.ui = w.VBox([self.filter_bar, self.status, self.source_status, self.tabs,
+                          self.review_popup.ui, self.summary_data_popup.ui],
                          layout=w.Layout(width='100%', min_width='0', overflow='hidden', grid_gap='10px'))
         for control in (self.filter, self.sort, self.descending, self.review_only):
             control.observe(lambda _: self.render(), names='value')
@@ -678,6 +691,7 @@ class PropertyTablesView:
 
     def set_frames(self, frames, color_map=None, group_labels=None, group_order=None):
         self.frames = frames
+        self.summary_data_button.disabled = frames['tensile_summary_details'].empty
         self.color_map = dict(color_map or {})
         self.group_labels = dict(group_labels or {})
         self.group_order = list(group_order or [])
@@ -685,6 +699,19 @@ class PropertyTablesView:
         self.group_review.set_rows(rows)
         self.yield_review.set_rows(rows)
         self.render()
+
+    def _populate_summary_data(self):
+        summary = summary_wide(self._filtered(self.frames['tensile_summary_details']))
+        columns, rows = summary_copy_rows(summary)
+        self.summary_copy.set_data(columns, rows)
+
+    def _open_summary_data(self, _):
+        if not self.frames:
+            return
+        self._populate_summary_data()
+        self.summary_data_popup.open('Selectable Summary table', [
+            self.summary_copy_help,
+            self.summary_copy])
 
     def open_inspector(self, ident):
         self.show_inspector()
@@ -695,6 +722,9 @@ class PropertyTablesView:
 
     def clear(self, message='Select sample groups to load property tables.'):
         self.frames = {}
+        self.summary_data_popup.close()
+        self.summary_data_button.disabled = True
+        self.summary_copy.set_data([], [])
         self.status.value = message
         for panel in self.panels:
             panel.value = ''
@@ -799,6 +829,7 @@ class PropertyTablesView:
         self.panels[0].value = (help_html('Summary definitions', '<p>Mean ± sample SD of included specimens, not properties of an average curve. '
                                'Instron uses available matched values; differing valid counts are shown in each cell. '
                                'SD requires at least two values. “—” means unavailable. '
+                               'Use <b>Selectable summary table</b> to select a rectangle of cells and copy CSV/TSV with separate Mean, SD and n values. '
                                'Elongation: Instron = reported break result; Calc = selected CSV endpoint; '
                                'Reconstruct = its gauge reconstruction, blank unless enabled and available. '
                                'Instron columns remain available for uniform elongation and tensile toughness. '
@@ -827,7 +858,7 @@ class PropertyTablesView:
                                'Click the filename for its full path. UTS-compatible alternatives in Checks are '
                                'review hints only, scoped to that dataset; nothing is renamed or rematched.</p>'
                                '<p>For elongation, <b>Instron</b> is the reported break result, <b>Calc</b> is the '
-                               'selected CSV endpoint before any landmark shape setback, and <b>Reconstruct</b> '
+                               'selected CSV endpoint, and <b>Reconstruct</b> '
                                'is its gauge reconstruction, blank unless enabled and available. '
                                'The inspector explains the sudden-drop and 10%-of-peak rules and identifies the selected criterion. '
                                '<b>EL selection</b> identifies manual overrides; edit or restore them in the inspector. '
@@ -848,3 +879,5 @@ class PropertyTablesView:
         included = int(samples['Included'].sum()) if not samples.empty else 0
         flagged = int(specimen_review_mask(samples).sum())
         self.status.value = f'{len(samples)} displayed specimens · {included} included · {flagged} needing review.'
+        if self.summary_data_popup.overlay.layout.display != 'none':
+            self._populate_summary_data()
