@@ -12,7 +12,7 @@ class PlotlyPopupTests(unittest.TestCase):
     def test_popup_switches_plots_and_fits_viewport_height(self):
         figure, axis = plt.subplots()
         self.addCleanup(plt.close, figure)
-        axis.plot([0, 1], [0, 1], label='Synthetic')
+        axis.plot([0, 1], [0, 1], label='Synthetic', color='#009e73')
         axis.legend()
         view = PlotlyView(w, w.Dropdown(options=[1, 2], value=1),
                           w.IntSlider(value=640, min=300, max=1200))
@@ -26,27 +26,35 @@ class PlotlyPopupTests(unittest.TestCase):
         view._ensure_chart('one')
         first_frame.children[0].theme = 'dark'
         original_colour = view._charts['one'].data[0].line.color
+        view._charts['one'].update_xaxes(range=[.2, .8])
         view.open_focus('one')
         self.assertEqual(view.focus_popup.overlay.layout.display, 'flex')
-        self.assertEqual(view.board.layout.display, 'none')
-        self.assertNotIn(first_frame, first_card.children)
-        self.assertIs(view.focus_content.children[0], first_frame)
+        self.assertIn(first_frame, first_card.children)
+        self.assertIsNot(view._popup_chart, view._charts['one'])
+        self.assertIs(view.focus_content.children[0].children[2], view._popup_chart)
         self.assertEqual(view._charts['one'].data[0].line.color, original_colour)
-        self.assertEqual(view._charts['one'].layout.paper_bgcolor, DARK_BACKGROUND)
+        self.assertEqual(view._popup_chart.data[0].line.color, original_colour)
+        self.assertEqual(view._popup_chart.layout.paper_bgcolor, DARK_BACKGROUND)
+        self.assertEqual(view._popup_chart.layout.xaxis.range, (.2, .8))
+        view._popup_chart.data[0].line.color = '#FF6692'  # Simulate a frontend fallback.
+        self.assertEqual(view._charts['one'].data[0].line.color, original_colour)
         self.assertEqual(view.focus_popup.body.layout.overflow, 'hidden')
         view._set_viewport_height(700)
-        self.assertLessEqual(view._charts['one'].layout.height, int(700 * .9) - 180)
+        self.assertLessEqual(view._popup_chart.layout.height, int(700 * .9) - 180)
 
         view.choice.value = 'two'
         self.assertEqual(view._focused_key, 'two')
         self.assertIn(first_frame, first_card.children)
-        self.assertNotIn(second_frame, second_card.children)
+        self.assertIn(second_frame, second_card.children)
+        self.assertIsNot(view._popup_chart, view._charts['two'])
         self.assertEqual(view.focus_popup.overlay.layout.display, 'flex')
         view.focus_popup.done.click()
         self.assertIsNone(view._focused_key)
         self.assertIn(second_frame, second_card.children)
         self.assertEqual(view.focus_popup.overlay.layout.display, 'none')
-        self.assertEqual(view.board.layout.display, 'grid')
+        self.assertIsNone(view._popup_chart)
+        self.assertEqual(view._charts['one'].data[0].line.color, original_colour)
+        self.assertNotEqual(view.board.layout.display, 'none')
 
 
 if __name__ == '__main__':

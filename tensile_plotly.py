@@ -436,7 +436,8 @@ class PlotlyView:
     def __init__(self, widgets, columns, plot_width):
         self.w, self.columns, self.plot_width = widgets, columns, plot_width
         w = widgets
-        self._items, self._owned, self._charts, self._frames, self._frame_cards = [], [], {}, {}, {}
+        self._items, self._owned, self._charts, self._frames, self._base_figures = [], [], {}, {}, {}
+        self._popup_widgets, self._popup_chart = [], None
         self._focused_key = None
         self._viewport_height = 0
         self.hint = help_widget(w, 'Interacting with plots', 'Drag to zoom; use the plot toolbar to pan or reset. Zoom-out stops at the initial view. Click legend entries to hide/show groups. '
@@ -473,7 +474,7 @@ class PlotlyView:
         self._selecting = False
         for widget in reversed(self._owned):
             widget.close()
-        self._owned, self._items, self._charts, self._frames, self._frame_cards = [], [], {}, {}, {}
+        self._owned, self._items, self._charts, self._frames, self._base_figures = [], [], {}, {}, {}
         self.empty.value = escape(message)
         self.empty.layout.display = ''
 
@@ -508,8 +509,6 @@ class PlotlyView:
                 body.insert(1, warning)
                 self._owned.append(warning)
             card = self.w.VBox(body, layout=self.w.Layout(width='100%', min_width='0'))
-            if item['key'] in self._frames:
-                self._frame_cards[item['key']] = (card, body.index(self._frames[item['key']]))
             self._owned.append(card)
             cards.append(card)
         self.board.children = tuple(cards)
@@ -530,10 +529,12 @@ class PlotlyView:
         old = frame.children
         try:
             figure = item['result']['figure']
-            chart = go.FigureWidget(figure_to_plotly(figure, width=self.plot_width.value))
+            base = figure_to_plotly(figure, width=self.plot_width.value)
+            chart = go.FigureWidget(base)
             chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
                              'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
             self._charts[key] = chart
+            self._base_figures[key] = base
             probe = width_probe(lambda width: self._resize(key, width),
                                 on_theme=lambda theme: apply_plot_theme(chart, theme),
                                 on_viewport=self._set_viewport_height, charts=(chart,))
@@ -562,34 +563,72 @@ class PlotlyView:
             card.layout.max_width = f'{width}px'
         for key, chart in self._charts.items():
             self._resize(key, chart.layout.width or width)
+        if self._popup_chart is not None:
+            self._resize_popup(self._popup_chart.layout.width or width)
 
     def _resize(self, key, width):
         if key in self._charts:
-            resize_chart(self._charts[key], width, focused=key == self._focused_key,
+            resize_chart(self._charts[key], width)
+
+    def _resize_popup(self, width):
+        if self._popup_chart is not None:
+            resize_chart(self._popup_chart, width, focused=True,
                          viewport_height=self._viewport_height)
 
     def _set_viewport_height(self, height):
         if height > 0 and height != self._viewport_height:
             self._viewport_height = height
-            if self._focused_key in self._charts:
-                chart = self._charts[self._focused_key]
-                self._resize(self._focused_key, chart.layout.width or self.plot_width.value)
+            if self._popup_chart is not None:
+                self._resize_popup(self._popup_chart.layout.width or self.plot_width.value)
+
+    def _dispose_popup_chart(self):
+        self.focus_content.children = ()
+        for widget in reversed(self._popup_widgets):
+            widget.close()
+        self._popup_widgets, self._popup_chart = [], None
+
+    def _build_popup_chart(self, key):
+        import plotly.graph_objects as go
+        item = next(item for item in self._items if item['key'] == key)
+        figure = item['result']['figure']
+        gallery = self._charts[key]
+        chart = go.FigureWidget(self._base_figures[key])
+        chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
+                         'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
+        # Copy interactive view choices, but use the original explicit artist
+        # colours so a fresh popup cannot alter the gallery's trace styles.
+        for name in gallery.layout:
+            if (name.startswith(('xaxis', 'yaxis')) and name in chart.layout
+                    and gallery.layout[name].range is not None):
+                chart.layout[name].range = gallery.layout[name].range
+        for source, target in zip(gallery.data, chart.data):
+            target.visible = source.visible
+        apply_plot_theme(chart, getattr(gallery, '_tw_theme', 'light'))
+        probe = width_probe(self._resize_popup,
+                            on_theme=lambda theme: apply_plot_theme(chart, theme),
+                            on_viewport=self._set_viewport_height, charts=(chart,))
+        title = text_block(self.w, figure.axes[0].get_title(), title=True)
+        notes = '\n'.join(text.get_text() for text in figure.texts if text.get_text())
+        caption = text_block(self.w, notes)
+        caption.layout.display = '' if notes else 'none'
+        frame = self.w.VBox([probe, title, chart, caption],
+                            layout=self.w.Layout(width='100%', min_width='0'))
+        frame.add_class('tw-plot-theme-host')
+        self._popup_chart = chart
+        self._popup_widgets = [frame, probe, title, chart, caption]
+        self.focus_content.children = (frame,)
 
     def open_focus(self, key):
         if not self._ensure_chart(key):
             return
         if key == self._focused_key and self.focus_popup.overlay.layout.display != 'none':
             return
-        self._restore_focused_frame()
+        self._dispose_popup_chart()
         self._focused_key = key
         self._selecting = True
         self.choice.value = key
         self._selecting = False
-        frame = self._frames[key]
-        card, _ = self._frame_cards[key]
-        card.children = tuple(child for child in card.children if child is not frame)
-        self.focus_content.children = (frame,)
-        self.board.layout.display = self.toolbar.layout.display = 'none'
+        self._build_popup_chart(key)
         if self.focus_popup.overlay.layout.display == 'none':
             self.focus_popup.open('Interactive plot', [self.focus])
         self.apply_layout()
@@ -597,25 +636,9 @@ class PlotlyView:
     def close_focus(self):
         self.focus_popup.close()
 
-    def _restore_focused_frame(self):
-        key = self._focused_key
-        if key is None:
-            return
-        self.focus_content.children = ()
-        if key in self._frames and key in self._frame_cards:
-            frame = self._frames[key]
-            card, index = self._frame_cards[key]
-            if frame not in card.children:
-                children = list(card.children)
-                children.insert(min(index, len(children)), frame)
-                card.children = tuple(children)
-
     def _focus_closed(self):
-        self._restore_focused_frame()
+        self._dispose_popup_chart()
         self._focused_key = None
-        self.board.layout.display = 'grid'
-        self.toolbar.layout.display = 'flex'
-        self.apply_layout()
 
     def _choose(self, _):
         if not self._selecting and self.choice.value is not None:
