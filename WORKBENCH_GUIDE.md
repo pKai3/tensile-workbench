@@ -191,7 +191,7 @@ Uniform elongation is total engineering strain at the first maximum engineering 
 EL provenance is explicit:
 
 - **Instron:** the imported Strain 1 at break result.
-- **Calc:** strain at the selected CSV endpoint, before any landmark shape setback. Audit identifies the sudden-drop criterion, 10% crossing, unconfirmed estimate or manual selection.
+- **Calc:** strain at the selected CSV endpoint. Audit identifies the sudden-drop criterion, 10% crossing, unconfirmed estimate or manual selection.
 - **Reconstruct:** the gauge model applied to that same endpoint, only when enabled and available.
 - **Last valid CSV strain:** the final finite strain reading in original acquisition order. Retained only in the inspector and Audit, along with its row/time.
 - **Max retained CSV strain:** preserved in the inspector and Audit only. It is not a substitute for fracture EL.
@@ -223,7 +223,7 @@ These documented numerical rules are workbench policy, **not a declaration of AS
 
 References: [ASTM E8/E8M-25](https://store.astm.org/e0008_e0008m-25.html) and [ISO 6892-1:2019](https://www.iso.org/standard/78322.html).
 
-In the landmark calculation, the pre-break **shape** endpoint is normally the selected endpoint minus 0.05 percentage points; its post-UTS shape is mapped back to the selected EL landmark. The setback does not reduce reported EL. With no supported endpoint, **Not detected** leaves EL/toughness and reconstruction unavailable. Specimens are not automatically excluded. YS, UTS, uniform elongation and both WH methods remain available when their own pre-peak requirements are satisfied; landmark WH needs no fracture endpoint.
+In the landmark calculation, the post-UTS shape uses the selected curve prefix through its endpoint, without an additional fixed strain setback. The final shape stress is taken at that same endpoint; any later unloading readings are outside the selected prefix. The existing Audit fields **Pre-break source strain** and **Pre-break stress** now report that endpoint's strain and stress. When gauge reconstruction is enabled, the selected endpoint and post-peak strains use the reconstructed gauge. With no supported endpoint, **Not detected** leaves EL/toughness and reconstruction unavailable. Specimens are not automatically excluded. YS, UTS, uniform elongation and both WH methods remain available when their own pre-peak requirements are satisfied; landmark WH needs no fracture endpoint.
 
 ### Calculation inspector
 
@@ -395,8 +395,8 @@ gauges capture the relevant localisation and cannot recover additional
 post-peak extension outside the measured interval. Inspect gauge status,
 ratio, original measurement row/time and strain at peak in Specimens. When no
 force channel is supplied, maximum engineering stress is an explicitly recorded
-proxy. The endpoint is the selected pre-drop, pre-10%-crossing, supported terminal estimate or manual measurement,
-never the deliberately earlier landmark shape-trimming point.
+proxy. The endpoint is the selected pre-drop, pre-10%-crossing, supported terminal estimate or manual measurement;
+the landmark tensile shape uses that same endpoint.
 Peak strain is read from the original acquisition, even if the plotting cleanup
 dropped that row. Local ordering changes after reconstruction are handled by
 re-sorting intact strain/stress pairs for interpolation, without clipping strain

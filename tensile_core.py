@@ -50,8 +50,6 @@ PLOT_DPI = 600
 
 LANDMARK_POINTS_PER_STAGE = 400
 
-LANDMARK_PREBREAK_MARGIN_PERCENT = 0.05
-
 LANDMARK_YIELD_FIT_FRACTIONS = (0.20, 0.50)
 
 LANDMARK_YIELD_R2_WARNING = 0.98
@@ -244,7 +242,7 @@ def summarize_toughness_stats(models, plot_spec):
             "Landmark Difference (%)": difference(landmark_area),
             "Landmark Start Strain (%)": float(landmark["x"][0]) if landmark else np.nan,
             "Landmark End Strain (%)": float(landmark["x"][-1]) if landmark else np.nan,
-            "Landmark Diagnostic": model["landmark_diagnostic"] or "stage-aligned; pre-break shape endpoint mapped to mean detected fracture EL",
+            "Landmark Diagnostic": model["landmark_diagnostic"] or "stage-aligned; selected endpoint retained in the full tensile shape",
             "Mean Failure Elongation (%)": model["mean_failure"],
         })
     return rows
@@ -952,7 +950,7 @@ def render_average_plot(models, records, out_path, family, show_individual,
         note = "Solid: common-population pointwise mean.\nDotted: fitted tail; × at mean failure elongation." if projected else "Common-population pointwise mean; no fitted tail."
     show_bar_note = family in ("landmark", "comparison") and landmark_error_bars
     if show_bar_note:
-        note += "\nLandmark bars: ±1 SD (n ≥ 2); endpoint stress is pre-break."
+        note += "\nLandmark bars: ±1 SD (n ≥ 2); endpoint stress is at the selected fracture endpoint."
     print('[PLOT INFO] ' + note.replace('\n', ' '))
     # Publication figures retain only the marker key where all three markers
     # are drawn. Place it immediately above the rendered group legend.
@@ -1511,24 +1509,18 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
         if not endpoint_available(endpoint):
             raise ValueError('CSV fracture not detected: ' + endpoint['reason'])
         end_x = endpoint['strain_pct']
+        if not peak_x < end_x:
+            raise ValueError('No resolved post-UTS segment before selected fracture endpoint')
         tail_x, tail_y, _ = fracture_curve(record)
-        # The selected measurement sets reported EL. Only the shape endpoint retreats.
-        # Re-use measured detection; a reconstructed curve has no unloading drop.
-        clean_end = end_x - LANDMARK_PREBREAK_MARGIN_PERCENT
-        if clean_end <= peak_x:
-            after_peak = tail_x[tail_x > peak_x]
-            clean_end = min(end_x, float(after_peak[0])) if len(after_peak) else peak_x
-        if not peak_x < clean_end <= end_x:
-            raise ValueError('No resolved post-UTS segment before detected fracture')
-        source_knots = np.r_[source_knots, clean_end]
-        target_knots = np.r_[target_knots, end_x]
+        # The selected prefix already excludes measurements after the endpoint.
+        source_knots = target_knots = np.r_[source_knots, end_x]
     count = LANDMARK_POINTS_PER_STAGE if points_per_stage is None else points_per_stage
     if isinstance(count, bool) or not isinstance(count, (int, np.integer)) or count < 3:
         raise ValueError("Landmark points per stage must be an integer of at least 3")
     progress=np.linspace(0,1,count)
     stages=[np.interp(a+progress*(b-a),x,y) for a,b in zip(source_knots[:2],source_knots[1:3])]
     if not prepeak_only:
-        stages.append(np.interp(peak_x+progress*(clean_end-peak_x),tail_x,tail_y))
+        stages.append(np.interp(peak_x+progress*(end_x-peak_x),tail_x,tail_y))
     stages[0][-1]=stages[1][0]=ys
     stages[1][-1] = uts
     if not prepeak_only:
@@ -1536,8 +1528,9 @@ def landmark_specimen(record, fit_fractions=LANDMARK_YIELD_FIT_FRACTIONS,
     details.update({"Yield (MPa)":ys,"Yield strain (%)":yield_x,"UTS (MPa)":uts,
                     "Uniform elongation (%)":peak_x})
     if not prepeak_only:
+        # Preserve the audit column; its source strain now equals selected EL.
         details.update({"Failure elongation (%)": end_x,
-                        "Pre-break source strain (%)": clean_end, "Pre-break stress (MPa)": float(stages[2][-1])})
+                        "Pre-break source strain (%)": end_x, "Pre-break stress (MPa)": float(stages[2][-1])})
     return target_knots,np.array(stages),details
 
 def average_landmark_shapes(items, target_knots=None, target_stresses=None, *, return_contributions=False):

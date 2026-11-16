@@ -1,8 +1,9 @@
-# Tensile Workbench 1.0.14
+# Tensile Workbench — next update
 
-- Anchor tensile-curve legends at the bottom right. In landmark and comparison
-  plots, centre the mean YS, UTS and failure elongation marker key immediately
-  above the sample-group legend.
+- Remove the legacy 0.05 percentage-point retreat from landmark tensile curves.
+  The post-UTS shape now reaches the selected fracture endpoint directly, for
+  both sudden breaks and supported gradual failures. Selected EL and fracture
+  detection are unchanged; landmark curve shapes and their areas may change.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.

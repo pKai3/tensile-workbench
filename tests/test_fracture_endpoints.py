@@ -2,15 +2,17 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tensile_fracture import (
     FRACTURE_METHOD, automatic_fracture_endpoint, detect_drop_onset,
-    endpoint_available, fracture_audit, fracture_curve, fracture_endpoint,
+    endpoint_available, fracture_audit, fracture_curve, fracture_endpoint, loading_curve,
 )
 from tensile_gauge import gauge_record
+from tensile_core import landmark_specimen
 from tensile_properties import specimen_properties
 
 
@@ -63,6 +65,24 @@ def accelerating_ductile_record():
 
 
 class EndpointRegressionTests(unittest.TestCase):
+    def test_landmark_shape_ends_at_selected_brittle_or_ductile_endpoint(self):
+        brittle = record_for(distributed_drop()[0])
+        ductile = accelerating_ductile_record()
+        for record, status in ((brittle, 'Detected'), (ductile, 'Estimated')):
+            with self.subTest(status=status):
+                endpoint = fracture_endpoint(record)
+                self.assertEqual(endpoint['status'], status)
+                x, y, _ = loading_curve(record)
+                midpoint = int(np.argmax(y)) // 2
+                properties = {'Yield status': 'resolved', 'Yield strain (%)': float(x[midpoint]),
+                              'Yield (MPa)': float(y[midpoint]), 'Notes': ''}
+                with patch('tensile_core.specimen_properties', return_value=properties):
+                    knots, stages, details = landmark_specimen(record, points_per_stage=17)
+                self.assertAlmostEqual(knots[-1], endpoint['strain_pct'])
+                self.assertAlmostEqual(details['Pre-break source strain (%)'], endpoint['strain_pct'])
+                self.assertAlmostEqual(stages[-1, -1], endpoint['stress_mpa'])
+                self.assertAlmostEqual(details['Pre-break stress (MPa)'], endpoint['stress_mpa'])
+
     def test_accelerated_ductile_extension_is_not_a_sudden_fracture(self):
         record = accelerating_ductile_record()
         end = automatic_fracture_endpoint(record)
