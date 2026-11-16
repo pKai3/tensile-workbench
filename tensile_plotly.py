@@ -49,7 +49,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
               const width = Math.floor(target.getBoundingClientRect().width);
-              const height = Math.floor(window.innerHeight);
+              const height = Math.floor(globalThis.innerHeight || 0);
               let changed = false;
               if (width > 150 && width !== model.get('pixels')) {
                 model.set('pixels', width); changed = true;
@@ -62,7 +62,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
           };
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
-          window.addEventListener('resize', measure);
+          globalThis.addEventListener?.('resize', measure);
           let fallback, paint, drawing;
           const bounded = new WeakSet();
           const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
@@ -115,7 +115,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
           const themes = new MutationObserver(appearance);
           themes.observe(document.documentElement,{attributes:true,attributeFilter:['data-tw-theme']});
           appearance();
-          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback); window.removeEventListener('resize',measure);};
+          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback); globalThis.removeEventListener?.('resize',measure);};
         }};
         """
     probe = WidthProbe()

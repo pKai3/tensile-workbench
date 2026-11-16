@@ -44,6 +44,34 @@ class PlotLoadingTests(unittest.TestCase):
           dispose(); assert.equal(timers.size,0);
         """)
 
+    def test_width_probe_reports_viewport_height_and_cleans_up_resize_listener(self):
+        self.run_js(width_probe(lambda _: None), """
+          const frames=[],listeners={};
+          globalThis.innerHeight=700;
+          globalThis.addEventListener=(name,fn)=>listeners[name]=fn;
+          globalThis.removeEventListener=name=>delete listeners[name];
+          globalThis.requestAnimationFrame=fn=>{frames.push(fn);return frames.length;};
+          globalThis.cancelAnimationFrame=()=>{};
+          globalThis.setTimeout=()=>1;globalThis.clearTimeout=()=>{};
+          globalThis.ResizeObserver=class {observe(){} disconnect(){}};
+          globalThis.MutationObserver=class {observe(){} disconnect(){}};
+          globalThis.document={documentElement:{dataset:{twTheme:'light'}}};
+          const host={querySelectorAll:()=>[]};
+          const el={style:{},isConnected:true,closest:()=>host,
+                    getBoundingClientRect:()=>({width:500})};
+          const values={pixels:0,viewport_height:0,theme:'light'};
+          const model={get:k=>values[k],set:(k,v)=>values[k]=v,save_changes:()=>{}};
+        """, """
+          const dispose=widget.render({model,el});
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(values.pixels,500);
+          assert.equal(values.viewport_height,700);
+          globalThis.innerHeight=600;listeners.resize();
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(values.viewport_height,600);
+          dispose();assert.equal(listeners.resize,undefined);
+        """)
+
     def test_visibility_observes_whole_card_after_attachment_and_prefetches(self):
         self.run_js(visibility_probe(lambda: None), """
           let pending, observed, options, callback, saves=0, disconnected=false;
