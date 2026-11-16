@@ -1,8 +1,7 @@
-# Tensile Workbench 1.0.17
+# Tensile Workbench — next update
 
-- Add a **Selectable summary table** button. It shows the existing group
-  statistics with Mean, sample SD and n in separate cells. Select a rectangular
-  range like a spreadsheet and copy CSV or TSV at full numeric precision.
+- Open static plots in a fitted, non-scrolling popup. Escape, a click outside
+  the image or Close returns to the plot gallery without recalculating.
 
 Use **Check for updates → Install update and restart** in the desktop app.
 Saved analyses, specimen overrides, data and output folders are preserved.

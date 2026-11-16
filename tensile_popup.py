@@ -8,13 +8,17 @@ class PopupEvents(anywidget.AnyWidget):
     export default {render({el,model}) {
       const root=()=>el.closest('.tw-popup-host');
       const overlay=()=>root()?.querySelector('.tw-settings-overlay');
-      let wasOpen=false,previousFocus,shell,home,backdropPress=false,locked=[];
+      let wasOpen=false,previousFocus,shell,home,backdropPress=false,blankPress=false,locked=[];
       const isOpen=()=>overlay() && getComputedStyle(overlay()).display!=='none';
       const close=()=>model.send({action:'close'});
-      // A tab can change height between pointer-down and click. Only an
-      // intentional click that started on the backdrop dismisses the dialog.
-      const down=event=>{backdropPress=event.target===overlay();};
-      const click=event=>{if(backdropPress && event.target===overlay())close();backdropPress=false;};
+      // A tab can change height between pointer-down and click. Dismiss only
+      // when the press and release are both outside the popup's active image.
+      const outsideMedia=target=>root()?.classList.contains('tw-dismiss-outside-media') &&
+        overlay()?.querySelector('.tw-static-plot-dialog')?.contains(target) &&
+        !target.closest?.('img,button,.widget-dropdown,select,input,option,label');
+      const down=event=>{backdropPress=event.target===overlay();blankPress=!!outsideMedia(event.target);};
+      const click=event=>{if((backdropPress && event.target===overlay()) ||
+        (blankPress && outsideMedia(event.target)))close();backdropPress=blankPress=false;};
       const unlock=()=>{for(const [node,property,value,priority] of locked){
         if(value)node.style.setProperty(property,value,priority);else node.style.removeProperty(property);
       }locked=[];};

@@ -1,7 +1,7 @@
-"""Resolution-independent gallery using only built-in ipywidgets.
+"""Resolution-independent gallery of static SVG previews.
 
 No data access, calculations or exports. Thumbnails are native buttons with
-SVG backgrounds; no browser extension or executable HTML is required.
+SVG backgrounds; a shared popup shell fits the selected image to the viewport.
 """
 from base64 import b64encode
 from html import escape
@@ -10,6 +10,7 @@ import uuid
 
 from tensile_group_picker import GroupCheckboxes
 from tensile_activity import busy
+from tensile_popup import SettingsPopup
 
 
 class PlotView:
@@ -23,32 +24,30 @@ class PlotView:
         self.board = w.GridBox(layout=w.Layout(width='100%', grid_gap='16px', align_items='flex-start'))
         self.board.add_class('tw-plot-board')
         self.empty = w.HTML('Choose plots and click <b>Update plots</b> to see them here.')
-        self.back = w.Button(description='Back to all plots', icon='th-large', layout=w.Layout(width='auto'))
         self.choice = w.Dropdown(description='Plot:', layout=w.Layout(width='min(100%, 560px)'))
-        self.zoom = w.IntSlider(value=100, min=100, max=300, step=25, description='Zoom (%)',
-                               continuous_update=False, style={'description_width': 'initial'},
-                               layout=w.Layout(width='300px'))
-        self.fit = w.Button(description='Fit width', icon='arrows-h', tooltip='Fit this static figure to the preview width. Export sizes are unchanged.', layout=w.Layout(width='auto'))
-        self.back.tooltip = 'Return to the gallery of generated plots.'
         self.choice.tooltip = 'Switch the enlarged plot without recalculating the results.'
         # A self-contained data URI avoids binary-widget transfer differences
         # between Jupyter kernel/manager versions. It remains a real SVG image.
-        self.focus_image = w.HTML(layout=w.Layout(width='100%', max_width='none', height='auto', margin='0', overflow='visible'))
-        self.viewport = w.Box([self.focus_image], layout=w.Layout(display='block', width='100%',
-                              max_height='78vh', overflow='auto'))
-        self.focus = w.VBox([
-            control_row(w, [self.back, self.choice, self.zoom, self.fit,
-                help_widget(w, 'Enlarging previews', 'Zoom enlarges the image only; scroll to inspect it. Axes and exports are unchanged.')]),
-            self.viewport,
-        ], layout=w.Layout(display='none', width='100%'))
+        self.focus_image = w.HTML(layout=w.Layout(width='100%', height='100%', min_height='0', margin='0', overflow='hidden'))
+        self.viewport = w.Box([self.focus_image], layout=w.Layout(width='100%', min_height='0',
+                              flex='1 1 0%', overflow='hidden', align_items='center', justify_content='center'))
+        self.viewport.add_class('tw-static-plot-viewport')
+        self.focus = w.VBox([self.choice, self.viewport], layout=w.Layout(
+            width='100%', min_width='0', min_height='0', flex='1 1 0%', overflow='hidden', grid_gap='10px'))
+        self.focus_popup = SettingsPopup(w, on_close=self._focus_closed, width='1600px')
+        self.focus_popup.ui.add_class('tw-dismiss-outside-media')
+        self.focus_popup.done.description = 'Close'
+        self.focus_popup.done.tooltip = 'Return to all plots.'
+        self.focus_popup.dialog.add_class('tw-static-plot-dialog')
+        self.focus_popup.dialog.layout.width = 'min(1600px, 96vw)'
+        self.focus_popup.dialog.layout.max_height = '92dvh'
+        self.focus_popup.dialog.layout.padding = '16px'
+        self.focus_popup.body.layout.overflow = 'hidden'
         self.hint = help_widget(w, 'Viewing plots', 'Click a plot to enlarge it. Vector previews stay sharp at any size.')
         self.toolbar = control_row(w, [columns, plot_width, self.hint])
-        self.ui = w.VBox([self.toolbar, self.empty, self.board, self.focus], layout=w.Layout(width='100%'))
+        self.ui = w.VBox([self.toolbar, self.empty, self.board, self.focus_popup.ui], layout=w.Layout(width='100%'))
         self.ui.add_class(self._scope)
-        self.back.on_click(lambda _: self.close_focus())
         self.choice.observe(self._select_focus, names='value')
-        self.zoom.observe(self._zoom, names='value')
-        self.fit.on_click(lambda _: setattr(self.zoom, 'value', 100))
         self.apply_layout()
 
     def _dispose_cards(self):
@@ -143,32 +142,25 @@ class PlotView:
             source = b64encode(item['result']['svg']).decode('ascii')
             self.focus_image.value = ('<img alt="' + escape(item['label'], quote=True) +
                 '" src="data:image/svg+xml;base64,' + source +
-                '" style="display:block;width:100%;max-width:none;height:auto;margin:0;">')
+                '" style="display:block;width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;margin:auto;">')
         finally:
             self._setting_focus = False
-        self.board.layout.display = 'none'
-        self.toolbar.layout.display = 'none'
-        self.hint.layout.display = 'none'
-        self.focus.layout.display = ''
-        self._zoom()
+        if self.focus_popup.overlay.layout.display == 'none':
+            self.focus_popup.open('Static plot preview', [self.focus], height='92dvh')
 
     def close_focus(self):
+        self.focus_popup.close()
+
+    def _focus_closed(self):
         self._focused_key = None
-        self.focus.layout.display = 'none'
-        self.board.layout.display = 'grid'
-        self.toolbar.layout.display = 'flex'
-        self.hint.layout.display = ''
 
     def _select_focus(self, _):
         if not self._setting_focus and self.choice.value is not None:
             self.open_focus(self.choice.value)
 
-    def _zoom(self, _=None):
-        self.focus_image.layout.width = f'{self.zoom.value}%'
-
 
 class DualPlotView:
-    """Keep the existing SVG viewer unchanged and add a lazy Plotly alternative."""
+    """Switch between the static SVG gallery and a lazy Plotly alternative."""
     def __init__(self, widgets, columns, plot_width, renderer):
         self.w, self.columns, self.plot_width, self.renderer = widgets, columns, plot_width, renderer
         self.static = PlotView(widgets, columns, plot_width)
