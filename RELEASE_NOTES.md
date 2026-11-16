@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.17
 
 - Add a **Selectable summary table** button. It shows the existing group
   statistics with Mean, sample SD and n in separate cells. Select a rectangular
