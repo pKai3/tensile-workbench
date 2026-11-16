@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.15
 
 - Remove the legacy 0.05 percentage-point retreat from landmark tensile curves.
   The post-UTS shape now reaches the selected fracture endpoint directly, for
