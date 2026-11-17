@@ -1,14 +1,31 @@
 """Interactive plots use the same dismissible gallery popup."""
 import unittest
+from unittest.mock import patch
 
 import ipywidgets as w
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
-from tensile_plotly import PlotlyView
+from tensile_plotly import PlotlyView, restore_trace_colors
 from tensile_plot_theme import DARK_BACKGROUND
 
 
 class PlotlyPopupTests(unittest.TestCase):
+    def test_explicit_colours_are_restyled_even_when_model_is_unchanged(self):
+        chart = go.FigureWidget(data=[
+            go.Scatter(y=[1, 2], line_color='#009e73', marker_color='#009e73'),
+            go.Scatter(y=[2, 3], line_color='#d55e00', marker_color='#d55e00'),
+        ])
+        self.addCleanup(chart.close)
+        with patch.object(go.FigureWidget, '_send_restyle_msg') as send:
+            restore_trace_colors(chart)
+        self.assertEqual(send.call_count, 1)
+        styles = send.call_args.args[0]
+        self.assertEqual(styles['line.color'], ['#009e73', '#d55e00'])
+        self.assertEqual(styles['marker.color'], ['#009e73', '#d55e00'])
+        self.assertEqual(send.call_args.kwargs['trace_indexes'], [0, 1])
+        self.assertEqual(chart.data[0].line.color, '#009e73')
+
     def test_popup_switches_plots_and_fits_viewport_height(self):
         figure, axis = plt.subplots()
         self.addCleanup(plt.close, figure)
@@ -24,6 +41,7 @@ class PlotlyPopupTests(unittest.TestCase):
         first_frame, second_frame = view._frames['one'], view._frames['two']
         self.assertIn(first_frame, first_card.children)
         view._ensure_chart('one')
+        self.assertIsNone(first_frame.children[1].layout.width)
         first_frame.children[0].theme = 'dark'
         original_colour = view._charts['one'].data[0].line.color
         view._charts['one'].update_xaxes(range=[.2, .8])

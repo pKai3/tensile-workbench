@@ -72,6 +72,39 @@ class PlotLoadingTests(unittest.TestCase):
           dispose();assert.equal(listeners.resize,undefined);
         """)
 
+    def test_width_probe_reserves_widget_overflow_and_reports_first_paint(self):
+        self.run_js(width_probe(lambda _: None), """
+          const frames=[], messages=[];
+          globalThis.innerHeight=700;
+          globalThis.addEventListener=()=>{};globalThis.removeEventListener=()=>{};
+          globalThis.requestAnimationFrame=fn=>{frames.push(fn);return frames.length;};
+          globalThis.cancelAnimationFrame=()=>{};
+          globalThis.setTimeout=()=>1;globalThis.clearTimeout=()=>{};
+          globalThis.ResizeObserver=class {observe(){} disconnect(){}};
+          globalThis.MutationObserver=class {observe(){} disconnect(){}};
+          globalThis.document={documentElement:{dataset:{twTheme:'light'}}};
+          globalThis.getComputedStyle=()=>({backgroundColor:'rgb(255, 255, 255)'});
+          const graph={_fullLayout:{xaxis:{range:[0,1]}},matches:()=>true};
+          const classes=new Set();
+          const plot={matches:()=>false,querySelector:()=>graph,
+            classList:{add:c=>classes.add(c),remove:()=>{},contains:c=>classes.has(c)}};
+          const host={clientWidth:500,scrollWidth:518,querySelectorAll:()=>[plot]};
+          const el={style:{},isConnected:true,closest:()=>host,
+            getBoundingClientRect:()=>({width:500})};
+          const values={pixels:0,viewport_height:0,theme:'light'};
+          const model={get:k=>values[k],set:(k,v)=>values[k]=v,
+            save_changes:()=>{},send:message=>messages.push(message)};
+        """, """
+          const dispose=widget.render({model,el});
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(values.pixels,480);
+          assert.equal(messages.filter(m=>m.action==='plot_painted').length,1);
+          host.scrollWidth=500;
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(values.pixels,480); // Preserve the measured inset.
+          dispose();
+        """)
+
     def test_visibility_observes_whole_card_after_attachment_and_prefetches(self):
         self.run_js(visibility_probe(lambda: None), """
           let pending, observed, options, callback, saves=0, disconnected=false;

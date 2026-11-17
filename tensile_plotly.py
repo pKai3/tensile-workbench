@@ -27,7 +27,7 @@ def limit_zoom(figure, ranges=None):
                     axis.minallowed, axis.maxallowed = low, high
 
 
-def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
+def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, charts=()):
     """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
@@ -44,11 +44,17 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
           el.style.width = '100%';
           // render may run before attachment, so observe this element itself.
           const target = el;
-          let frame;
+          let frame, chartInset=0;
           const measure = () => {
             cancelAnimationFrame(frame);
             frame = requestAnimationFrame(() => {
-              const width = Math.floor(target.getBoundingClientRect().width);
+              const host=target.closest('.tw-plot-theme-host');
+              // Plotly's widget wrapper can be slightly wider than its chart.
+              // Measure that excess once and reserve it on later resizes.
+              if(host?.clientWidth && host.scrollWidth > host.clientWidth + 1)
+                chartInset=Math.max(chartInset, Math.min(32, Math.ceil(host.scrollWidth-host.clientWidth)+2));
+              const width = Math.floor(Math.min(target.getBoundingClientRect().width,
+                host?.clientWidth || Infinity) - chartInset);
               const height = Math.floor(globalThis.innerHeight || 0);
               let changed = false;
               if (width > 150 && width !== model.get('pixels')) {
@@ -65,6 +71,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
           globalThis.addEventListener?.('resize', measure);
           let fallback, paint, drawing;
           const bounded = new WeakSet();
+          const paintedThemes = new WeakMap();
           const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
           const painted = () => {
             const theme=document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
@@ -81,6 +88,10 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
                 bounded.add(graph);
                 if(Object.keys(axes).length) model.send({action:'zoom_bounds', index, axes});
               }
+              if(graph?._fullLayout && paintedThemes.get(graph) !== theme) {
+                paintedThemes.set(graph, theme);
+                model.send({action:'plot_painted', index});
+              }
               const svg=plot.querySelector('.main-svg');
               const background=svg && getComputedStyle(svg).backgroundColor;
               const expected=theme === 'dark' ? 'rgb(18, 28, 40)' : 'rgb(255, 255, 255)';
@@ -89,6 +100,8 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
                 plot.classList.add('tw-theme-' + theme);
               }
             });
+            const host=el.closest('.tw-plot-theme-host');
+            if(host?.clientWidth && host.scrollWidth > host.clientWidth + 1) measure();
           };
           const watchPaint = () => {
             const host=el.closest('.tw-plot-theme-host');
@@ -119,11 +132,14 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
         }};
         """
     probe = WidthProbe()
-    def bounds_message(_, content, buffers):
-        if content.get('action') != 'zoom_bounds':
-            return
+    def probe_message(_, content, buffers):
         index = content.get('index')
-        if isinstance(index, int) and 0 <= index < len(charts):
+        if not (isinstance(index, int) and 0 <= index < len(charts)):
+            return
+        if content.get('action') == 'plot_painted':
+            if on_paint is not None:
+                on_paint(charts[index])
+        elif content.get('action') == 'zoom_bounds':
             chart = charts[index]
             # A delayed first paint must not overwrite a newly selected detail view.
             ranges = {name: values for name, values in content.get('axes', {}).items()
@@ -131,7 +147,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, charts=()):
                       and chart.layout[name].maxallowed is None}
             if ranges:
                 limit_zoom(chart, ranges)
-    probe.on_msg(bounds_message)
+    probe.on_msg(probe_message)
     probe.observe(lambda change: on_resize(change['new']) if change['new'] > 150 else None, names='pixels')
     if on_viewport is not None:
         probe.observe(lambda change: on_viewport(change['new']), names='viewport_height')
@@ -241,6 +257,35 @@ def resize_chart(chart, width, *, focused=False, viewport_height=None):
             chart.layout.legend.maxheight = max(30, legend_height + 10)
 
 
+def restore_trace_colors(chart):
+    """Resend explicit colours after Plotly's first paint or template redraw.
+
+    FigureWidget omits unchanged properties from its normal restyle messages.
+    A new view can therefore display a template colour despite the correct
+    colour already being present in the Python model.
+    """
+    paths = ('line.color', 'marker.color', 'marker.line.color',
+             'error_x.color', 'error_y.color', 'fillcolor')
+    grouped = {}
+    for index, trace in enumerate(chart.data):
+        colors = {}
+        for path in paths:
+            value = trace
+            for part in path.split('.'):
+                value = getattr(value, part, None)
+                if value is None:
+                    break
+            if value is not None:
+                colors[path] = value
+        if colors:
+            indexes, values = grouped.setdefault(tuple(colors), ([], []))
+            indexes.append(index)
+            values.append(colors)
+    for paths, (indexes, values) in grouped.items():
+        chart._send_restyle_msg({path: [colors[path] for colors in values]
+                                 for path in paths}, trace_indexes=indexes)
+
+
 def text_block(widgets, text, *, title=False):
     """HTML flow prevents titles/captions colliding with the Plotly axes."""
     size, align, padding = (17, 'center', '8px 12px 0') if title else (11, 'left', '4px 12px 10px')
@@ -248,7 +293,7 @@ def text_block(widgets, text, *, title=False):
     block = widgets.HTML(
         f'<div style="font: {size}px/1.45 Arial,sans-serif; text-align:{align}; '
         f'white-space:normal; overflow-wrap:anywhere; padding:{padding}">{content}</div>',
-        layout=widgets.Layout(width='100%', min_width='0'))
+        layout=widgets.Layout(min_width='0'))
     block.add_class('tensile-plotly-title' if title else 'tensile-plotly-caption')
     return block
 
@@ -605,7 +650,9 @@ class PlotlyView:
             target.visible = source.visible
         apply_plot_theme(chart, getattr(gallery, '_tw_theme', 'light'))
         probe = width_probe(self._resize_popup,
-                            on_theme=lambda theme: apply_plot_theme(chart, theme),
+                            on_theme=lambda theme: (apply_plot_theme(chart, theme),
+                                                    restore_trace_colors(chart)),
+                            on_paint=restore_trace_colors,
                             on_viewport=self._set_viewport_height, charts=(chart,))
         for name in gallery.layout:
             if name.startswith(('xaxis', 'yaxis')) and name in chart.layout:
