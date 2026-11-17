@@ -1,7 +1,7 @@
 # Tensile Workbench 1.0.20
 
-- Keep custom colours in enlarged interactive plots by reapplying the explicit
-  trace colours after Plotly renders the popup.
+- Keep custom colours in enlarged interactive plots, including property markers,
+  by checking the rendered traces against their explicit series colours.
 - Fit interactive gallery charts to their cards without the small horizontal
   scrollbar.
 - Keep standard-deviation bars in interactive tensile and strength-versus-

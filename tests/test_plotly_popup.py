@@ -6,7 +6,7 @@ import ipywidgets as w
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
-from tensile_plotly import PlotlyView, restore_trace_colors
+from tensile_plotly import PlotlyView, rendered_trace_colors, restore_trace_colors
 from tensile_plot_theme import DARK_BACKGROUND, dark_color
 
 
@@ -37,6 +37,8 @@ class PlotlyPopupTests(unittest.TestCase):
             self.assertEqual(trace.marker.color, dark_color(color))
             self.assertEqual(trace.error_x.color, trace.marker.color)
             self.assertEqual(trace.error_y.color, trace.marker.color)
+        styles = rendered_trace_colors(view._popup_chart)
+        self.assertTrue(all('marker.line.color' not in style for style in styles))
         with patch.object(go.FigureWidget, '_send_restyle_msg') as send:
             restore_trace_colors(view._popup_chart)
         sent = {}

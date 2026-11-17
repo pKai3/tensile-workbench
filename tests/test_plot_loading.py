@@ -72,21 +72,25 @@ class PlotLoadingTests(unittest.TestCase):
           dispose();assert.equal(listeners.resize,undefined);
         """)
 
-    def test_width_probe_reserves_widget_overflow_and_reports_first_paint(self):
+    def test_width_probe_reserves_overflow_and_handles_paint_after_timeout(self):
         self.run_js(width_probe(lambda _: None), """
-          const frames=[], messages=[];
+          const frames=[], messages=[], mutations=[]; let fallback, ready=false;
           globalThis.innerHeight=700;
           globalThis.addEventListener=()=>{};globalThis.removeEventListener=()=>{};
           globalThis.requestAnimationFrame=fn=>{frames.push(fn);return frames.length;};
           globalThis.cancelAnimationFrame=()=>{};
-          globalThis.setTimeout=()=>1;globalThis.clearTimeout=()=>{};
+          globalThis.setTimeout=fn=>{fallback=fn;return 1;};globalThis.clearTimeout=()=>{};
           globalThis.ResizeObserver=class {observe(){} disconnect(){}};
-          globalThis.MutationObserver=class {observe(){} disconnect(){}};
+          globalThis.MutationObserver=class {
+            constructor(fn){this.fn=fn;mutations.push(this);}
+            observe(){this.active=true;} disconnect(){this.active=false;}
+            fire(){if(this.active)this.fn();}
+          };
           globalThis.document={documentElement:{dataset:{twTheme:'light'}}};
           globalThis.getComputedStyle=()=>({backgroundColor:'rgb(255, 255, 255)'});
           const graph={_fullLayout:{xaxis:{range:[0,1]}},matches:()=>true};
           const classes=new Set();
-          const plot={matches:()=>false,querySelector:()=>graph,
+          const plot={matches:()=>false,querySelector:()=>ready?graph:null,
             classList:{add:c=>classes.add(c),remove:()=>{},contains:c=>classes.has(c)}};
           const host={clientWidth:500,scrollWidth:518,querySelectorAll:()=>[plot]};
           const el={style:{},isConnected:true,closest:()=>host,
@@ -98,10 +102,80 @@ class PlotLoadingTests(unittest.TestCase):
           const dispose=widget.render({model,el});
           frames.splice(0).forEach(fn=>fn());
           assert.equal(values.pixels,480);
+          assert.equal(messages.filter(m=>m.action==='plot_painted').length,0);
+          fallback(); // The first Plotly paint can take longer than five seconds.
+          assert.equal(mutations[1].active,true);
+          ready=true;mutations[1].fire();frames.splice(0).forEach(fn=>fn());
           assert.equal(messages.filter(m=>m.action==='plot_painted').length,1);
           host.scrollWidth=500;
           frames.splice(0).forEach(fn=>fn());
           assert.equal(values.pixels,480); // Preserve the measured inset.
+          dispose();
+        """)
+
+    def test_popup_corrects_rendered_marker_colour_after_plotly_fallback(self):
+        styles = [{'marker.color': '#009e73', 'error_x.color': '#009e73'},
+                  {'marker.color': '#b6699c'}, {'line.color': '#009e73'},
+                  {'marker.color': ['#009e73', '#b6699c']}]
+        self.run_js(width_probe(lambda _: None, trace_styles=styles), """
+          const frames=[], calls=[], mutations=[];
+          globalThis.innerHeight=700;
+          globalThis.addEventListener=()=>{};globalThis.removeEventListener=()=>{};
+          globalThis.requestAnimationFrame=fn=>{frames.push(fn);return frames.length;};
+          globalThis.cancelAnimationFrame=()=>{};
+          globalThis.setTimeout=()=>1;globalThis.clearTimeout=()=>{};
+          globalThis.ResizeObserver=class {observe(){} disconnect(){}};
+          globalThis.MutationObserver=class {
+            constructor(fn){mutations.push(fn);} observe(){} disconnect(){}
+          };
+          globalThis.document={documentElement:{dataset:{twTheme:'dark'}}};
+          globalThis.getComputedStyle=()=>({backgroundColor:'rgb(18, 28, 40)'});
+          const graph={_fullLayout:{},_fullData:[
+            {marker:{color:'#19d3f3'},error_x:{color:'#19d3f3'}},
+            {marker:{color:'#b6699c'}},
+            {line:{color:'#19d3f3'}},
+            {marker:{color:['#19d3f3','#b6699c']}}]};
+          globalThis.Plotly={restyle:async (_,changes,indexes)=>{
+            calls.push({changes,indexes});
+            for(const [path,values] of Object.entries(changes))
+              indexes.forEach((index,position)=>{
+                const parts=path.split('.');
+                graph._fullData[index][parts[0]][parts[1]]=values[position];
+              });
+          }};
+          const classes=new Set();
+          const plot={matches:()=>false,querySelector:()=>graph,
+            classList:{add:c=>classes.add(c),remove:(...names)=>names.forEach(c=>classes.delete(c)),
+                       contains:c=>classes.has(c)}};
+          const host={clientWidth:500,scrollWidth:500,querySelectorAll:()=>[plot]};
+          const el={style:{},isConnected:true,closest:()=>host,
+                    getBoundingClientRect:()=>({width:500})};
+          const values={pixels:0,viewport_height:0,theme:'dark',trace_styles:[
+            {'marker.color':'#009e73','error_x.color':'#009e73'},
+            {'marker.color':'#b6699c'}, {'line.color':'#009e73'},
+            {'marker.color':['#009e73','#b6699c']}]};
+          const model={get:k=>values[k],set:(k,v)=>values[k]=v,
+                       save_changes:()=>{},send:()=>{}};
+        """, """
+          const dispose=widget.render({model,el});
+          await new Promise(resolve=>setImmediate(resolve));
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(graph._fullData[0].marker.color,'#009e73');
+          assert.equal(graph._fullData[0].error_x.color,'#009e73');
+          assert.equal(graph._fullData[1].marker.color,'#b6699c');
+          assert.equal(graph._fullData[2].line.color,'#009e73');
+          assert.deepEqual(graph._fullData[3].marker.color,['#009e73','#b6699c']);
+          assert.equal(classes.has('tw-colors-ready'),true);
+          const firstCount=calls.length;
+          graph._fullData[0].marker.color='#19d3f3';
+          mutations[1]();
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(classes.has('tw-colors-ready'),false);
+          await new Promise(resolve=>setImmediate(resolve));
+          frames.splice(0).forEach(fn=>fn());
+          assert.equal(graph._fullData[0].marker.color,'#009e73');
+          assert.equal(classes.has('tw-colors-ready'),true);
+          assert.ok(calls.length>firstCount);
           dispose();
         """)
 

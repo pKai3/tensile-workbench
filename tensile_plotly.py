@@ -27,7 +27,8 @@ def limit_zoom(figure, ranges=None):
                     axis.minallowed, axis.maxallowed = low, high
 
 
-def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, charts=()):
+def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None,
+                trace_styles=(), charts=()):
     """Sync browser size/appearance to display-only callbacks, never calculations."""
     import anywidget
     import traitlets
@@ -38,6 +39,7 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, ch
         pixels = traitlets.Int(0).tag(sync=True)
         viewport_height = traitlets.Int(0).tag(sync=True)
         theme = traitlets.Enum(['light', 'dark'], default_value='light').tag(sync=True)
+        trace_styles = traitlets.List(traitlets.Dict(), default_value=[]).tag(sync=True)
         _esm = """
         export default {render({model, el}) {
           el.style.height = '0px'; el.style.overflow = 'hidden';
@@ -69,10 +71,39 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, ch
           const observer = new ResizeObserver(measure);
           observer.observe(target); measure();
           globalThis.addEventListener?.('resize', measure);
-          let fallback, paint, drawing;
+          let fallback, paint, drawing, revealUnmatched=false;
           const bounded = new WeakSet();
           const paintedThemes = new WeakMap();
+          const recoloring = new WeakSet();
           const plots = () => el.closest('.tw-plot-theme-host')?.querySelectorAll('.tw-themed-plot') || [];
+          const colorAt = (trace, path) => path.split('.').reduce((value, part) => value?.[part], trace);
+          const sameColor = (actual, expected) =>
+            JSON.stringify(actual)?.toLowerCase() === JSON.stringify(expected)?.toLowerCase();
+          const correctColors = graph => {
+            const expected=model.get('trace_styles') || [];
+            if(!expected.length) return true;
+            if(!graph?._fullData) return false;
+            const edits=new Map();
+            expected.forEach((styles, index) => {
+              for(const [path, value] of Object.entries(styles)) {
+                if(sameColor(colorAt(graph._fullData[index], path), value)) continue;
+                if(!edits.has(path)) edits.set(path, {indexes:[], values:[]});
+                const edit=edits.get(path); edit.indexes.push(index); edit.values.push(value);
+              }
+            });
+            if(!edits.size) return true;
+            if(!recoloring.has(graph) && globalThis.Plotly?.restyle) {
+              recoloring.add(graph);
+              (async () => {
+                for(const [path, edit] of edits)
+                  await globalThis.Plotly.restyle(graph, {[path]:edit.values}, edit.indexes);
+              })().catch(() => {}).finally(() => {
+                recoloring.delete(graph);
+                painted();
+              });
+            }
+            return false;
+          };
           const painted = () => {
             const theme=document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
             plots().forEach((plot, index) => {
@@ -92,6 +123,9 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, ch
                 paintedThemes.set(graph, theme);
                 model.send({action:'plot_painted', index});
               }
+              const colorsReady=correctColors(graph);
+              if(colorsReady || revealUnmatched) plot.classList.add('tw-colors-ready');
+              else plot.classList.remove('tw-colors-ready');
               const svg=plot.querySelector('.main-svg');
               const background=svg && getComputedStyle(svg).backgroundColor;
               const expected=theme === 'dark' ? 'rgb(18, 28, 40)' : 'rgb(255, 255, 255)';
@@ -114,11 +148,12 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, ch
           };
           const appearance = () => {
             const theme = document.documentElement.dataset.twTheme === 'dark' ? 'dark' : 'light';
+            revealUnmatched=false;
             clearTimeout(fallback); cancelAnimationFrame(paint); drawing?.disconnect();
-            plots().forEach(plot => plot.classList.remove('tw-theme-fallback','tw-theme-light','tw-theme-dark'));
+            plots().forEach(plot => plot.classList.remove('tw-theme-fallback','tw-theme-light','tw-theme-dark','tw-colors-ready'));
             watchPaint();
             fallback = setTimeout(() => {
-              cancelAnimationFrame(paint); drawing?.disconnect(); painted();
+              cancelAnimationFrame(paint); revealUnmatched=true; painted();
               plots().forEach(plot => {
                 if(!plot.classList.contains('tw-theme-' + theme)) plot.classList.add('tw-theme-fallback');
               });
@@ -127,11 +162,12 @@ def width_probe(on_resize, *, on_theme=None, on_viewport=None, on_paint=None, ch
           };
           const themes = new MutationObserver(appearance);
           themes.observe(document.documentElement,{attributes:true,attributeFilter:['data-tw-theme']});
+          model.on?.('change:trace_styles', painted);
           appearance();
-          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback); globalThis.removeEventListener?.('resize',measure);};
+          return () => {observer.disconnect(); themes.disconnect(); drawing?.disconnect(); model.off?.('change:trace_styles', painted); cancelAnimationFrame(frame); cancelAnimationFrame(paint); clearTimeout(fallback); globalThis.removeEventListener?.('resize',measure);};
         }};
         """
-    probe = WidthProbe()
+    probe = WidthProbe(trace_styles=list(trace_styles))
     def probe_message(_, content, buffers):
         index = content.get('index')
         if not (isinstance(index, int) and 0 <= index < len(charts)):
@@ -284,6 +320,40 @@ def restore_trace_colors(chart):
     for paths, (indexes, values) in grouped.items():
         chart._send_restyle_msg({path: [colors[path] for colors in values]
                                  for path in paths}, trace_indexes=indexes)
+
+
+def rendered_trace_colors(chart):
+    """Send only visible explicit colours to the popup's browser-side check."""
+    result = []
+    for trace in chart.data:
+        paths = []
+        if trace.type == 'scatter':
+            mode = trace.mode or 'lines'
+            if 'lines' in mode:
+                paths.append('line.color')
+            if 'markers' in mode:
+                paths.append('marker.color')
+            for dimension in ('x', 'y'):
+                error = getattr(trace, 'error_' + dimension)
+                if error.array is not None and error.color is not None:
+                    paths.append('error_' + dimension + '.color')
+            if trace.fill not in (None, 'none'):
+                paths.append('fillcolor')
+        elif trace.type == 'bar':
+            paths.append('marker.color')
+        colors = {}
+        for path in paths:
+            value = trace
+            for part in path.split('.'):
+                value = getattr(value, part, None)
+                if value is None:
+                    break
+            if isinstance(value, str):
+                colors[path] = value
+            elif isinstance(value, (list, tuple, np.ndarray)) and all(isinstance(color, str) for color in value):
+                colors[path] = list(value)
+        result.append(colors)
+    return result
 
 
 def text_block(widgets, text, *, title=False):
@@ -650,11 +720,15 @@ class PlotlyView:
         for source, target in zip(gallery.data, chart.data):
             target.visible = source.visible
         apply_plot_theme(chart, getattr(gallery, '_tw_theme', 'light'))
+        def popup_theme(theme):
+            apply_plot_theme(chart, theme)
+            probe.trace_styles = rendered_trace_colors(chart)
+            restore_trace_colors(chart)
         probe = width_probe(self._resize_popup,
-                            on_theme=lambda theme: (apply_plot_theme(chart, theme),
-                                                    restore_trace_colors(chart)),
+                            on_theme=popup_theme,
                             on_paint=restore_trace_colors,
-                            on_viewport=self._set_viewport_height, charts=(chart,))
+                            on_viewport=self._set_viewport_height,
+                            trace_styles=rendered_trace_colors(chart), charts=(chart,))
         for name in gallery.layout:
             if name.startswith(('xaxis', 'yaxis')) and name in chart.layout:
                 source_axis, target_axis = gallery.layout[name], chart.layout[name]
