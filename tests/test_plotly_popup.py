@@ -15,9 +15,11 @@ class PlotlyPopupTests(unittest.TestCase):
         figure, axis = plt.subplots()
         self.addCleanup(plt.close, figure)
         palette = [('AB', '#d55e00'), ('SR', '#009e73'),
-                   ('ST', '#0072b2'), ('STA', '#a94f8b')]
+                   ('STA', '#a94f8b'), ('ST', '#0072b2')]
         for index, (name, color) in enumerate(palette):
-            axis.plot([index + .1], [650 + index], 'o', color=color, alpha=.3)
+            for specimen in range((8, 7, 8, 8)[index]):
+                axis.plot([index + specimen * .03], [650 + index], 'o',
+                          color=color, alpha=.3)
             bars = axis.errorbar([index], [650 + index], xerr=[.2], yerr=[5],
                                  fmt='D', color=color, label='_nolegend_')
             bars.lines[0].set_label(name)
@@ -37,7 +39,8 @@ class PlotlyPopupTests(unittest.TestCase):
             self.assertEqual(trace.marker.color, dark_color(color))
             self.assertEqual(trace.error_x.color, trace.marker.color)
             self.assertEqual(trace.error_y.color, trace.marker.color)
-        styles = rendered_trace_colors(view._popup_chart)
+        styles = rendered_trace_colors(view._base_figures['properties'], theme='dark')
+        self.assertEqual(len(styles), 35)
         self.assertTrue(all('marker.line.color' not in style for style in styles))
         with patch.object(go.FigureWidget, '_send_restyle_msg') as send:
             restore_trace_colors(view._popup_chart)
@@ -51,6 +54,11 @@ class PlotlyPopupTests(unittest.TestCase):
             index = list(view._popup_chart.data).index(trace)
             self.assertEqual(sent[index, 'marker.color'], trace.marker.color)
             self.assertEqual(sent[index, 'error_x.color'], trace.error_x.color)
+        sr_index = list(view._popup_chart.data).index(means['SR'])
+        self.assertEqual(sr_index, 16)
+        view._popup_chart.data[sr_index].marker.color = '#FF6692'
+        view._popup_widgets[1].theme = 'dark'
+        self.assertEqual(view._popup_widgets[1].trace_styles[sr_index]['marker.color'], '#009e73')
 
     def test_explicit_colours_are_restyled_even_when_model_is_unchanged(self):
         chart = go.FigureWidget(data=[

@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib.colors import to_hex
 from matplotlib.container import ErrorbarContainer, BarContainer
 from tensile_display import preview_indices
-from tensile_plot_theme import apply_plot_theme
+from tensile_plot_theme import apply_plot_theme, dark_color
 from tensile_popup import SettingsPopup
 
 
@@ -293,7 +293,7 @@ def resize_chart(chart, width, *, focused=False, viewport_height=None):
             chart.layout.legend.maxheight = max(30, legend_height + 10)
 
 
-def restore_trace_colors(chart):
+def restore_trace_colors(chart, trace_styles=None):
     """Resend explicit colours after Plotly's first paint or template redraw.
 
     FigureWidget omits unchanged properties from its normal restyle messages.
@@ -304,15 +304,18 @@ def restore_trace_colors(chart):
              'error_x.color', 'error_y.color', 'fillcolor')
     grouped = {}
     for index, trace in enumerate(chart.data):
-        colors = {}
-        for path in paths:
-            value = trace
-            for part in path.split('.'):
-                value = getattr(value, part, None)
-                if value is None:
-                    break
-            if value is not None:
-                colors[path] = value
+        if trace_styles is None:
+            colors = {}
+            for path in paths:
+                value = trace
+                for part in path.split('.'):
+                    value = getattr(value, part, None)
+                    if value is None:
+                        break
+                if value is not None:
+                    colors[path] = value
+        else:
+            colors = trace_styles[index]
         if colors:
             indexes, values = grouped.setdefault(tuple(colors), ([], []))
             indexes.append(index)
@@ -322,7 +325,7 @@ def restore_trace_colors(chart):
                                  for path in paths}, trace_indexes=indexes)
 
 
-def rendered_trace_colors(chart):
+def rendered_trace_colors(chart, *, theme='light'):
     """Send only visible explicit colours to the popup's browser-side check."""
     result = []
     for trace in chart.data:
@@ -349,9 +352,9 @@ def rendered_trace_colors(chart):
                 if value is None:
                     break
             if isinstance(value, str):
-                colors[path] = value
+                colors[path] = dark_color(value) if theme == 'dark' else value
             elif isinstance(value, (list, tuple, np.ndarray)) and all(isinstance(color, str) for color in value):
-                colors[path] = list(value)
+                colors[path] = dark_color(value) if theme == 'dark' else list(value)
         result.append(colors)
     return result
 
@@ -708,7 +711,8 @@ class PlotlyView:
         item = next(item for item in self._items if item['key'] == key)
         figure = item['result']['figure']
         gallery = self._charts[key]
-        chart = go.FigureWidget(self._base_figures[key])
+        base = self._base_figures[key]
+        chart = go.FigureWidget(base)
         chart._config = {**chart._config, 'displaylogo': False, 'scrollZoom': True,
                          'responsive': True, 'modeBarButtonsToRemove': ['toImage', 'select2d', 'lasso2d']}
         # Copy interactive view choices, but use the original explicit artist
@@ -720,15 +724,18 @@ class PlotlyView:
         for source, target in zip(gallery.data, chart.data):
             target.visible = source.visible
         apply_plot_theme(chart, getattr(gallery, '_tw_theme', 'light'))
+        def popup_styles():
+            return rendered_trace_colors(base, theme=getattr(chart, '_tw_theme', 'light'))
         def popup_theme(theme):
             apply_plot_theme(chart, theme)
-            probe.trace_styles = rendered_trace_colors(chart)
-            restore_trace_colors(chart)
+            styles = popup_styles()
+            probe.trace_styles = styles
+            restore_trace_colors(chart, styles)
         probe = width_probe(self._resize_popup,
                             on_theme=popup_theme,
-                            on_paint=restore_trace_colors,
+                            on_paint=lambda chart: restore_trace_colors(chart, popup_styles()),
                             on_viewport=self._set_viewport_height,
-                            trace_styles=rendered_trace_colors(chart), charts=(chart,))
+                            trace_styles=popup_styles(), charts=(chart,))
         for name in gallery.layout:
             if name.startswith(('xaxis', 'yaxis')) and name in chart.layout:
                 source_axis, target_axis = gallery.layout[name], chart.layout[name]
