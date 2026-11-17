@@ -335,6 +335,7 @@ def _axis_to_plotly(ax, *, width=640, allow_empty=False):
             raise ValueError('Unsupported artist container; use Static plots.')
         data_line, caplines, collections = container.lines
         caps.update(id(line) for line in caplines)
+        color = to_hex(data_line.get_color())
         errors, index = {}, 0
         for dim, active in (('x', container.has_xerr), ('y', container.has_yerr)):
             if not active:
@@ -344,7 +345,7 @@ def _axis_to_plotly(ax, *, width=640, allow_empty=False):
             coordinate = 0 if dim == 'x' else 1
             errors['error_' + dim] = dict(type='data', symmetric=True,
                 array=[abs(float(seg[-1, coordinate] - seg[0, coordinate])) / 2 if len(seg) else 0 for seg in segments],
-                thickness=1, width=4, visible=True)
+                thickness=1, width=4, visible=True, color=color)
         error_by_line[id(data_line)] = errors
 
     traces = []

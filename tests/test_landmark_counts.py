@@ -144,8 +144,10 @@ class LandmarkCountTests(unittest.TestCase):
                     self.assertEqual(list(trace.y), [point['y']])
                     if bars and np.isfinite(point['x_sd']):
                         self.assertAlmostEqual(trace.error_x.array[0], point['x_sd'])
+                        self.assertEqual(trace.error_x.color, trace.marker.color)
                     if bars and np.isfinite(point['y_sd']):
                         self.assertAlmostEqual(trace.error_y.array[0], point['y_sd'])
+                        self.assertEqual(trace.error_y.color, trace.marker.color)
 
     def test_coordinate_only_difference_does_not_get_an_unqualified_count(self):
         landmark = synthetic_landmark(shape=8, ys=8, uts=8, el=8, uniform=6)

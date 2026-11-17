@@ -11,6 +11,7 @@ import numpy as np
 
 from selection_fixture import make_fixture
 from tensile_plotly import figure_to_plotly
+from tensile_plot_theme import apply_plot_theme
 from tensile_core import scatter_specimen_labels
 from tensile_workbench import TensileWorkbench, PROPERTY_FAMILIES
 
@@ -126,6 +127,13 @@ class StrengthElongationTests(unittest.TestCase):
         self.assertEqual(means[0].marker.symbol, 'diamond')
         self.assertGreater(means[0].error_x.array[0], 0)
         self.assertGreater(means[0].error_y.array[0], 0)
+        self.assertEqual(means[0].error_x.color, means[0].marker.color)
+        self.assertEqual(means[0].error_y.color, means[0].marker.color)
+        apply_plot_theme(chart, 'dark')
+        self.assertEqual(means[0].error_x.color, means[0].marker.color)
+        self.assertEqual(means[0].error_y.color, means[0].marker.color)
+        apply_plot_theme(chart, 'light')
+        self.assertEqual(means[0].error_x.color, means[0].marker.color)
         self.assertEqual(len({trace.legendgroup for trace in chart.data}), 1)
         self.assertIn('Alloy A · coupon_1', chart.data[0].hovertemplate)
         self.assertNotIn('.csv', chart.data[0].hovertemplate)
