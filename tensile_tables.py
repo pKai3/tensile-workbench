@@ -488,7 +488,8 @@ def summary_copy_frame(summary, *, source='calc', statistics='mean', properties=
         if properties == 'core' and label not in core:
             continue
         available = {short for _, short in property_table_sources(label)}
-        for short in (*sources, *(['Reconstruct'] if reconstruct else [])):
+        selected_sources = ('Reconstruct',) if reconstruct and label == 'Failure elongation' else sources
+        for short in selected_sources:
             if short not in available:
                 continue
             columns.extend(f'{property_column(label, unit, short)} · {stat}' for stat in stats)
@@ -642,8 +643,8 @@ class PropertyTablesView:
             value='core', tooltips=['Yield strength, ultimate strength and failure elongation',
                                     'All summary properties'],
             layout=w.Layout(width='auto'))
-        self.summary_reconstruct = w.ToggleButton(description='+ Reconstruct EL', value=False,
-            tooltip='Add reconstructed failure elongation alongside the selected sources.',
+        self.summary_reconstruct = w.ToggleButton(description='Use reconstructed EL', value=False,
+            tooltip='Replace the selected failure-elongation source columns with reconstructed EL.',
             layout=w.Layout(width='auto'))
         self.summary_group_counts = w.ToggleButton(description='Group counts', value=False,
             tooltip='Show included and available specimen counts for each group.',

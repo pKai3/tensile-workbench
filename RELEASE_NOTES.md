@@ -4,7 +4,7 @@
   elongation calculated means beside each group.
 - Add segmented controls for calculated, Instron or both sources; show SD, sample
   counts and other properties only when selected. Reconstructed failure
-  elongation has its own toggle.
+  elongation can replace the selected EL source columns.
 - Copy CSV or TSV from exactly the columns currently shown.
 
 Use **Check for updates → Install update and restart** in the desktop app.

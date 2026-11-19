@@ -17,7 +17,7 @@ from test_summary_alignment import summary_fixture
 
 
 class SummaryCopyTests(unittest.TestCase):
-    def test_compact_columns_and_reconstruct_elongation_are_independent(self):
+    def test_reconstruct_replaces_only_elongation_source_columns(self):
         wide = summary_wide(summary_fixture())
         compact = summary_copy_frame(wide)
         self.assertEqual(list(compact.columns), [
@@ -31,13 +31,12 @@ class SummaryCopyTests(unittest.TestCase):
             '0.2% YS (MPa) · Instron · Mean', '0.2% YS (MPa) · Instron · SD',
             'UTS (MPa) · Calc · Mean', 'UTS (MPa) · Calc · SD',
             'UTS (MPa) · Instron · Mean', 'UTS (MPa) · Instron · SD',
-            'Elongation (%) · Calc · Mean', 'Elongation (%) · Calc · SD',
-            'Elongation (%) · Instron · Mean', 'Elongation (%) · Instron · SD',
             'Elongation (%) · Reconstruct · Mean', 'Elongation (%) · Reconstruct · SD'])
         full = summary_copy_frame(wide, source='instron', statistics='all',
                                   properties='all', reconstruct=True, group_counts=True)
         self.assertEqual(list(full.columns[:3]), ['Group', 'Included n', 'Available n'])
         self.assertIn('Elongation (%) · Reconstruct · n', full.columns)
+        self.assertNotIn('Elongation (%) · Instron · Mean', full.columns)
         self.assertNotIn('0.2% YS (MPa) · Calc · Mean', full.columns)
         self.assertIn('Uniform elongation (%) · Instron · Mean', full.columns)
 
@@ -85,6 +84,8 @@ class SummaryCopyTests(unittest.TestCase):
         view.summary_statistics.value = 'sd'
         view.summary_reconstruct.value = True
         self.assertIn('Elongation (%) · Reconstruct · SD', view.summary_copy.columns)
+        self.assertNotIn('Elongation (%) · Calc · Mean', view.summary_copy.columns)
+        self.assertNotIn('Elongation (%) · Instron · Mean', view.summary_copy.columns)
         self.assertEqual(list(csv.reader(io.StringIO(view.summary_copy.tsv_text), delimiter='\t'))[0],
                          view.summary_copy.columns)
         view.clear()
@@ -117,8 +118,13 @@ class SummaryCopyTests(unittest.TestCase):
             view.summary_properties.value = 'all'
             view.summary_reconstruct.value = True
             view.summary_group_counts.value = True
-            self.assertEqual(set(view.summary_copy.columns),
-                             set(summary_wide(current['tensile_summary_details']).columns))
+            self.assertIn('Elongation (%) · Reconstruct · Mean', view.summary_copy.columns)
+            self.assertNotIn('Elongation (%) · Calc · Mean', view.summary_copy.columns)
+            self.assertNotIn('Elongation (%) · Instron · Mean', view.summary_copy.columns)
+            view.summary_reconstruct.value = False
+            full_sources = summary_copy_frame(summary_wide(current['tensile_summary_details']),
+                source='both', statistics='all', properties='all', group_counts=True)
+            self.assertEqual(view.summary_copy.columns, list(full_sources.columns))
             self.assertFalse((root / 'output').exists())
 
 
