@@ -58,8 +58,12 @@ class SummaryCopyTable(anywidget.AnyWidget):
     .tw-summary-copy th,.tw-summary-copy td {padding:7px 9px;min-width:90px;max-width:190px;
       border-right:1px solid var(--tw-border,#dce3e9);border-bottom:1px solid var(--tw-border,#dce3e9);
       white-space:normal;overflow-wrap:anywhere;user-select:none;-webkit-user-select:none;cursor:cell;}
-    .tw-summary-copy th {position:sticky;top:0;z-index:2;text-align:left;
+    .tw-summary-copy th {position:sticky;top:0;z-index:2;text-align:left;cursor:grab;touch-action:none;
       background:var(--tw-table-head-bg,#e8eef4);color:var(--tw-table-head-text,#152c3f);}
+    .tw-summary-copy th:active {cursor:grabbing;}
+    .tw-summary-copy th.dragging {opacity:.5;}
+    .tw-summary-copy th.drop-before {box-shadow:inset 3px 0 var(--tw-accent,#1767a5);}
+    .tw-summary-copy th.drop-after {box-shadow:inset -3px 0 var(--tw-accent,#1767a5);}
     .tw-summary-copy td {background:var(--tw-panel-bg,#fff);}
     .tw-summary-copy tbody tr:nth-child(even) td {background:var(--tw-table-stripe-bg,#f6f8fa);}
     .tw-summary-copy th:first-child,.tw-summary-copy td:first-child {position:sticky;left:0;z-index:1;min-width:145px;}
@@ -79,7 +83,7 @@ class SummaryCopyTable(anywidget.AnyWidget):
       const fallback=document.createElement('textarea');
       root.className='tw-summary-copy';toolbar.className='toolbar';grid.className='grid';
       grid.tabIndex=0;grid.setAttribute('role','region');
-      grid.setAttribute('aria-label','Selectable Summary table; drag across cells to select a rectangle');
+      grid.setAttribute('aria-label','Selectable Summary table; drag headers to reorder columns or drag across cells to select a rectangle');
       notice.setAttribute('role','status');fallback.hidden=true;fallback.readOnly=true;
       const buttons={};
       for(const format of ['CSV','TSV']) {
@@ -89,8 +93,10 @@ class SummaryCopyTable(anywidget.AnyWidget):
       }
       const clear=document.createElement('button');clear.type='button';clear.textContent='Clear selection';
       clear.hidden=true;toolbar.append(clear,notice);root.append(toolbar,grid,fallback);el.append(root);
-      let anchor=null,tip=null,dragging=false;
-      const matrix=()=>[model.get('columns'),...model.get('rows')];
+      let anchor=null,tip=null,dragging=false,headerDrag=null,columnOrder=[];
+      const visibleOrder=()=>columnOrder.filter(label=>model.get('columns').includes(label));
+      const matrix=()=>{const columns=model.get('columns'),indices=visibleOrder().map(label=>columns.indexOf(label));
+        return [indices.map(index=>columns[index]),...model.get('rows').map(row=>indices.map(index=>row[index]))];};
       const bounds=()=>anchor && tip ? {
         r0:Math.min(anchor.r,tip.r),r1:Math.max(anchor.r,tip.r),
         c0:Math.min(anchor.c,tip.c),c1:Math.max(anchor.c,tip.c)} : null;
@@ -107,16 +113,19 @@ class SummaryCopyTable(anywidget.AnyWidget):
         for(const format of ['CSV','TSV'])
           buttons[format].textContent=area ? 'Copy selection as '+format : 'Copy full '+format;
         notice.textContent=area ? `${area.r1-area.r0+1} × ${area.c1-area.c0+1} cells selected. Ctrl/Cmd+C copies TSV.` :
-          `${model.get('rows').length} group rows. Drag across cells to select a rectangle.`;
+          `${model.get('rows').length} group rows. Drag headers to reorder columns; drag cells to select.`;
       }
       function selectedText(format) {
         const area=bounds();
-        if(!area)return model.get(format==='CSV' ? 'csv_text' : 'tsv_text');
+        if(!area && visibleOrder().every((label,index)=>label===model.get('columns')[index]))
+          return model.get(format==='CSV' ? 'csv_text' : 'tsv_text');
         const delimiter=format==='CSV' ? ',' : '\\t';
         const quote=value=>{const text=value==null ? '' : String(value);
           return text.includes(delimiter) || /["\\r\\n]/.test(text) ? '"'+text.replaceAll('"','""')+'"' : text;};
-        return matrix().slice(area.r0,area.r1+1)
-          .map(row=>row.slice(area.c0,area.c1+1).map(quote).join(delimiter)).join('\\n')+'\\n';
+        const rows=matrix();
+        return rows.slice(area ? area.r0 : 0,area ? area.r1+1 : rows.length)
+          .map(row=>row.slice(area ? area.c0 : 0,area ? area.c1+1 : row.length)
+            .map(quote).join(delimiter)).join('\\n')+'\\n';
       }
       async function copy(format) {
         const value=selectedText(format);
@@ -127,7 +136,15 @@ class SummaryCopyTable(anywidget.AnyWidget):
       }
       for(const format of ['CSV','TSV'])buttons[format].addEventListener('click',()=>copy(format));
       clear.addEventListener('click',()=>{anchor=tip=null;paint();grid.focus();});
+      const headerAt=event=>event.target.closest?.('th[data-c]');
       const down=event=>{if(event.button!==0)return;
+        const header=headerAt(event);
+        if(header && grid.contains(header)){
+          headerDrag={from:Number(header.dataset.c),startX:event.clientX,startY:event.clientY,
+            pointerId:event.pointerId,extend:event.shiftKey && !!anchor,moving:false,target:null,after:false};
+          grid.setPointerCapture(event.pointerId);event.preventDefault();
+          header.focus({preventScroll:true});return;
+        }
         const cell=cellAt(event);if(!cell || !grid.contains(cell))return;
         if(event.shiftKey && anchor)tip=point(cell);else anchor=tip=point(cell);
         dragging=true;event.preventDefault();cell.focus({preventScroll:true});paint();};
@@ -136,6 +153,44 @@ class SummaryCopyTable(anywidget.AnyWidget):
       const up=()=>{dragging=false;};
       grid.addEventListener('pointerdown',down);grid.addEventListener('pointerover',over);
       document.addEventListener('pointerup',up);
+      const clearDrag=()=>{
+        grid.querySelectorAll('.dragging,.drop-before,.drop-after').forEach(cell=>
+          cell.classList.remove('dragging','drop-before','drop-after'));};
+      grid.addEventListener('pointermove',event=>{const state=headerDrag;
+        if(!state || state.pointerId!==event.pointerId)return;
+        if(!state.moving && Math.hypot(event.clientX-state.startX,event.clientY-state.startY)<5)return;
+        state.moving=true;
+        grid.querySelector(`th[data-c="${state.from}"]`)?.classList.add('dragging');
+        const gridRect=grid.getBoundingClientRect();
+        if(event.clientX<gridRect.left+28)grid.scrollLeft-=15;
+        else if(event.clientX>gridRect.right-28)grid.scrollLeft+=15;
+        const header=document.elementFromPoint(event.clientX,event.clientY)?.closest?.('th[data-c]');
+        grid.querySelectorAll('.drop-before,.drop-after').forEach(cell=>cell.classList.remove('drop-before','drop-after'));
+        state.target=header && grid.contains(header) ? Number(header.dataset.c) : null;
+        if(state.target===null)return;
+        state.after=event.clientX>header.getBoundingClientRect().left+header.getBoundingClientRect().width/2;
+        header.classList.add(state.after ? 'drop-after' : 'drop-before');
+      });
+      grid.addEventListener('pointerup',event=>{const state=headerDrag;
+        if(!state || state.pointerId!==event.pointerId)return;
+        headerDrag=null;grid.releasePointerCapture(event.pointerId);clearDrag();
+        const {from,target,after}=state;
+        if(!state.moving){if(state.extend)tip={r:0,c:from};else anchor=tip={r:0,c:from};
+          paint();return;}
+        if(target===null)return;
+        let destination=target+(after ? 1 : 0);
+        const visible=visibleOrder(),moved=visible[from],neighbor=visible[target];
+        if(from<destination)destination--;
+        if(destination===from)return;
+        columnOrder.splice(columnOrder.indexOf(moved),1);
+        const neighborIndex=columnOrder.indexOf(neighbor);
+        columnOrder.splice(neighborIndex+(after ? 1 : 0),0,moved);
+        renderTable();
+        notice.textContent=`Moved ${moved} to column ${destination+1}. Drag headers to reorder columns.`;
+        grid.querySelector(`th[data-c="${destination}"]`)?.focus({preventScroll:true});
+      });
+      grid.addEventListener('pointercancel',event=>{if(headerDrag?.pointerId!==event.pointerId)return;
+        headerDrag=null;clearDrag();});
       grid.addEventListener('copy',event=>{if(!bounds())return;
         event.clipboardData.setData('text/plain',selectedText('TSV'));event.preventDefault();
         notice.textContent='Copied selected cells as TSV.';});
@@ -152,13 +207,31 @@ class SummaryCopyTable(anywidget.AnyWidget):
         if(!event.shiftKey || !anchor)anchor=next;tip=next;paint();
         grid.querySelector(`[data-r="${next.r}"][data-c="${next.c}"]`)?.focus({preventScroll:true});
       });
+      function syncOrder() {
+        const columns=model.get('columns');
+        for(let index=0;index<columns.length;index++){
+          const label=columns[index];if(columnOrder.includes(label))continue;
+          const parts=label.split(' · '),signature=parts.length>2 ? parts[0]+' · '+parts.at(-1) : null;
+          const sibling=signature && columnOrder.find(existing=>{
+            const pieces=existing.split(' · ');
+            return pieces.length>2 && pieces[0]+' · '+pieces.at(-1)===signature;});
+          const prior=columns.slice(0,index).reverse().find(existing=>columnOrder.includes(existing));
+          const next=columns.slice(index+1).find(existing=>columnOrder.includes(existing));
+          const position=sibling ? columnOrder.indexOf(sibling)+1 :
+            prior ? columnOrder.indexOf(prior)+1 : next ? columnOrder.indexOf(next) : columnOrder.length;
+          columnOrder.splice(position,0,label);
+        }
+      }
       function renderTable() {
+        syncOrder();
         const left=grid.scrollLeft,top=grid.scrollTop;
         const table=document.createElement('table'),head=table.createTHead().insertRow(),body=table.createTBody();
-        model.get('columns').forEach((label,c)=>{const cell=document.createElement('th');
-          cell.scope='col';cell.textContent=label;cell.dataset.r=0;cell.dataset.c=c;cell.tabIndex=-1;head.append(cell);});
+        const columns=model.get('columns'),order=visibleOrder(),indices=order.map(label=>columns.indexOf(label));
+        order.forEach((label,c)=>{const cell=document.createElement('th');
+          cell.scope='col';cell.textContent=label;cell.dataset.r=0;cell.dataset.c=c;cell.tabIndex=-1;
+          cell.title='Drag to reorder column';head.append(cell);});
         model.get('rows').forEach((row,r)=>{const tr=body.insertRow();
-          row.forEach((value,c)=>{const cell=tr.insertCell(),label=model.get('columns')[c];
+          indices.forEach((index,c)=>{const value=row[index],cell=tr.insertCell(),label=order[c];
             cell.dataset.r=r+1;cell.dataset.c=c;cell.tabIndex=-1;
             if(typeof value==='number') {cell.className='number';
               cell.textContent=label==='Included n' || label==='Available n' || label.endsWith(' · n') ?

@@ -654,7 +654,8 @@ class PropertyTablesView:
         for control in (self.summary_reconstruct, self.summary_group_counts):
             control.add_class('tw-summary-extra')
         self.summary_copy_help = help_widget(w, 'Copying summary cells',
-            'Drag across cells to select a rectangle. Ctrl/Cmd+C copies selected cells as TSV; the buttons copy '
+            'Drag column headers to reorder them, or drag across cells to select a rectangle. '
+            'Ctrl/Cmd+C copies selected cells as TSV; the buttons copy '
             'the selection or all visible columns as CSV/TSV. Missing values stay blank and numbers retain full precision.')
         self.summary_copy_controls = w.VBox([
             control_row(w, [w.HTML('<b>Source</b>'), self.summary_source,
