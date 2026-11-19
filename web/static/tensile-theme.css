@@ -332,3 +332,39 @@ html[data-tw-theme="dark"] .tw-sketch-green {color:#62cfac;}
 @media (max-width:480px) {
   .tw-plot-card {padding:8px;}
 }
+
+/* Compact Summary controls follow the segmented navigation used elsewhere. */
+.tw-summary-copy-controls {color:var(--tw-text,#24354a);}
+.tw-summary-copy-controls .tw-control-row {align-items:center;row-gap:8px;column-gap:10px;}
+.tw-summary-copy-controls .widget-html {font-size:12px;color:var(--tw-muted,#526170);}
+.tw-summary-segment.widget-toggle-buttons {
+  width:max-content;max-width:100%;overflow:hidden;
+  border:1px solid var(--tw-control-border,#bac7d4);border-radius:8px;
+  background:var(--tw-control-bg,#f3f6f9);
+}
+:is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button {
+  min-height:36px;padding:0 12px;margin:0;border:0;border-radius:0;
+  background:transparent;color:var(--tw-control-text,#203650);
+}
+:is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button + .jupyter-button {
+  border-left:1px solid var(--tw-control-border,#bac7d4);
+}
+:is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button.mod-active {
+  background:var(--tw-selected-bg,#dcecff);color:var(--tw-text,#203650);
+}
+:is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button:hover:enabled {
+  background:var(--tw-selected-bg,#dcecff);
+}
+:is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-extra.jupyter-button.mod-active {
+  background:var(--tw-selected-bg,#dcecff);border-color:var(--tw-accent,#2879b8);
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button {
+  border-radius:0;border-top:0;border-bottom:0;border-right:0;background:transparent;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button:first-child {
+  border-left:0;
+}
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button.mod-active,
+html[data-tw-theme="dark"] :is(.tw-webapp,.tw-workbench,.tw-launcher) .tw-summary-segment .jupyter-button:hover:enabled {
+  background-color:#2b465b!important;border-color:var(--tw-control-border,#39495c);
+}

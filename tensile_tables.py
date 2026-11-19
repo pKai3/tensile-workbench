@@ -471,6 +471,30 @@ def summary_wide(details):
     return pd.DataFrame(rows)
 
 
+def summary_copy_frame(summary, *, source='calc', statistics='mean', properties='core',
+                       reconstruct=False, group_counts=False):
+    """Select visible/copyable columns without changing Summary calculations."""
+    if summary.empty:
+        return summary
+    sources = {'calc': ('Calc',), 'instron': ('Instron',),
+               'both': ('Calc', 'Instron')}[source]
+    stats = {'mean': ('Mean',), 'sd': ('Mean', 'SD'),
+             'all': ('Mean', 'SD', 'n')}[statistics]
+    core = {'0.2% yield strength', 'UTS', 'Failure elongation'}
+    columns = ['Group']
+    if group_counts:
+        columns.extend(('Included n', 'Available n'))
+    for label, unit, _, _ in METRICS:
+        if properties == 'core' and label not in core:
+            continue
+        available = {short for _, short in property_table_sources(label)}
+        for short in (*sources, *(['Reconstruct'] if reconstruct else [])):
+            if short not in available:
+                continue
+            columns.extend(f'{property_column(label, unit, short)} · {stat}' for stat in stats)
+    return summary.loc[:, columns]
+
+
 def summary_html(details):
     if details.empty:
         return '<p>No matching groups.</p>'
@@ -607,10 +631,40 @@ class PropertyTablesView:
         self.review_popup = SettingsPopup(w, width='540px')
         self.summary_data_popup = SettingsPopup(w, width='1100px')
         self.summary_copy = SummaryCopyTable()
-        self.summary_copy_help = w.HTML('<p class="tw-settings-hint">The same groups and properties as Summary, '
-            'with each Mean, sample SD and n in its own numeric cell. Drag across cells to select a rectangle; '
-            'Ctrl/Cmd+C copies selected cells as TSV. The buttons copy selected cells or the full visible table as CSV/TSV. '
-            'Missing values remain blank and copying retains full precision.</p>')
+        self.summary_source = w.ToggleButtons(options=[('Calc', 'calc'), ('Instron', 'instron'), ('Both', 'both')],
+            value='calc', tooltips=['Calculated values', 'Instron values', 'Calculated and Instron values'],
+            layout=w.Layout(width='auto'))
+        self.summary_statistics = w.ToggleButtons(options=[('Mean', 'mean'), ('+ SD', 'sd'), ('+ SD + n', 'all')],
+            value='mean', tooltips=['Means only', 'Means and sample standard deviations',
+                                     'Means, sample standard deviations and property-specific counts'],
+            layout=w.Layout(width='auto'))
+        self.summary_properties = w.ToggleButtons(options=[('YS · UTS · EL', 'core'), ('All properties', 'all')],
+            value='core', tooltips=['Yield strength, ultimate strength and failure elongation',
+                                    'All summary properties'],
+            layout=w.Layout(width='auto'))
+        self.summary_reconstruct = w.ToggleButton(description='+ Reconstruct EL', value=False,
+            tooltip='Add reconstructed failure elongation alongside the selected sources.',
+            layout=w.Layout(width='auto'))
+        self.summary_group_counts = w.ToggleButton(description='Group counts', value=False,
+            tooltip='Show included and available specimen counts for each group.',
+            layout=w.Layout(width='auto'))
+        for control in (self.summary_source, self.summary_statistics, self.summary_properties):
+            control.add_class('tw-summary-segment')
+        for control in (self.summary_reconstruct, self.summary_group_counts):
+            control.add_class('tw-summary-extra')
+        self.summary_copy_help = help_widget(w, 'Copying summary cells',
+            'Drag across cells to select a rectangle. Ctrl/Cmd+C copies selected cells as TSV; the buttons copy '
+            'the selection or all visible columns as CSV/TSV. Missing values stay blank and numbers retain full precision.')
+        self.summary_copy_controls = w.VBox([
+            control_row(w, [w.HTML('<b>Source</b>'), self.summary_source,
+                            w.HTML('<b>Statistics</b>'), self.summary_statistics]),
+            control_row(w, [w.HTML('<b>Properties</b>'), self.summary_properties,
+                            self.summary_reconstruct, self.summary_group_counts, self.summary_copy_help])],
+            layout=w.Layout(width='100%', min_width='0', grid_gap='6px'))
+        self.summary_copy_controls.add_class('tw-summary-copy-controls')
+        for control in (self.summary_source, self.summary_statistics, self.summary_properties,
+                        self.summary_reconstruct, self.summary_group_counts):
+            control.observe(self._summary_display_changed, names='value')
         self.summary_data_button = w.Button(description='Selectable summary table', icon='table',
             disabled=True, tooltip='Open a spreadsheet-style Summary with separate mean, SD and n cells and CSV/TSV copying.',
             layout=w.Layout(width='auto'))
@@ -702,15 +756,22 @@ class PropertyTablesView:
 
     def _populate_summary_data(self):
         summary = summary_wide(self._filtered(self.frames['tensile_summary_details']))
+        summary = summary_copy_frame(summary, source=self.summary_source.value,
+            statistics=self.summary_statistics.value, properties=self.summary_properties.value,
+            reconstruct=self.summary_reconstruct.value, group_counts=self.summary_group_counts.value)
         columns, rows = summary_copy_rows(summary)
         self.summary_copy.set_data(columns, rows)
+
+    def _summary_display_changed(self, _):
+        if self.frames and self.summary_data_popup.overlay.layout.display != 'none':
+            self._populate_summary_data()
 
     def _open_summary_data(self, _):
         if not self.frames:
             return
         self._populate_summary_data()
         self.summary_data_popup.open('Selectable Summary table', [
-            self.summary_copy_help,
+            self.summary_copy_controls,
             self.summary_copy])
 
     def open_inspector(self, ident):

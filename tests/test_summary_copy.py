@@ -11,12 +11,36 @@ import pandas as pd
 
 from selection_fixture import make_fixture
 from tensile_summary_copy import SummaryCopyTable, summary_copy_rows
-from tensile_tables import PropertyTablesView, summary_wide
+from tensile_tables import PropertyTablesView, summary_copy_frame, summary_wide
 from tensile_workbench import PreviewSession
 from test_summary_alignment import summary_fixture
 
 
 class SummaryCopyTests(unittest.TestCase):
+    def test_compact_columns_and_reconstruct_elongation_are_independent(self):
+        wide = summary_wide(summary_fixture())
+        compact = summary_copy_frame(wide)
+        self.assertEqual(list(compact.columns), [
+            'Group', '0.2% YS (MPa) · Calc · Mean', 'UTS (MPa) · Calc · Mean',
+            'Elongation (%) · Calc · Mean'])
+        expanded = summary_copy_frame(wide, source='both', statistics='sd',
+                                      reconstruct=True)
+        self.assertEqual(list(expanded.columns), [
+            'Group',
+            '0.2% YS (MPa) · Calc · Mean', '0.2% YS (MPa) · Calc · SD',
+            '0.2% YS (MPa) · Instron · Mean', '0.2% YS (MPa) · Instron · SD',
+            'UTS (MPa) · Calc · Mean', 'UTS (MPa) · Calc · SD',
+            'UTS (MPa) · Instron · Mean', 'UTS (MPa) · Instron · SD',
+            'Elongation (%) · Calc · Mean', 'Elongation (%) · Calc · SD',
+            'Elongation (%) · Instron · Mean', 'Elongation (%) · Instron · SD',
+            'Elongation (%) · Reconstruct · Mean', 'Elongation (%) · Reconstruct · SD'])
+        full = summary_copy_frame(wide, source='instron', statistics='all',
+                                  properties='all', reconstruct=True, group_counts=True)
+        self.assertEqual(list(full.columns[:3]), ['Group', 'Included n', 'Available n'])
+        self.assertIn('Elongation (%) · Reconstruct · n', full.columns)
+        self.assertNotIn('0.2% YS (MPa) · Calc · Mean', full.columns)
+        self.assertIn('Uniform elongation (%) · Instron · Mean', full.columns)
+
     def test_flat_summary_keeps_mean_sd_and_n_in_distinct_cells(self):
         wide = summary_wide(summary_fixture())
         columns, rows = summary_copy_rows(wide)
@@ -56,6 +80,13 @@ class SummaryCopyTests(unittest.TestCase):
         self.assertEqual(view.summary_data_popup.overlay.layout.display, 'flex')
         self.assertEqual(len(view.summary_copy.rows), 1)
         self.assertEqual(view.summary_copy.rows[0][0], 'Alloy B')
+        self.assertEqual(len(view.summary_copy.columns), 4)
+        view.summary_source.value = 'both'
+        view.summary_statistics.value = 'sd'
+        view.summary_reconstruct.value = True
+        self.assertIn('Elongation (%) · Reconstruct · SD', view.summary_copy.columns)
+        self.assertEqual(list(csv.reader(io.StringIO(view.summary_copy.tsv_text), delimiter='\t'))[0],
+                         view.summary_copy.columns)
         view.clear()
         self.assertTrue(view.summary_data_button.disabled)
         self.assertEqual(view.summary_data_popup.overlay.layout.display, 'none')
@@ -71,7 +102,7 @@ class SummaryCopyTests(unittest.TestCase):
             self.addCleanup(view.clear)
             view.set_frames(current)
             view.summary_data_button.click()
-            expected = summary_wide(view._filtered(current['tensile_summary_details']))
+            expected = summary_copy_frame(summary_wide(view._filtered(current['tensile_summary_details'])))
             self.assertEqual(view.summary_copy.columns, list(expected.columns))
             for copied, (_, original) in zip(view.summary_copy.rows, expected.iterrows()):
                 for value, source in zip(copied, original):
@@ -81,6 +112,13 @@ class SummaryCopyTests(unittest.TestCase):
                         self.assertAlmostEqual(value, source)
                     else:
                         self.assertEqual(value, source)
+            view.summary_source.value = 'both'
+            view.summary_statistics.value = 'all'
+            view.summary_properties.value = 'all'
+            view.summary_reconstruct.value = True
+            view.summary_group_counts.value = True
+            self.assertEqual(set(view.summary_copy.columns),
+                             set(summary_wide(current['tensile_summary_details']).columns))
             self.assertFalse((root / 'output').exists())
 
 
