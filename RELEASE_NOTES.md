@@ -1,4 +1,4 @@
-# Tensile Workbench — next update
+# Tensile Workbench 1.0.22
 
 - Edit all selected groups’ labels and colours together in one scrollable popup,
   with a single Apply changes action and individual palette-colour resets.
