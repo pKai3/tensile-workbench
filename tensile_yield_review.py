@@ -1,5 +1,6 @@
 """Lazy, read-only group overview of the same fits used by the inspector."""
 from html import escape
+from tensile_colors import group_badge
 from tensile_help import help_widget, control_row
 import re
 import uuid
@@ -61,6 +62,7 @@ class GroupYieldReview:
         self.active, self.dirty, self.syncing = False, True, False
         self.generation, self._width = None, 1200
         w = widgets
+        self.group_badge = w.HTML()
         self.group = w.Dropdown(description='Group:', layout=w.Layout(width='min(100%, 480px)'))
         self.show_excluded = w.Checkbox(description='Show fully excluded specimens', value=True, indent=False,
                                        layout=w.Layout(width='auto'))
@@ -86,7 +88,7 @@ class GroupYieldReview:
                    'Exclusions remain visible for review and are labelled on each card.</p>')
         self.ui = w.VBox([
             control_row(w, [self.group, self.show_excluded, review_help]),
-            w.HBox([self.shared_axes, self.columns, self.reset],
+            self.group_badge, w.HBox([self.shared_axes, self.columns, self.reset],
                    layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
             w.HTML('<div class="tw-plot-key-surface" style="padding:4px 6px;border-radius:3px">'
                    + legend + '</div>'), self.status, self.plot,
@@ -107,6 +109,7 @@ class GroupYieldReview:
             self.group.value = previous if previous in groups else groups[0] if groups else None
         finally:
             self.syncing = False
+        self._sync_group_badge()
         self.dirty, self.generation = True, None
         if self.active:
             self.render()
@@ -116,8 +119,13 @@ class GroupYieldReview:
         if self.active and self.dirty:
             self.render()
 
+    def _sync_group_badge(self):
+        row = next((row for row in self.rows if row['group'] == self.group.value), None)
+        self.group_badge.value = group_badge(row['group'], row.get('group_color'), row.get('group_label')) if row else ''
+
     def _changed(self, _):
         if not self.syncing:
+            self._sync_group_badge()
             self.dirty = True
             if self.active:
                 self.render()

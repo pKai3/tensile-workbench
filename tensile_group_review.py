@@ -1,5 +1,6 @@
 """Lazy measured/aligned curve review. Display controls never change analysis policy."""
 from html import escape
+from tensile_colors import group_badge
 from tensile_help import help_widget, control_row
 import uuid
 import re
@@ -93,6 +94,7 @@ class GroupCurveReview:
         self.view.add_class('tw-group-view-switch')
         self.view.tooltips = ['Recorded specimen curves, before landmark alignment.',
             'Specimen shapes scaled to shared group landmarks; these show contributions to the average, not measured curves.']
+        self.group_badge = widgets.HTML()
         self.group = widgets.Dropdown(description='Group:', layout=widgets.Layout(width='350px'))
         self.axis = widgets.Dropdown(description='X axis:', options=[('Recorded strain (%)', 'strain'), ('Time (s)', 'time')],
                                      layout=widgets.Layout(width='260px'))
@@ -140,7 +142,7 @@ class GroupCurveReview:
             widgets.HBox([self.group, self.axis, self.show_excluded], layout=widgets.Layout(flex_flow='row wrap')),
             widgets.HBox([self.marker_heading, *self.markers.values()],
                          layout=widgets.Layout(flex_flow='row wrap', align_items='center', grid_gap='12px')),
-            self.notice, self.status, widgets.HTML('<b>Specimens · click to highlight</b>'),
+            self.group_badge, self.notice, self.status, widgets.HTML('<b>Specimens · click to highlight</b>'),
             self.legend, self.plot, self.inspect, self.table], layout=widgets.Layout(width='100%', min_width='0'))
         for control in (self.group, self.axis, self.show_excluded):
             control.observe(self._changed, names='value')
@@ -159,6 +161,7 @@ class GroupCurveReview:
             self.group.value = old if old in groups else groups[0] if groups else None
         finally:
             self.syncing = False
+        self._sync_group_badge()
         self.dirty = True
         self.generation = None  # invalidate callbacks from the old figure immediately
         self.table.context = uuid.uuid4().hex
@@ -172,8 +175,13 @@ class GroupCurveReview:
         if value and self.dirty:
             self.render()
 
+    def _sync_group_badge(self):
+        row = next((row for row in self.rows if row['group'] == self.group.value), None)
+        self.group_badge.value = group_badge(row['group'], row.get('group_color'), row.get('group_label')) if row else ''
+
     def _changed(self, _):
         if not self.syncing:
+            self._sync_group_badge()
             self.dirty = True
             if self.active:
                 self.render()

@@ -158,6 +158,92 @@ class PaletteWorkbenchTests(unittest.TestCase):
                 self.assertTrue(any(trace.opacity < 1 for trace in plotly.data))
         self.assertFalse((self.root / 'output').exists())
 
+    def test_popup_bulk_edits_refresh_data_without_recalculation(self):
+        app = self.app
+        app.controls['groups'].value = ('Alloy A', 'Alloy M', 'Alloy Z')
+        frames = {key: frame.copy(deep=True) for key, frame in app.tables.frames.items()}
+        editor = app.labels_editor
+        app.workspace_tool_buttons['colours'].click()
+        self.assertEqual(app.workspace_popup.body.children, app.labels_panel.children)
+        self.assertEqual(list(editor.rows), ['Alloy A', 'Alloy M', 'Alloy Z'])
+        editor.rows['Alloy A']['label'].value = 'Annealed <A>'
+        editor.rows['Alloy A']['color'].value = '#009e73'
+        editor.rows['Alloy Z']['label'].value = 'Heat treated Z'
+        self.assertNotIn('Alloy A', app._current()['definition'].get('color_overrides', {}))
+        app.workspace_popup.done.click()
+        app.plot_labels_button.click()
+        self.assertEqual(editor.rows['Alloy A']['label'].value, 'Annealed <A>')
+        self.assertEqual(editor.rows['Alloy Z']['label'].value, 'Heat treated Z')
+        app.controls['color_palette'].value = 'orchid_teal'
+        self.assertEqual(editor.rows['Alloy A']['color'].value, '#009e73')
+        self.assertEqual(editor.rows['Alloy M']['color'].value,
+                         app.session.color_map(app.state(), {})['Alloy M'])
+        with (patch.object(app.session.engine, 'specimen_properties', side_effect=AssertionError('Recalculated')),
+              patch.object(app.session, 'render', side_effect=AssertionError('Rendered'))):
+            editor.apply.click()
+            editor.rows['Alloy A']['label'].value = 'Renamed <A>'
+            editor.apply.click()
+        self.assertTrue(editor.apply.disabled)
+        self.assertEqual(app._current()['definition']['name_overrides']['Alloy Z'], 'Heat treated Z')
+        for key, frame in frames.items():
+            self.assertTrue(app.tables.frames[key].equals(frame), key)
+        self.assertIn('#009e73', app.tables.panels[0].value)
+        self.assertIn('Renamed &lt;A&gt;', app.tables.panels[0].value)
+        self.assertNotIn('Renamed <A>', app.tables.panels[0].value)
+        self.assertIn('#009e73', app.group_picker.summary.value)
+        for rows in (app.tables.specimens.rows, app.tables.group_review.rows, app.tables.yield_review.rows):
+            a_rows = [row for row in rows if row['group'] == 'Alloy A']
+            self.assertTrue(a_rows)
+            self.assertTrue(all(row['group_color'] == '#009e73' for row in a_rows))
+            self.assertTrue(all(row['group_label'] == 'Renamed <A>' for row in a_rows))
+        app.tables.open_inspector(app.tables.specimens.rows[0]['id'])
+        self.assertIn('#009e73', app.tables.inspector.group_badge.value)
+        app.tables._populate_summary_data()
+        self.assertEqual(app.tables.summary_copy.color_map, app.tables.color_map)
+        self.assertIn('Alloy A', app.tables.summary_copy.tsv_text)
+        self.assertNotIn('#009e73', app.tables.summary_copy.tsv_text)
+        # A later representative/modulus Apply cannot undo the new presentation.
+        app.override_button.click()
+        self.assertEqual(app._current()['definition']['name_overrides']['Alloy A'], 'Renamed <A>')
+        self.assertEqual(app._current()['definition']['color_overrides']['Alloy A'], '#009e73')
+        editor.rows['Alloy A']['reset'].click()
+        editor.apply.click()
+        self.assertNotIn('Alloy A', app._current()['definition']['color_overrides'])
+        self.assertEqual(editor.rows['Alloy A']['color'].value, app.session.color_map(app.state(), {})['Alloy A'])
+        app.workspace_popup.done.click()
+        self.assertIsNone(app.labels_panel.selected_index)
+        self.assertEqual(app.workspace_popup.body.children, ())
+        self.assertFalse((self.root / 'output').exists())
+
+    def test_appearance_drafts_follow_analysis_and_order_and_fail_atomically(self):
+        app = self.app
+        app.controls['groups'].value = ('Alloy A', 'Alloy Z')
+        editor = app.labels_editor
+        editor.rows['Alloy Z']['label'].value = 'Pending Z'
+        editor.rows['Alloy A']['color'].value = '#112233'
+        app.display_order_select.value = 'Alloy Z'
+        app.display_order_up.click()
+        self.assertEqual(editor.grid.children[3:6], editor.rows['Alloy Z']['cells'])
+        app._apply_graph('1')
+        self.assertTrue(editor.apply.disabled)
+        self.assertEqual(editor.rows['Alloy A']['color'].value, palette_colors('classic')[0])
+        app._apply_graph('0')
+        self.assertEqual(editor.rows['Alloy Z']['label'].value, 'Pending Z')
+        self.assertEqual(editor.rows['Alloy A']['color'].value, '#112233')
+        before = deepcopy(app._current()['definition'])
+        with patch.object(app.store, 'save', side_effect=RuntimeError('Synthetic save failure')):
+            editor.apply.click()
+        self.assertEqual(app._current()['definition'], before)
+        self.assertIn('Not applied', editor.status.value)
+        self.assertFalse(editor.apply.disabled)
+        editor.discard.click()
+        self.assertEqual(editor.rows['Alloy Z']['label'].value, 'Alloy Z')
+        self.assertTrue(editor.apply.disabled)
+        self.assertIn(app.plot_labels_button, app.viewer.static.toolbar.children)
+        app.controls['renderer'].value = 'plotly'
+        self.assertIn(app.plot_labels_button, app.viewer.plotly.toolbar.children)
+        self.assertNotIn(app.plot_labels_button, app.analysis_ui.children)
+
     def test_unselected_groups_do_not_reserve_colours_and_property_colours_unchanged(self):
         app = self.app
         app.controls['color_palette'].value = 'pastel_berry'

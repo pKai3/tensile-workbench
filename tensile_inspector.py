@@ -1,6 +1,7 @@
 """On-demand specimen inspection and explicitly applied fit-override previews."""
 from copy import deepcopy
 from html import escape
+from tensile_colors import group_badge
 from tensile_help import help_html, help_widget, control_row
 from pathlib import Path
 
@@ -838,11 +839,13 @@ class SpecimenInspector:
         from tensile_plot_picker import review_selector_css
         selector_style = w.HTML(review_selector_css('tw-inspector-view-switch',
             ('detail_yield', 'detail_failure', 'detail_full')), layout=w.Layout(height='0', margin='0'))
+        self.group_badge = w.HTML()
+        self._presentation_rows = {}
         self.status.layout.width = 'auto'
         self.ui = w.VBox([selector_style, control_row(w, [self.choice, self.previous, self.next, self.status]),
                           w.HBox([self.view, self.reset, self.gauge_overlay],
                                  layout=w.Layout(flex_flow='row wrap', align_items='center', grid_gap='10px', margin='4px 0 10px')),
-                          self.gauge_status, self.checks, self.review_actions, self.editor, self.failure_editor,
+                          self.group_badge, self.gauge_status, self.checks, self.review_actions, self.editor, self.failure_editor,
                           self.chart_box, self.layers_panel,
                           self.details_panel], layout=w.Layout(width='100%', min_width='0'))
         self.choice.observe(self._selected, names='value')
@@ -989,6 +992,8 @@ class SpecimenInspector:
         self._paint(self._payload, edit=self._draft if self.mode.value != 'inspect' else None)
 
     def clear(self):
+        self._presentation_rows = {}
+        self.group_badge.value = ''
         self._updating = True
         try:
             self.choice.options = [('Choose a specimen…', '')]
@@ -1000,6 +1005,7 @@ class SpecimenInspector:
         self.status.value = 'Click a specimen name in the Specimens table, or choose one above.'
 
     def set_rows(self, rows):
+        self._presentation_rows = {row['id']: row for row in rows}
         selected = self.choice.value
         options = [('Choose a specimen…', '')]
         names = [row['group'] + ' · ' + row['sample'] for row in rows]
@@ -1047,6 +1053,8 @@ class SpecimenInspector:
         if self._updating:
             return
         self._dispose()
+        row = self._presentation_rows.get(self.choice.value)
+        self.group_badge.value = group_badge(row['group'], row.get('group_color'), row.get('group_label')) if row else ''
         if not self.choice.value or self.loader is None:
             self.status.value = 'Click a specimen name in the Specimens table, or choose one above.'
             self._navigation()

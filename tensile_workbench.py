@@ -14,7 +14,7 @@ from pathlib import Path
 from time import perf_counter
 from workbench_project import ProjectStore, ProjectConflict, validate_project
 from tensile_plot_view import DualPlotView, GroupCheckboxes
-from tensile_plot_picker import PlotPicker, review_selector_css
+from tensile_plot_picker import PlotPicker, review_selector_css, compact_button_css
 from tensile_popup import SettingsPopup
 from tensile_help import help_html, help_widget, control_row, notice_widget, HelpTooltips
 from tensile_move_review import MoveReview
@@ -29,6 +29,7 @@ from tensile_fracture import (endpoint_available, validate_failure_override, man
 from tensile_gauge import gauge_record, group_policy, group_basis_label, migrate_group_gauges, validate_group_policy
 from tensile_exports import export_results, export_curves
 from tensile_group_plot import GROUP_FAMILY, GROUP_DEFAULTS, ordered_groups, render_group_properties, validate_group_display
+from tensile_group_appearance import GroupAppearanceEditor
 from tensile_specimen_plot import render_specimen_properties, specimen_sort_key, specimen_number
 from tensile_variables import GroupVariablesView, variable_label, property_chart_title, validate_variables, variable_usage
 from tensile_property_variants import (PropertyVariantsView, VARIANTS_KEY, TITLE_KEY,
@@ -1258,10 +1259,13 @@ class TensileWorkbench:
         ], layout=w.Layout(width='100%', min_width='0', grid_gap='14px'))], selected_index=0,
             layout=w.Layout(width='100%', min_width='0'))
         self.properties_panel.set_title(0, 'Specimen properties · tables and calculation inspector')
-        general = w.Accordion(children=[w.VBox([self.controls['color_palette'], self.palette_swatches,
-                             self.override_group, self.override_name,
-                             self.override_color_enabled, self.override_color, self.override_button])], selected_index=None)
-        general.set_title(0, "Labels and colours · this analysis, all plot types")
+        self.labels_editor = GroupAppearanceEditor(w, self._apply_group_appearance)
+        self.labels_panel = w.Accordion(children=[w.VBox([
+                             w.HTML('Edit your groups together, then <b>Apply changes</b>. '
+                                    'Palette changes save immediately. Use ↶ beside a colour to return to the palette.'),
+                             self.controls['color_palette'], self.palette_swatches,
+                             self.labels_editor.ui], layout=w.Layout(width='100%', min_width='0'))], selected_index=None)
+        self.labels_panel.set_title(0, 'Labels and colours · this analysis')
         self.plot_settings = {}
         self.plot_selectors = {}
         self.property_variants = PropertyVariantsView(w, self._capture_property_chart,
@@ -1294,13 +1298,14 @@ class TensileWorkbench:
         self.custom_variables_panel.set_title(0, 'Custom variables · shared by all analyses')
         self.custom_variables_panel.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
         self.custom_variable_tabs.observe(lambda _: self._refresh_specimen_variables(), names='selected_index')
-        self.workspace_panels = {'order': self.display_order_panel,
+        self.workspace_panels = {'order': self.display_order_panel, 'colours': self.labels_panel,
                                  'variables': self.custom_variables_panel, 'gauge': self.gauge_panel}
         self._workspace_panel_open = None
         self.workspace_popup = SettingsPopup(w, on_close=self._close_workspace_settings)
         self.workspace_tool_buttons = {}
         for key, label, tooltip in (
             ('order', 'Group order', 'Set the sample-group order used by this analysis’s tables and plots.'),
+            ('colours', 'Labels and colours', 'Set group labels, palette and custom colours for this analysis’s data and plots.'),
             ('variables', 'Custom variables', 'Edit group and specimen variables, shared by all analyses.'),
             ('gauge', 'Gauge reconstruction', 'Set target gauge lengths and enable reconstruction per sample group.')):
             button = w.Button(description=label, tooltip=tooltip, layout=w.Layout(width='auto', flex='0 1 auto'))
@@ -1309,8 +1314,14 @@ class TensileWorkbench:
         actions = self._row(list(self.workspace_tool_buttons.values()))
         actions.add_class('tw-workspace-actions')
         self.workspace_tools = w.VBox([w.HTML(review_selector_css('tw-workspace-actions',
-            ('workspace_order', 'workspace_variables', 'workspace_gauge'))), actions, self.workspace_popup.ui],
+            ('workspace_order', 'workspace_colours', 'workspace_variables', 'workspace_gauge'))
+            + compact_button_css('tw-labels-shortcut', 'workspace_colours')), actions, self.workspace_popup.ui],
             layout=w.Layout(width='100%', min_width='0', margin='8px 0 12px'))
+        self.plot_labels_button = w.Button(description='Labels and colours',
+            tooltip=self.workspace_tool_buttons['colours'].tooltip, layout=w.Layout(width='auto', flex='0 1 auto'))
+        self.plot_labels_button.add_class('tw-labels-shortcut')
+        self.plot_labels_button.on_click(lambda _: self._open_workspace_settings('colours'))
+        self.viewer.set_toolbar_actions([self.plot_labels_button])
         for label, family in FAMILIES:
             self.title_inputs[family].description = "Title:"
             if family == SPECIMEN_FAMILY:
@@ -1401,7 +1412,7 @@ class TensileWorkbench:
             w.HTML("<h3>Plot views</h3>"), self.plot_display_css, self.plot_display_options,
             self.plot_options,
             plot_actions,
-            self.status, general, self.viewer.ui,
+            self.status, self.viewer.ui,
             self._row([self.export_button, self.controls["export_tables"]]), log,
         ], layout=w.Layout(width="100%", min_width="0"))
         self.saved_overrides = SavedOverridesView(w, self.store, self.session,
@@ -1669,6 +1680,8 @@ class TensileWorkbench:
 
     def _open_workspace_settings(self, key):
         self.workspace_popup.close()
+        if key == 'colours':
+            self._sync_group_appearance()
         panel = self.workspace_panels[key]
         self._workspace_panel_open = key
         panel.selected_index = 0
@@ -1761,6 +1774,7 @@ class TensileWorkbench:
             self._sync_gauge_rows(force=True)
             self._sample_data_note()
             self._load_overrides()
+            self._sync_group_appearance()
             self._sync_disabled()
             self._results, self._signature = [], None
             self.viewer.clear()
@@ -1924,6 +1938,7 @@ class TensileWorkbench:
             self._show_saved()
             self._sync_override_groups()
             self._sync_automatic_color()
+            self._sync_group_appearance()
             self._sync_gauge_rows()
             return True
         except Exception as error:
@@ -2225,6 +2240,43 @@ class TensileWorkbench:
                 self._gauge_sync = False
             self.gauge_message.value = '<b>Not saved:</b> ' + escape(str(error))
 
+    def _sync_group_appearance(self):
+        graph = self._current()
+        groups = ordered_groups(list(self.controls['groups'].value), self._display_order)
+        self.labels_editor.refresh(graph['id'], groups, graph['definition'],
+            {group: self.session.engine.get_display_name(group) for group in groups},
+            self.session.color_map(self.state(), {}))
+
+    @busy('Applying labels and colours…')
+    def _apply_group_appearance(self, analysis, edits):
+        if analysis != self._current()['id']:
+            raise ValueError('Return to the analysis being edited before applying these changes.')
+        if not self.save_current():
+            raise ValueError('Save the current analysis settings before applying labels and colours.')
+        project = deepcopy(self.store.data)
+        spec = project['graphs'][self._index()]['definition']
+        for group, fields in edits.items():
+            for field, edit in fields.items():
+                key = {'label': 'name_overrides', 'color': 'color_overrides'}[field]
+                values = spec.setdefault(key, {})
+                if values.get(group) not in (edit['before'], edit['after']):
+                    raise ValueError(f'{group}: saved {field} changed while you were editing. Discard edits to reload it.')
+                if edit['after'] is None:
+                    values.pop(group, None)
+                else:
+                    values[group] = edit['after']
+        self.store.save(project)
+        self.session.set_project(self.store.data)
+        # The representative/modulus editors still share these legacy controls.
+        # Keep their later Apply actions from restoring an old label or colour.
+        group = self.override_group.value
+        if group is not None:
+            self.override_name.value = self.session.engine.get_display_name(group, spec.get('name_overrides'))
+            color = spec.get('color_overrides', {}).get(group)
+            self.override_color_enabled.value = color is not None
+            self.override_color.value = color or self.session.color_map(self.state(), {})[group]
+        self._changed()
+
     @busy('Loading sample-group settings…')
     def _load_overrides(self, _=None):
         if getattr(self, '_syncing_override_groups', False):
@@ -2402,6 +2454,7 @@ class TensileWorkbench:
         if hasattr(self, '_folder_watch'):
             self._folder_watch.enabled = False
             self._folder_watch.close()
+        self.labels_editor.close()
         self.ui.close()
 
     def _move_applied(self, action='Group move approved'):
@@ -2685,8 +2738,10 @@ class TensileWorkbench:
     def _refresh_properties(self):
         state, spec = self.state(), self._current()['definition']
         colors = self.session.color_map(state, spec)
+        labels = dict(spec.get('name_overrides', {}))
+        self.group_picker.set_presentation(colors, labels)
         table_key = self.session.property_table_key(state, spec)
-        signature = json.dumps([table_key, state.get('group_order', []), colors,
+        signature = json.dumps([table_key, state.get('group_order', []), colors, labels,
                                 state['landmark_points']], sort_keys=True)
         if (self.tables.frames and table_key in self.session._property_frames
                 and signature == getattr(self, '_table_view_signature', None)):
@@ -2701,7 +2756,7 @@ class TensileWorkbench:
         try:
             with redirect_stdout(io.StringIO()):
                 frames = self.session.property_tables(state, spec)
-            self.tables.set_frames(frames, color_map=colors,
+            self.tables.set_frames(frames, color_map=colors, group_labels=labels,
                                    group_order=state.get('group_order', []))
             self._table_view_signature = signature
             self._update_fit_warning(frames)

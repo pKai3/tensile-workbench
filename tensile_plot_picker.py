@@ -66,6 +66,14 @@ def thumbnail(family):
                  '<path class="tw-sketch-orange" d="M105 18v48m-7-40 7-8 7 8m-14 32 7 8 7-8"/>'
                  '<g class="tw-sketch-green" fill="currentColor"><circle cx="16" cy="24" r="3"/>'
                  '<circle cx="16" cy="42" r="3"/><circle cx="16" cy="60" r="3"/></g>')
+    elif family == 'workspace_colours':
+        axes = ''
+        marks = ('<path class="tw-sketch-blue" d="M16 15h64l30 27-30 27H16Z"/>'
+                 '<circle class="tw-sketch-blue" cx="94" cy="42" r="3"/>'
+                 '<path class="tw-sketch-blue" d="M28 28h39"/>'
+                 '<rect class="tw-sketch-blue" x="27" y="39" width="12" height="15" rx="3" fill="currentColor"/>'
+                 '<rect class="tw-sketch-orange" x="47" y="39" width="12" height="15" rx="3" fill="currentColor"/>'
+                 '<rect class="tw-sketch-green" x="67" y="39" width="12" height="15" rx="3" fill="currentColor"/>')
     elif family == 'workspace_variables':
         axes = ''
         marks = ('<path class="tw-sketch-blue" d="M14 12h100v60H14Zm0 18h100m-100 14h100m-100 14h100M48 12v60m33-60v60"/>'
@@ -159,6 +167,20 @@ def thumbnail(family):
             'stroke-linecap="round" stroke-linejoin="round">' + axes + marks + '</g></svg>')
 
 
+def _thumbnail_uri(family):
+    svg = thumbnail(family).replace('<g fill=', '<style>.tw-sketch-axis{color:#8394a6;stroke-width:1}'
+        '.tw-sketch-blue{color:#4295cf}.tw-sketch-orange{color:#db963e}'
+        '.tw-sketch-green{color:#24ad8c}</style><g fill=', 1)
+    return 'data:image/svg+xml;base64,' + b64encode(svg.encode()).decode()
+
+
+def compact_button_css(scope, family):
+    """Reuse the illustrated artwork at the ordinary toolbar button size."""
+    return (f'<style>.{scope}.jupyter-button {{background-image:url("{_thumbnail_uri(family)}");'
+            'background-repeat:no-repeat;background-position:6px center;'
+            'background-size:32px 24px;padding-left:44px;}</style>')
+
+
 def review_selector_css(scope='tw-group-view-switch', families=('review_measured', 'review_aligned')):
     """Illustrate native toggle buttons without replacing their keyboard handling."""
     css = (f'.{scope} .jupyter-button {{min-height:60px;width:auto !important;flex:1 1 auto;margin:0;'
@@ -167,11 +189,7 @@ def review_selector_css(scope='tw-group-view-switch', families=('review_measured
            f'.{scope}>div {{display:flex;flex-wrap:wrap;gap:6px;}}'
            f'.{scope} {{height:auto;min-height:66px;max-width:100%;width:auto;}}')
     for index, family in enumerate(families, 1):
-        svg = thumbnail(family).replace('<g fill=', '<style>.tw-sketch-axis{color:#8394a6;stroke-width:1}'
-            '.tw-sketch-blue{color:#4295cf}.tw-sketch-orange{color:#db963e}'
-            '.tw-sketch-green{color:#24ad8c}</style><g fill=', 1)
-        uri = b64encode(svg.encode()).decode()
-        css += f'.{scope} .jupyter-button:nth-child({index}) {{background-image:url("data:image/svg+xml;base64,{uri}");}}'
+        css += f'.{scope} .jupyter-button:nth-child({index}) {{background-image:url("{_thumbnail_uri(family)}");}}'
     return '<style>' + css + '</style>'
 
 

@@ -1,11 +1,11 @@
 """Hierarchical group selection; folders select leaves, never merge datasets."""
-from html import escape
 import uuid
 
 import anywidget
 import traitlets
 
 from tensile_selection import SAMPLE_GROUP_PREFIX
+from tensile_colors import group_badge
 
 
 class FolderCheckbox(anywidget.AnyWidget):
@@ -68,6 +68,7 @@ class GroupCheckboxes:
     def __init__(self, widgets, selection, display_names=None):
         self.w, self.selection = widgets, selection
         self.display_names = display_names or {}
+        self.color_map, self.group_labels = {}, {}
         self.boxes, self.folder_boxes, self.folder_members = {}, {}, {}
         self._owned, self._expanded = [], set()
         self._syncing = False
@@ -102,6 +103,10 @@ class GroupCheckboxes:
                    if self.visible(item[1] if isinstance(item, (tuple, list)) else item)]
         children, _ = self._branch(group_tree(options), ())
         self.grid.children = tuple(children)
+        self._value_changed()
+
+    def set_presentation(self, colors, labels):
+        self.color_map, self.group_labels = dict(colors), dict(labels)
         self._value_changed()
 
     def _branch(self, node, path):
@@ -170,6 +175,9 @@ class GroupCheckboxes:
             selected = set(self.selection.value)
             for group, box in self.boxes.items():
                 box.value = group in selected
+                box.layout.border_left = '3px solid ' + self.color_map.get(group, 'transparent')
+                box.layout.padding = '2px 0 2px 5px'
+                box.tooltip = group + '\n' + self.group_labels.get(group, self.display_names.get(group, group))
             for path, box in self.folder_boxes.items():
                 members = self.folder_members[path]
                 count = len(selected.intersection(members))
@@ -179,7 +187,9 @@ class GroupCheckboxes:
         finally:
             self._syncing = False
         self.summary.value = ('<span style="white-space:normal"><b>Selected (' + str(len(selected)) + '):</b> ' +
-                              escape(' · '.join(self.selection.value) if selected else 'None') + '</span>')
+                              (' &nbsp; · &nbsp; '.join(group_badge(group, self.color_map.get(group),
+                                  self.group_labels.get(group)) for group in self.selection.value)
+                               if selected else 'None') + '</span>')
         self.clear_button.disabled = not selected
 
     def _checked(self, _):

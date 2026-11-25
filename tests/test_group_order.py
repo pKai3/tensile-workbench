@@ -63,8 +63,8 @@ class GroupOrderTests(unittest.TestCase):
         self.assertEqual(app.workspace_popup.overlay.layout.display, 'none')
         self.assertEqual(panel.get_title(0), 'Sample group order · tables and plots')
         self.assertIn(app.display_order_select, panel.children[0].children)
-        colours = next(child for child in children if isinstance(child, widgets.Accordion)
-                       and child.get_title(0).startswith('Labels and colours'))
+        colours = app.labels_panel
+        self.assertNotIn(colours, children)
         def contains(root, target):
             return root is target or any(contains(child, target) for child in getattr(root, 'children', ()))
         self.assertFalse(contains(colours, app.display_order_select))

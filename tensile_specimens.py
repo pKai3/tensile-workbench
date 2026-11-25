@@ -63,6 +63,9 @@ class SpecimenTable(anywidget.AnyWidget):
     .tw-specimens .source-file textarea {box-sizing:border-box;width:100%;max-width:220px;resize:vertical;
       font:11px/1.4 monospace;white-space:pre-wrap;overflow-wrap:anywhere;}
     .tw-specimens .assigned-row {display:block;font-size:11px;color:var(--tw-muted, #526170);margin-top:3px;}
+    .tw-specimens .group-label {display:flex;align-items:baseline;gap:7px;}
+    .tw-specimens .group-swatch {width:.8em;height:.8em;flex:0 0 auto;border-radius:3px;border:1px solid var(--tw-control-border,#94a3b8);}
+    .tw-specimens .group-id {display:block;font-size:11px;color:var(--tw-muted,#526170);}
     """
     _esm = """
     export default {render({model, el}) {
@@ -127,7 +130,14 @@ class SpecimenTable(anywidget.AnyWidget):
             const effect=document.createElement('small'); effect.className='data-use-effect';
             effect.textContent=effects[mode.value]?.summary || ''; dataUseCell.append(effect);
           }
-          tr.insertCell().textContent=row.group;
+          const groupCell=tr.insertCell(),groupLabel=document.createElement('span');groupLabel.className='group-label';
+          groupCell.title=row.group;
+          if(row.group_color){const swatch=document.createElement('span');swatch.className='group-swatch';
+            swatch.style.backgroundColor=row.group_color;swatch.setAttribute('aria-hidden','true');groupLabel.append(swatch);}
+          const label=document.createElement('span');label.textContent=row.group_label || row.group;groupLabel.append(label);
+          groupCell.append(groupLabel);
+          if(row.group_label && row.group_label!==row.group){const id=document.createElement('small');
+            id.className='group-id';id.textContent=row.group;groupCell.append(id);}
           const inspect = document.createElement('button'); inspect.type='button'; inspect.className='inspect';
           inspect.textContent=(row.check_warning || row.fit_warning ? '⚠ ' : '') + row.sample; inspect.title='Inspect this specimen’s property calculations';
           inspect.setAttribute('aria-label','Inspect ' + row.group + ' / ' + row.sample);

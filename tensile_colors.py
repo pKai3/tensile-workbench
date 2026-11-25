@@ -57,6 +57,22 @@ PALETTES = {
 PALETTE_OPTIONS = [(label, key) for key, (label, _) in PALETTES.items()]
 
 
+def group_badge(group, color=None, label=None):
+    """A readable group label with its plot colour; keep identity inspectable."""
+    from matplotlib.colors import to_hex
+    name = str(label or group)
+    if not color and name == str(group):
+        return escape(name)
+    swatch = (f'<span aria-hidden="true" style="display:inline-block;width:.8em;height:.8em;'
+              f'border-radius:3px;background:{to_hex(color)};border:1px solid var(--tw-control-border,#94a3b8);'
+              'flex:0 0 auto"></span>') if color else ''
+    identity = (f'<small style="display:block;color:var(--tw-muted,#526170);font-size:.85em">'
+                f'{escape(str(group))}</small>') if name != str(group) else ''
+    return (f'<span class="tw-group-badge" title="{escape(str(group), quote=True)}" '
+            'style="display:inline-flex;align-items:baseline;gap:7px;white-space:normal;text-align:left">'
+            + swatch + '<span>' + escape(name) + identity + '</span></span>')
+
+
 def validate_palette(value):
     if not isinstance(value, str) or value not in PALETTES:
         raise ValueError('Choose one of the available plot colour palettes.')

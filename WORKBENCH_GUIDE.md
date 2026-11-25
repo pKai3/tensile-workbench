@@ -250,7 +250,7 @@ Calculated and available matched Instron properties are listed side by side. EL 
 
 **EL source for plots** uses **Calc** or **Reconstruct** in the specimen table and Excel export. Detailed endpoint provenance remains in the audit data.
 
-**Labels and colours** sits immediately above the displayed plots, below the plot selectors and update controls. Overrides still apply to every plot type in the selected analysis definition.
+**Labels and colours** opens a popup from the illustrated button beside **Group order** below the sample selector, or the compact shortcut beside the plot layout controls. Both open the same settings. Labels and group colours appear throughout the data views as well as the plots; original group IDs remain visible below custom labels.
 
 Changing the selected specimen or zoom does not change calculations. No specimen plot is generated until selected, and inspecting or adjusting a preview writes nothing to the output folder.
 
@@ -503,7 +503,7 @@ The **YS, UTS and elongation by sample & by custom variable** legend still ident
 
 ## Per-analysis colours
 
-Expand **Labels and colours · this analysis, all plot types** and choose a **Palette**.
+Click **Labels and colours** beside **Group order** or in the plot layout toolbar, then choose a **Palette**.
 The swatches update immediately. All 16 palettes have at least ten colours, including:
 
 - **Retro Pop · reference colours**: the original pink, grey, olive-lime
@@ -514,7 +514,7 @@ The swatches update immediately. All 16 palettes have at least ten colours, incl
   saturation and broader hue separation than the original soft pastel versions.
 - **Muted**, **Vivid**, **Earth**, **Ocean**, **Greyscale**, and unchanged **Classic**.
 
-The choice saves automatically per analysis; click **Update plots** to apply it when
+The choice saves automatically per analysis and updates the data views immediately. Coloured markers identify groups in the selector, Summary, selectable Summary, Specimens, curve review, yield review and calculation inspector. Numerical values and copied/exported group IDs are unchanged. All selected groups appear in one scrollable list, in **Group order**. Edit labels and colours directly and click **Apply changes** once to save the edited rows together. Editing a colour creates a custom override; the undo button beside it restores the palette colour. Clear a label to restore its default. **Discard edits** restores the saved values. Pending edits survive closing the popup, reordering groups and switching analyses during this session; they are not saved until applied. Close with **Done**, Escape or the backdrop. Click **Update plots** to apply changes to plots when
 live preview is off. Existing analyses start with Classic. The custom themes have
 been strengthened in place, retaining their saved palette IDs; individual colour
 overrides and the Classic palette are unchanged.

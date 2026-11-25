@@ -171,6 +171,7 @@ class DualPlotView:
         self.plotly = None
         self._items = []
         self._plotly_current = False
+        self._toolbar_actions = ()
         self.ui = widgets.VBox([self.static.ui], layout=widgets.Layout(width='100%'))
         renderer.observe(self._switch, names='value')
 
@@ -188,6 +189,7 @@ class DualPlotView:
             if self.plotly is None:
                 from tensile_plotly import PlotlyView
                 self.plotly = PlotlyView(self.w, self.columns, self.plot_width)
+                self.set_toolbar_actions(self._toolbar_actions)
             if not self._plotly_current:
                 self.plotly.set_items(self._items)
                 self._plotly_current = True
@@ -213,3 +215,9 @@ class DualPlotView:
         self.static.apply_layout()
         if self.plotly is not None:
             self.plotly.apply_layout()
+
+    def set_toolbar_actions(self, actions):
+        self._toolbar_actions = tuple(actions)
+        for view in (self.static, self.plotly):
+            if view is not None:
+                view.toolbar.children = (self.columns, self.plot_width, *self._toolbar_actions, view.hint)

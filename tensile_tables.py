@@ -14,6 +14,7 @@ from tensile_summary_copy import SummaryCopyTable, summary_copy_rows
 from tensile_properties import EL_SOURCE_FIELDS, elongation_report
 from tensile_fit import fit_display_places
 from tensile_order import sort_group_frame
+from tensile_colors import group_badge
 
 PATH_COLUMNS = frozenset(('Source File', 'Instron Summary File', 'Instron Summary CSV'))
 
@@ -496,7 +497,7 @@ def summary_copy_frame(summary, *, source='calc', statistics='mean', properties=
     return summary.loc[:, columns]
 
 
-def summary_html(details):
+def summary_html(details, color_map=None, group_labels=None):
     if details.empty:
         return '<p>No matching groups.</p>'
     # Size the three display tracks once per property/source column, not per
@@ -541,7 +542,8 @@ def summary_html(details):
     for group, data in details.groupby('Group', sort=False):
         included = int(data.iloc[0]['Selected Specimens'])
         available = int(data.iloc[0]['Available Specimens'])
-        result.append(f'<tr><td>{escape(str(group))}</td><td>{included}<small>of {available}</small></td>')
+        badge = group_badge(group, (color_map or {}).get(group), (group_labels or {}).get(group))
+        result.append(f'<tr><td>{badge}</td><td>{included}<small>of {available}</small></td>')
         for label, unit, _, _ in METRICS:
             for index, (source, _) in enumerate(property_table_sources(label)):
                 item = data[(data.Property == label) & (data.Source == source)].iloc[0]
@@ -752,6 +754,7 @@ class PropertyTablesView:
         self.group_labels = dict(group_labels or {})
         self.group_order = list(group_order or [])
         _, _, rows = specimen_table_data(frames['tensile_samples'], frames['instron_comparison'])
+        self._present_rows(rows)
         self.group_review.set_rows(rows)
         self.yield_review.set_rows(rows)
         self.render()
@@ -762,7 +765,12 @@ class PropertyTablesView:
             statistics=self.summary_statistics.value, properties=self.summary_properties.value,
             reconstruct=self.summary_reconstruct.value, group_counts=self.summary_group_counts.value)
         columns, rows = summary_copy_rows(summary)
-        self.summary_copy.set_data(columns, rows)
+        self.summary_copy.set_data(columns, rows, color_map=self.color_map)
+
+    def _present_rows(self, rows):
+        for row in rows:
+            row['group_color'] = self.color_map.get(row['group'], '')
+            row['group_label'] = self.group_labels.get(row['group'], row['group'])
 
     def _summary_display_changed(self, _):
         if self.frames and self.summary_data_popup.overlay.layout.display != 'none':
@@ -899,7 +907,7 @@ class PropertyTablesView:
                                'Missing endpoints and uncertain load-history selections are flagged in Checks. '
                                'Results display two decimals; elastic-fit R² and fit-strain details display five. '
                                'Calculations and checks retain full precision.</p>')
-                               + basis_note + summary_html(summary))
+                               + basis_note + summary_html(summary, self.color_map, self.group_labels))
         self.panels[1].value = ('<p><b>Data use</b> changes the global default for statistics, averages, work hardening and all plots. '
                                'Choose <b>This analysis only</b> for an explicit exception; choose <b>Global default</b> to remove it. '
                                'Other analyses’ explicit overrides are preserved. '
@@ -933,6 +941,7 @@ class PropertyTablesView:
                                'the last reading is never used unconditionally. '
                                'EL differences do not generate specimen-matching failures.</p>' + basis_note)
         columns, groups, rows = specimen_table_data(samples, self.frames['instron_comparison'])
+        self._present_rows(rows)
         with self.specimens.hold_sync():
             self.specimens.columns = columns
             self.specimens.column_groups = groups

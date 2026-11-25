@@ -44,6 +44,7 @@ class SummaryCopyTable(anywidget.AnyWidget):
     rows = traitlets.List(traitlets.List()).tag(sync=True)
     csv_text = traitlets.Unicode('').tag(sync=True)
     tsv_text = traitlets.Unicode('').tag(sync=True)
+    color_map = traitlets.Dict().tag(sync=True)
 
     _css = """
     .tw-summary-copy {width:100%;min-width:0;font:12px/1.45 Arial,sans-serif;color:var(--tw-text,inherit);}
@@ -237,6 +238,11 @@ class SummaryCopyTable(anywidget.AnyWidget):
               cell.textContent=label==='Included n' || label==='Available n' || label.endsWith(' · n') ?
                 String(value) : value.toFixed(2);cell.title=String(value);
             } else cell.textContent=value ?? '';
+            if(label==='Group' && model.get('color_map')[value]){
+              const swatch=document.createElement('span');swatch.setAttribute('aria-hidden','true');
+              swatch.style.cssText='display:inline-block;width:.8em;height:.8em;border-radius:3px;margin-right:7px;border:1px solid var(--tw-control-border,#94a3b8)';
+              swatch.style.backgroundColor=model.get('color_map')[value];cell.prepend(swatch);
+            }
           });
         });
         anchor=tip=null;grid.replaceChildren(table);grid.scrollLeft=left;grid.scrollTop=top;
@@ -244,14 +250,17 @@ class SummaryCopyTable(anywidget.AnyWidget):
         paint();
       }
       model.on('change:columns',renderTable);model.on('change:rows',renderTable);
+      model.on('change:color_map',renderTable);
       renderTable();
       return ()=>{model.off('change:columns',renderTable);model.off('change:rows',renderTable);
+        model.off('change:color_map',renderTable);
         document.removeEventListener('pointerup',up);};
     }};
     """
 
-    def set_data(self, columns, rows):
+    def set_data(self, columns, rows, color_map=None):
         with self.hold_sync():
+            self.color_map = dict(color_map or {})
             self.columns = columns
             self.rows = rows
             self.csv_text = separated_text(columns, rows, ',')
